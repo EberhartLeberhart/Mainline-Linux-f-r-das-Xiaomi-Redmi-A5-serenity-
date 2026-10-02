@@ -1,0 +1,81 @@
+From d514b3e81bbfb6118e108eea2ad8521716bb5392 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 27 Sep 2026 20:41:24 +0200
+Subject: [PATCH 5/9] Redmi A5: USB-Geraetemodus laeuft (OTG + Rollen-Schalter,
+ vddusb33 per ADI), NCM + ACM
+
+---
+ .../boot/dts/sprd/ums9230-xiaomi-serenity.dts | 12 ++++++++
+ drivers/spi/spi-sprd-adi.c                    | 28 +++++++++++++++++++
+ 2 files changed, 40 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index b621e4edb..2dbbb4f49 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -149,3 +149,15 @@ &sdio3 {
+ 	sprd,phy-delay-mmc-highspeed = <0x60 0x2e 0x2c 0x2c>;
+ 	status = "okay";
+ };
++
++/* USB: erst mal fest im Geraete-Modus (ohne Typ-C-Automatik) */
++&hsphy {
++	status = "okay";
++};
++
++&usb {
++	dr_mode = "otg";
++	usb-role-switch;
++	role-switch-default-mode = "peripheral";
++	status = "okay";
++};
+diff --git a/drivers/spi/spi-sprd-adi.c b/drivers/spi/spi-sprd-adi.c
+index 6c9a097e4..7ffa2f827 100644
+--- a/drivers/spi/spi-sprd-adi.c
++++ b/drivers/spi/spi-sprd-adi.c
+@@ -428,6 +428,31 @@ static void sprd_adi_stop_pmic_wdt(struct sprd_adi *sadi)
+ 	dev_info(sadi->dev, "REDMI: PMIC-Watchdog angehalten (ctrl=0x%x)\n", val);
+ }
+ 
++
++/* REDMI: USB-PHY-Versorgung (LDO vddusb33, SC2730) direkt einschalten, 3,3 V.
++ * Ohne kompletten PMIC-Regler-Treiber, alles andere bleibt unangetastet. */
++#define SC2730_USB33_PD		(0x1800 + 0x1e8)
++#define SC2730_USB33_VOL	(0x1800 + 0x1ec)
++#define SC2730_USB33_3V3	0xd2	/* 1,2 V + 210 * 10 mV */
++static void sprd_adi_enable_usb33(struct sprd_adi *sadi)
++{
++	u32 pd = 0, vol = 0;
++
++	sprd_adi_read(sadi, SC2730_USB33_PD, &pd);
++	sprd_adi_read(sadi, SC2730_USB33_VOL, &vol);
++	dev_info(sadi->dev, "REDMI: vddusb33 vorher: pd=0x%x vol=0x%x -> %s\n",
++		 pd, vol, (pd & BIT(0)) ? "AUS" : "an");
++
++	if ((vol & 0xff) != SC2730_USB33_3V3)
++		sprd_adi_write(sadi, SC2730_USB33_VOL, (vol & ~0xffU) | SC2730_USB33_3V3);
++	if (pd & BIT(0))
++		sprd_adi_write(sadi, SC2730_USB33_PD, pd & ~BIT(0));
++
++	sprd_adi_read(sadi, SC2730_USB33_PD, &pd);
++	sprd_adi_read(sadi, SC2730_USB33_VOL, &vol);
++	dev_info(sadi->dev, "REDMI: vddusb33 nachher: pd=0x%x vol=0x%x\n", pd, vol);
++}
++
+ static void sprd_adi_hw_init(struct sprd_adi *sadi)
+ {
+ 	struct device_node *np = sadi->dev->of_node;
+@@ -535,7 +560,10 @@ static int sprd_adi_probe(struct platform_device *pdev)
+ 
+ 	sprd_adi_hw_init(sadi);
+ 	if (of_device_is_compatible(pdev->dev.of_node, "sprd,ums512-adi"))
++	{
+ 		sprd_adi_stop_pmic_wdt(sadi);
++		sprd_adi_enable_usb33(sadi);
++	}
+ 
+ 	ctlr->bus_num = pdev->id;
+ 	ctlr->num_chipselect = num_chipselect;
+-- 
+2.43.0
+

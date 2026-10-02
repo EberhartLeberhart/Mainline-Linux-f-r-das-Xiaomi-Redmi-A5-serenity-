@@ -1,0 +1,72 @@
+=== Redmi A5 Pruefung 2024-04-19 14:25:15 ===
+Kernel:  7.1.0-rc1-ga1ce3f9b4def  #52 SMP PREEMPT Fri Oct  2 17:30:01 CEST 2026
+Slot:    slot_suffix=_b
+Laufzeit: up 0 minutes   (Datum oben ist falsch, solange die Echtzeituhr fehlt)
+
+--- Grundsystem ---
+OK     CPU-Kerne                8 Kerne, online: 0-7
+INFO   Arbeitsspeicher          3734 MB
+OK     Root-Dateisystem         /dev/mmcblk0p81 ext4 (eMMC)
+OK     eMMC-Treiber             sdhci gebunden
+FEHLT  CPU-Takt (cpufreq)       kein cpufreq - CPUs laufen mit Bootloader-Takt
+
+--- Verbindung ---
+OK     USB-Gadget               UDC musb-hdrc.0.auto, Rolle: device
+OK     USB-Netz                 usb0 192.168.7.2
+OK     SSH                      aktiv (sonst liefe dieses Skript nicht)
+OK     Internet ueber PC        1.1.1.1 erreichbar
+OK     Serielle Konsole USB     /dev/ttyGS0
+TEIL   USB-Host-Modus           Host-Bus angelegt, aber nie mit Geraet getestet (Rolle jetzt: device)
+
+--- Stabilitaet / Strom ---
+OK     Watchdog (AP)            sprd-wdt gebunden
+OK     rst_mode-Fix             Code laeuft (rst_mode beim Start: 0x0, setzt 0x40)
+TEIL   Ausschalten              SC2730-Handler angemeldet - echtes Aus nur von Hand belegbar (poweroff, 3 Min warten)
+FEHLT  Echtzeituhr              kein rtc0 - Uhrzeit nach Neustart falsch
+FEHLT  Akku/Laden               kein power_supply - Akkustand unbekannt
+FEHLT  Power-Domains            keine genpd-Domains (Uebersichtsdatei allein zaehlt nicht)
+
+--- Temperatur ---
+FEHLT  Temperatursensoren       keine thermal_zone (nvmem-rmem + sprd_thermal geladen?)
+FEHLT  Ueberhitzungsschutz      ohne Sensoren nicht moeglich
+
+--- Treiber gebunden (nicht nur eingebaut!) ---
+OK     sprd-adi                 1 Geraet(e)
+FEHLT  sprd-gpio                Treiber nicht geladen/eingebaut
+FEHLT  sprd-eic                 Treiber nicht geladen/eingebaut
+FEHLT  sprd-pinctrl             Treiber nicht geladen/eingebaut
+FEHLT  sprd-mailbox             Treiber nicht geladen/eingebaut
+OK     sprd_hwspinlock          1 Geraet(e)
+OK     sprd-usb2-phy            1 Geraet(e)
+OK     musb-sprd                1 Geraet(e)
+FEHLT  sprd-i2c                 Treiber nicht geladen/eingebaut
+FEHLT  sprd-dma                 Treiber nicht geladen/eingebaut
+FEHLT  sprd-thermal             Treiber nicht geladen/eingebaut
+FEHLT  sprd-power-controller    Treiber nicht geladen/eingebaut
+TEIL   ums9230-clk              11 gebunden, gescheitert: 23000000.clock-controller 30000000.clock-controller
+FEHLT  sprd-pwm                 Treiber nicht geladen/eingebaut
+
+--- Eingabe / Anzeige ---
+FEHLT  Tasten                   keine Tasten-Eingabegeraete
+OK     Bildschirm (Framebuffer) simpledrmdrmfb 720,1640
+FEHLT  Helligkeit               kein Backlight-Geraet
+TEIL   DRM-Grafik               nur simpledrm (Bild vom Bootloader), kein echter Display-Treiber
+
+--- Funk ---
+FEHLT  WLAN                     kein wlan-Interface
+FEHLT  Bluetooth                kein hci
+FEHLT  FM-Radio                 kein /dev/radio
+FEHLT  GPS                      kein /dev/gnss
+FEHLT  Mobilfunk                kein Modem-Geraet
+
+--- Auffaelligkeiten im Kernel-Log ---
+Wartende Geraete (deferred):
+   30010000.clock-controller	platform: supplier 30000000.clock-controller not ready
+   gpio-keys	gpio-keys: failed to get gpio
+Fehlgeschlagene Probes:
+   platform gpio-keys: deferred probe pending: gpio-keys: failed to get gpio
+   ums9230-clk 23000000.clock-controller: probe with driver ums9230-clk failed with error -110
+   ums9230-clk 30000000.clock-controller: probe with driver ums9230-clk failed with error -110
+Anzahl Fehler/Warnungen im dmesg: 44
+
+=== Ergebnis: OK=15  TEIL=4  FEHLT=22 ===

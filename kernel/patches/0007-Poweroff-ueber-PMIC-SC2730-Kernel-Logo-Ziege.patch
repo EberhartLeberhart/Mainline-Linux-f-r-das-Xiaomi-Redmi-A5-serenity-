@@ -1,0 +1,63 @@
+From a1ce3f9b4def2d7f4f6133dfbbf41c74590b5c00 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Thu, 1 Oct 2026 16:07:16 +0200
+Subject: [PATCH 7/9] Poweroff ueber PMIC SC2730, Kernel-Logo Ziege
+
+---
+ drivers/spi/spi-sprd-adi.c | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/drivers/spi/spi-sprd-adi.c b/drivers/spi/spi-sprd-adi.c
+index 0a6316255..e28df71b7 100644
+--- a/drivers/spi/spi-sprd-adi.c
++++ b/drivers/spi/spi-sprd-adi.c
+@@ -501,6 +501,29 @@ static void sprd_adi_hw_init(struct sprd_adi *sadi)
+ 	}
+ }
+ 
++/* REDMI: echtes Ausschalten ueber den PMIC SC2730 (Register aus Unisoc sc27xx-poweroff.c) */
++#define REDMI_SC2730_PWR_PD_HW		0x1820
++#define REDMI_SC2730_SLP_CTRL		0x1a48
++#define REDMI_SC2730_LDO_XTL_EN		BIT(2)
++#define REDMI_SC2730_SLP_LDO_PD_EN	BIT(0)
++#define REDMI_SC27XX_PWR_OFF_EN		BIT(0)
++
++static int sprd_adi_poweroff_sc2730(struct sys_off_data *data)
++{
++	struct sprd_adi *sadi = data->cb_data;
++	u32 val = 0;
++
++	dev_emerg(sadi->dev, "REDMI: Ausschalten ueber PMIC SC2730\n");
++	sprd_adi_read(sadi, REDMI_SC2730_SLP_CTRL, &val);
++	val &= ~(REDMI_SC2730_LDO_XTL_EN | REDMI_SC2730_SLP_LDO_PD_EN);
++	sprd_adi_write(sadi, REDMI_SC2730_SLP_CTRL, val);
++	sprd_adi_write(sadi, REDMI_SC2730_PWR_PD_HW, REDMI_SC27XX_PWR_OFF_EN);
++
++	mdelay(1000);
++	dev_emerg(sadi->dev, "REDMI: Ausschalten hat nicht gewirkt\n");
++	return NOTIFY_DONE;
++}
++
+ static int sprd_adi_probe(struct platform_device *pdev)
+ {
+ 	struct device_node *np = pdev->dev.of_node;
+@@ -592,6 +615,16 @@ static int sprd_adi_probe(struct platform_device *pdev)
+ 			return dev_err_probe(&pdev->dev, ret, "can not register restart handler\n");
+ 	}
+ 
++	/* REDMI: vor PSCI (Firmware) anmelden - PSCI SYSTEM_OFF bleibt auf diesem Geraet nur stehen */
++	if (sadi->data->restart == sprd_adi_restart_ums512) {
++		ret = devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_POWER_OFF,
++						    SYS_OFF_PRIO_FIRMWARE + 1,
++						    sprd_adi_poweroff_sc2730, sadi);
++		if (ret)
++			return dev_err_probe(&pdev->dev, ret, "can not register poweroff handler\n");
++		dev_info(&pdev->dev, "REDMI: Poweroff-Handler SC2730 angemeldet\n");
++	}
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,33 @@
+From 4c5804e79f96439bf312f463bd01332d357a32ba Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Tue, 29 Sep 2026 19:08:39 +0200
+Subject: [PATCH 6/9] Redmi A5: rst_mode beim Start auf normal setzen (sonst
+ abnormal-mode-Schleife nach Watchdog-Reset)
+
+---
+ drivers/spi/spi-sprd-adi.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/spi/spi-sprd-adi.c b/drivers/spi/spi-sprd-adi.c
+index 7ffa2f827..0a6316255 100644
+--- a/drivers/spi/spi-sprd-adi.c
++++ b/drivers/spi/spi-sprd-adi.c
+@@ -563,6 +563,15 @@ static int sprd_adi_probe(struct platform_device *pdev)
+ 	{
+ 		sprd_adi_stop_pmic_wdt(sadi);
+ 		sprd_adi_enable_usb33(sadi);
++		{
++			/* REDMI: Neustart-Modus sofort auf 'normal' setzen. Haengt der Kernel
++			 * spaeter und der Wachhund startet neu, landet der Bootloader sonst
++			 * im 'abnormal mode' und startet gar keinen Kernel mehr. */
++			u32 rst = 0;
++			sprd_adi_read(sadi, 0x1bac, &rst);
++			dev_info(sadi->dev, "REDMI: rst_mode beim Start: 0x%x\n", rst);
++			sprd_adi_write(sadi, 0x1bac, (rst & ~0xffU) | 0x40);
++		}
+ 	}
+ 
+ 	ctlr->bus_num = pdev->id;
+-- 
+2.43.0
+

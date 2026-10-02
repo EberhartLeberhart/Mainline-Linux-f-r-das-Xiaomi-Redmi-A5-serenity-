@@ -1,0 +1,26 @@
+From d745a45cfda2d9e247fe164ecd59558fc8515299 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Fri, 2 Oct 2026 18:50:24 +0200
+Subject: [PATCH 9/9] Redmi A5: NVMEM_RMEM eingebaut - Temperatursensoren
+ starten von selbst (11 Zonen, critical 110C)
+
+---
+ arch/arm64/configs/redmi_a5_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index 06d0f87c1..44aa73a73 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -937,7 +937,7 @@ CONFIG_ARM_SPE_PMU=m
+ CONFIG_ARM_CORESIGHT_PMU_ARCH_SYSTEM_PMU=m
+ CONFIG_NVIDIA_CORESIGHT_PMU_ARCH_SYSTEM_PMU=m
+ CONFIG_NVMEM_LAYOUT_SL28_VPD=m
+-CONFIG_NVMEM_RMEM=m
++CONFIG_NVMEM_RMEM=y
+ CONFIG_NVMEM_SPMI_SDAM=m
+ CONFIG_FPGA=y
+ CONFIG_FPGA_MGR_ALTERA_CVP=m
+-- 
+2.43.0
+

@@ -1,0 +1,456 @@
+From b4b31aa64e883bbb0987c1a95db0c8629f7dac07 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 27 Sep 2026 18:23:59 +0200
+Subject: [PATCH 2/9] Redmi A5: sauberer Boot ohne Debug - Cache-Flush am
+ Einstieg, ACPI aus, TRNG aus, ADI-Neustart
+
+---
+ arch/arm64/kernel/head.S  | 53 +++--------------------
+ arch/arm64/kernel/setup.c | 54 -----------------------
+ drivers/of/fdt.c          | 14 ------
+ init/main.c               | 91 ---------------------------------------
+ 4 files changed, 5 insertions(+), 207 deletions(-)
+
+diff --git a/arch/arm64/kernel/head.S b/arch/arm64/kernel/head.S
+index 5db7d8998..00e10f0d3 100644
+--- a/arch/arm64/kernel/head.S
++++ b/arch/arm64/kernel/head.S
+@@ -82,26 +82,12 @@
+ 	 *  x20        primary_entry() .. __primary_switch()    CPU boot mode
+ 	 *  x21        primary_entry() .. start_kernel()        FDT pointer passed at boot in x0
+ 	 */
+-/* REDMI-DEBUG: Bildspeicher bei ausgeschalteter MMU einfaerben */
+-	.macro redmi_paint, color
+-	mov_q	x9, 0x9caa8000
+-	mov_q	x10, 0x9de80000
+-	mov_q	x11, \color
+-9992:	str	w11, [x9], #4
+-	cmp	x9, x10
+-	b.lo	9992b
+-	dsb	sy
+-	.endm
+ SYM_CODE_START(primary_entry)
+-	/* REDMI-DEBUG: Bildspeicher magenta fuellen (MMU aus, physische Adresse) */
+-	mov_q	x9, 0x9caa8000
+-	mov_q	x10, 0x9de80000
+-	mov_q	x11, 0xffff00ff
+-9991:	str	w11, [x9], #4
+-	cmp	x9, x10
+-	b.lo	9991b
+-	dsb	sy
+-	/* REDMI-CACHE: kompletten Daten-Cache per set/way zurueckschreiben + verwerfen */
++	/*
++	 * REDMI-CACHE: Der Xiaomi/Unisoc-Bootloader uebergibt nicht sauber
++	 * zurueckgeschriebene Caches. Daten-Cache komplett per set/way
++	 * zurueckschreiben und verwerfen, bevor irgendetwas anderes passiert.
++	 */
+ 	mov	x12, x0
+ 	mov	x13, x1
+ 	mov	x14, x2
+@@ -150,33 +136,6 @@ SYM_CODE_START(primary_entry)
+ 	mov	x1, x13
+ 	mov	x2, x14
+ 	mov	x3, x15
+-	/* REDMI: dunkelblau = Cache geleert */
+-	mov_q	x9, 0x9caa8000
+-	mov_q	x10, 0x9de80000
+-	mov_q	x11, 0xff000080
+-9986:	str	w11, [x9], #4
+-	cmp	x9, x10
+-	b.lo	9986b
+-	dsb	sy
+-	/* REDMI-DELAY: 10 Sekunden warten (Hardware-Timer), dann grau */
+-	mrs	x9, cntfrq_el0
+-	cbz	x9, 9988f
+-	mov	x10, #10
+-	mul	x9, x9, x10
+-	isb
+-	mrs	x10, cntpct_el0
+-	add	x9, x9, x10
+-9987:	isb
+-	mrs	x10, cntpct_el0
+-	cmp	x10, x9
+-	b.lo	9987b
+-9988:	mov_q	x9, 0x9caa8000
+-	mov_q	x10, 0x9de80000
+-	mov_q	x11, 0xff808080
+-9989:	str	w11, [x9], #4
+-	cmp	x9, x10
+-	b.lo	9989b
+-	dsb	sy
+ 	bl	record_mmu_state
+ 	bl	preserve_boot_args
+ 
+@@ -213,7 +172,6 @@ SYM_CODE_START(primary_entry)
+ 1:	mov	x0, x19
+ 	bl	init_kernel_el			// w0=cpu_boot_mode
+ 	mov	x20, x0
+-	redmi_paint 0xff008080		// REDMI: tuerkis = nach init_kernel_el
+ 
+ 	/*
+ 	 * The following calls CPU setup code, see arch/arm64/mm/proc.S for
+@@ -222,7 +180,6 @@ SYM_CODE_START(primary_entry)
+ 	 * the TCR will have been set.
+ 	 */
+ 	bl	__cpu_setup			// initialise processor
+-	redmi_paint 0xff804000		// REDMI: braun = vor MMU-Einschalten
+ 	b	__primary_switch
+ SYM_CODE_END(primary_entry)
+ 
+diff --git a/arch/arm64/kernel/setup.c b/arch/arm64/kernel/setup.c
+index b14f141d2..23c05dc7a 100644
+--- a/arch/arm64/kernel/setup.c
++++ b/arch/arm64/kernel/setup.c
+@@ -278,53 +278,6 @@ u64 cpu_logical_map(unsigned int cpu)
+ 	return __cpu_logical_map[cpu];
+ }
+ 
+-
+-/* REDMI-DEBUG: Bildspeicher frueh einfaerben */
+-#include <linux/sizes.h>
+-
+-/* REDMI-DEBUG: Bildschirm schwarz, dann k weisse Querstreifen im sichtbaren Puffer */
+-void redmi_fill_phys(unsigned long start, unsigned long end, u32 c)
+-{
+-	unsigned long off, len, i;
+-	void __iomem *p;
+-	for (off = start; off < end; off += len) {
+-		len = min_t(unsigned long, SZ_128K, end - off);
+-		p = early_ioremap(off, len);
+-		if (!p)
+-			return;
+-		for (i = 0; i + 4 <= len; i += 4)
+-			writel_relaxed(c, p + i);
+-		early_iounmap(p, len);
+-	}
+-	wmb();
+-}
+-void redmi_stripes_bg(int k, u32 bg)
+-{
+-	unsigned long base = 0x9cf2a000UL, stride = 720 * 4;
+-	int i;
+-	redmi_fill_phys(0x9caa8000UL, 0x9de80000UL, bg);
+-	for (i = 0; i < k; i++)
+-		redmi_fill_phys(base + (i * 150) * stride, base + (i * 150 + 100) * stride, 0xffffffff);
+-}
+-
+-void redmi_stripes(int k) { redmi_stripes_bg(k, 0xff000000); }
+-
+-static void __init redmi_early_paint(u32 c)
+-{
+-	unsigned long base = 0x9caa8000UL, size = 0x13d8000UL, off, len, i;
+-	void __iomem *p;
+-	for (off = 0; off < size; off += SZ_128K) {
+-		len = min_t(unsigned long, SZ_128K, size - off);
+-		p = early_ioremap(base + off, len);
+-		if (!p)
+-			return;
+-		for (i = 0; i < len; i += 4)
+-			writel_relaxed(c, p + i);
+-		early_iounmap(p, len);
+-	}
+-	wmb();
+-}
+-
+ void __init __no_sanitize_address setup_arch(char **cmdline_p)
+ {
+ 	setup_initial_init_mm(_text, _etext, _edata, _end);
+@@ -335,7 +288,6 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
+ 
+ 	early_fixmap_init();
+ 	early_ioremap_init();
+-	redmi_early_paint(0xff00ffff);
+ 
+ 	setup_machine_fdt(__fdt_pointer);
+ 
+@@ -380,20 +332,16 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
+ 	arm64_memblock_init();
+ 
+ 	paging_init();
+-	redmi_early_paint(0xffff8000);
+ 
+ 	acpi_table_upgrade();
+ 
+ 	/* Parse the ACPI tables for possible boot-time configuration */
+ 	acpi_boot_table_init();
+-	redmi_stripes_bg(1, 0xffff0000);	/* rot+1: nach ACPI */
+ 
+ 	if (acpi_disabled)
+ 		unflatten_device_tree();
+ 
+-	redmi_early_paint(0xffff69b4);	/* rosa: DT ausgepackt */
+ 	bootmem_init();
+-	redmi_early_paint(0xffffffff);	/* weiss: bootmem fertig */
+ 
+ 	kasan_init();
+ 
+@@ -409,9 +357,7 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
+ 	arm64_rsi_init();
+ 
+ 	init_bootcpu_ops();
+-	redmi_early_paint(0xffffff00);	/* gelb: PSCI fertig */
+ 	smp_init_cpus();
+-	redmi_early_paint(0xff80ff00);	/* hellgruen: CPUs erfasst */
+ 	smp_build_mpidr_hash();
+ 
+ #ifdef CONFIG_ARM64_SW_TTBR0_PAN
+diff --git a/drivers/of/fdt.c b/drivers/of/fdt.c
+index c98d6794f..82f7327c5 100644
+--- a/drivers/of/fdt.c
++++ b/drivers/of/fdt.c
+@@ -348,12 +348,6 @@ static int unflatten_dt_nodes(const void *blob,
+  * Return: NULL on failure or the memory chunk containing the unflattened
+  * device tree on success.
+  */
+-
+-/* REDMI-DEBUG */
+-void redmi_stripes(int k);
+-void redmi_stripes_bg(int k, u32 bg);
+-#define REDMI_MARK(k) do { if (!slab_is_available()) redmi_stripes(k); } while (0)
+-
+ void *__unflatten_device_tree(const void *blob,
+ 			      struct device_node *dad,
+ 			      struct device_node **mynodes,
+@@ -384,10 +378,8 @@ void *__unflatten_device_tree(const void *blob,
+ 		return NULL;
+ 	}
+ 
+-	REDMI_MARK(1);
+ 	/* First pass, scan for size */
+ 	size = unflatten_dt_nodes(blob, NULL, dad, NULL);
+-	REDMI_MARK(2);
+ 	if (size <= 0)
+ 		return NULL;
+ 
+@@ -396,12 +388,10 @@ void *__unflatten_device_tree(const void *blob,
+ 
+ 	/* Allocate memory for the expanded device tree */
+ 	mem = dt_alloc(size + 4, __alignof__(struct device_node));
+-	REDMI_MARK(3);
+ 	if (!mem)
+ 		return NULL;
+ 
+ 	memset(mem, 0, size);
+-	REDMI_MARK(4);
+ 
+ 	*(__be32 *)(mem + size) = cpu_to_be32(0xdeadbeef);
+ 
+@@ -409,7 +399,6 @@ void *__unflatten_device_tree(const void *blob,
+ 
+ 	/* Second pass, do actual unflattening */
+ 	ret = unflatten_dt_nodes(blob, mem, dad, mynodes);
+-	REDMI_MARK(5);
+ 
+ 	if (be32_to_cpup(mem + size) != 0xdeadbeef)
+ 		pr_warn("End of tree marker overwritten: %08x\n",
+@@ -1295,10 +1284,8 @@ void __init unflatten_device_tree(void)
+ {
+ 	void *fdt = initial_boot_params;
+ 
+-	redmi_stripes_bg(2, 0xffff0000);	/* rot+2 */
+ 	/* Save the statically-placed regions in the reserved_mem array */
+ 	fdt_scan_reserved_mem_late();
+-	redmi_stripes_bg(3, 0xffff0000);	/* rot+3 */
+ 
+ 	/* Populate an empty root node when bootloader doesn't provide one */
+ 	if (!fdt) {
+@@ -1318,7 +1305,6 @@ void __init unflatten_device_tree(void)
+ 
+ 	/* Get pointer to "/chosen" and "/aliases" nodes for use everywhere */
+ 	of_alias_scan(early_init_dt_alloc_memory_arch);
+-	REDMI_MARK(6);
+ 
+ 	unittest_unflatten_overlay_base();
+ }
+diff --git a/init/main.c b/init/main.c
+index b579c7e0d..96f93bb06 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -121,80 +121,6 @@
+ 
+ static int kernel_init(void *);
+ 
+-/* REDMI-DEBUG: sofortiger Neustart an Stufe N, wenn "redmi_reset=N" in CONFIG_CMDLINE */
+-#include <linux/arm-smccc.h>
+-
+-/* REDMI-DEBUG: Bildschirm je Stufe einfaerben (Logobuffer bei 0x9caa8000, 20 MB) */
+-#include <linux/io.h>
+-#include <linux/slab.h>
+-#include <linux/sizes.h>
+-#define REDMI_FB_BASE 0x9caa8000UL
+-#define REDMI_FB_SIZE 0x13d8000UL
+-static void __init redmi_fill(void __iomem *p, unsigned long len, u32 c)
+-{
+-	unsigned long i;
+-	for (i = 0; i < len; i += 4)
+-		writel_relaxed(c, p + i);
+-}
+-static void __init redmi_mark(int stage)
+-{
+-	static const u32 col[] = { 0, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffff00, 0xffffffff };
+-	unsigned long off, len;
+-	void __iomem *p;
+-	if (stage < 1 || stage > 5)
+-		return;
+-	if (!slab_is_available()) {
+-		for (off = 0; off < REDMI_FB_SIZE; off += SZ_128K) {
+-			len = min_t(unsigned long, SZ_128K, REDMI_FB_SIZE - off);
+-			p = early_ioremap(REDMI_FB_BASE + off, len);
+-			if (!p)
+-				return;
+-			redmi_fill(p, len, col[stage]);
+-			early_iounmap(p, len);
+-		}
+-	} else {
+-		p = ioremap(REDMI_FB_BASE, REDMI_FB_SIZE);
+-		if (!p)
+-			return;
+-		redmi_fill(p, REDMI_FB_SIZE, col[stage]);
+-		iounmap(p);
+-	}
+-	wmb();
+-}
+-
+-
+-static void __init redmi_slices(void)
+-{
+-	static const u32 col[] = { 0xffffffff, 0xffffff00, 0xff000000, 0xffff69b4, 0xff808080 };
+-	unsigned long slice = 720UL * 1640 * 4, off, len;
+-	void __iomem *p;
+-	int k;
+-	p = ioremap(REDMI_FB_BASE, REDMI_FB_SIZE);
+-	if (!p)
+-		return;
+-	for (off = 0, k = 0; off < REDMI_FB_SIZE; off += slice, k++) {
+-		len = min_t(unsigned long, slice, REDMI_FB_SIZE - off);
+-		redmi_fill(p + off, len, col[min(k, 4)]);
+-	}
+-	iounmap(p);
+-	wmb();
+-}
+-
+-void redmi_stripes_bg(int k, u32 bg);
+-
+-static void __init redmi_check(int stage)
+-{
+-#ifdef CONFIG_CMDLINE
+-	static const char *const keys[] = {
+-		"redmi_reset=0", "redmi_reset=1", "redmi_reset=2",
+-		"redmi_reset=3", "redmi_reset=4", "redmi_reset=5" };
+-	struct arm_smccc_res res;
+-	if (stage >= 0 && stage < 6 && strstr(CONFIG_CMDLINE, keys[stage]))
+-		arm_smccc_smc(0x84000009, 0, 0, 0, 0, 0, 0, 0, &res); /* PSCI SYSTEM_RESET */
+-#endif
+-}
+-
+-
+ /*
+  * Debug helper: via this flag we know that we are in 'early bootup code'
+  * where only the boot processor is running with IRQ disabled.  This means
+@@ -1093,7 +1019,6 @@ void start_kernel(void)
+ 	char *command_line;
+ 	char *after_dashes;
+ 
+-	redmi_check(0);
+ 	set_task_stack_end_magic(&init_task);
+ 	smp_setup_processor_id();
+ 	debug_objects_early_init();
+@@ -1112,8 +1037,6 @@ void start_kernel(void)
+ 	page_address_init();
+ 	pr_notice("%s", linux_banner);
+ 	setup_arch(&command_line);
+-	redmi_check(1);
+-	redmi_mark(1);
+ 	mm_core_init_early();
+ 	/* Static keys and static calls are needed by LSMs */
+ 	jump_label_init();
+@@ -1123,7 +1046,6 @@ void start_kernel(void)
+ 	setup_command_line(command_line);
+ 	setup_nr_cpu_ids();
+ 	setup_per_cpu_areas();
+-	redmi_stripes_bg(1, 0xffffff00);	/* gelb+1 */
+ 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
+ 	early_numa_node_init();
+ 	boot_cpu_hotplug_init();
+@@ -1155,7 +1077,6 @@ void start_kernel(void)
+ 	sort_main_extable();
+ 	trap_init();
+ 	mm_core_init();
+-	redmi_stripes_bg(2, 0xffffff00);	/* gelb+2 */
+ 	maple_tree_init();
+ 	poking_init();
+ 	ftrace_init();
+@@ -1169,7 +1090,6 @@ void start_kernel(void)
+ 	 * time - but meanwhile we still have a functioning scheduler.
+ 	 */
+ 	sched_init();
+-	redmi_stripes_bg(3, 0xffffff00);	/* gelb+3 */
+ 
+ 	if (WARN(!irqs_disabled(),
+ 		 "Interrupts were enabled *very* early, fixing it\n"))
+@@ -1202,7 +1122,6 @@ void start_kernel(void)
+ 	/* init some links before init_ISA_irqs() */
+ 	early_irq_init();
+ 	init_IRQ();
+-	redmi_stripes_bg(4, 0xffffff00);	/* gelb+4 */
+ 	tick_init();
+ 	rcu_init_nohz();
+ 	timers_init();
+@@ -1212,18 +1131,15 @@ void start_kernel(void)
+ 	vdso_setup_data_pages();
+ 	timekeeping_init();
+ 	time_init();
+-	redmi_stripes_bg(5, 0xffffff00);	/* gelb+5 */
+ 
+ 	/* This must be after timekeeping is initialized */
+ 	random_init();
+-	redmi_stripes_bg(1, 0xff00ffff);	/* tuerkis+1 */
+ 
+ 	/* These make use of the fully initialized rng */
+ 	kfence_init();
+ 	boot_init_stack_canary();
+ 
+ 	perf_event_init();
+-	redmi_stripes_bg(2, 0xff00ffff);	/* tuerkis+2 */
+ 	profile_init();
+ 	call_function_init();
+ 	WARN(!irqs_disabled(), "Interrupts were enabled early\n");
+@@ -1239,7 +1155,6 @@ void start_kernel(void)
+ 	 * this. But we do want output early, in case something goes wrong.
+ 	 */
+ 	console_init();
+-	redmi_stripes_bg(7, 0xffffff00);	/* gelb+7 */
+ 	if (panic_later)
+ 		panic("Too many boot %s vars at `%s'", panic_later,
+ 		      panic_param);
+@@ -1269,7 +1184,6 @@ void start_kernel(void)
+ 		late_time_init();
+ 	sched_clock_init();
+ 	calibrate_delay();
+-	redmi_stripes_bg(8, 0xffffff00);	/* gelb+8 */
+ 
+ 	arch_cpu_finalize_init();
+ 
+@@ -1303,8 +1217,6 @@ void start_kernel(void)
+ 	kcsan_init();
+ 
+ 	/* Do the rest non-__init'ed, we're now alive */
+-	redmi_check(2);
+-	redmi_mark(2);
+ 	rest_init();
+ 
+ 	/*
+@@ -1788,10 +1700,7 @@ static noinline void __init kernel_init_freeable(void)
+ 	padata_init();
+ 	page_alloc_init_late();
+ 
+-	redmi_check(3);
+-	redmi_slices();
+ 	do_basic_setup();
+-	redmi_check(4);
+ 
+ 	kunit_run_all_tests();
+ 
+-- 
+2.43.0
+

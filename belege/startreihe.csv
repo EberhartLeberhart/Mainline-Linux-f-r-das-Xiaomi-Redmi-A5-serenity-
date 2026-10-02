@@ -1,0 +1,9 @@
+zeit;art;ergebnis;boot_id;laufzeit_s;kernel;slot;poweroff_handler;check_ok;check_teil;check_fehlt;notiz
+2026-10-02 18:02:21;kalt;OK;7c053d8e-43ba-43c9-aa59-b1d840ee6a45;17;7.1.0-rc1-ga1ce3f9b4def #52;_b;1;15;4;22;
+2026-10-02 17:48:00;kalt;OK;;100;7.1.0-rc1-ga1ce3f9b4def #52;_b;1;;;;erster Kaltstart, von Hand geprueft (uptime 1 min)
+2026-10-02 18:16:17;kalt;OK;ba03ecdb-0c21-443e-b714-dd3d4a5cc726;234;7.1.0-rc1-ga1ce3f9b4def #52;_b;1;15;4;22;
+2026-10-02 18:20:59;warm;OK;3907c67b-2cab-4815-bc9f-64b48df59d40;219;7.1.0-rc1-ga1ce3f9b4def #52;_b;1;15;4;22;
+2026-10-02 18:21:49;warm;OK;7671d709-97af-4dc5-b180-714e1639c3e6;7;7.1.0-rc1-ga1ce3f9b4def #52;_b;1;16;3;22;
+2026-10-02 18:23:02;kalt-kabel;OK;d917ca41-6e92-4e12-a2f2-33f9390f57ef;10;7.1.0-rc1-ga1ce3f9b4def #52;_b;1;16;3;22;kam von selbst
+2026-10-02 18:33:54;kalt;OK;489e8ea9-e18c-43d9-b019-c6c9b5099d04;102;7.1.0-rc1-ga1ce3f9b4def #53;_b;1;15;4;22;Ziegen-Kernel
+2026-10-02 18:44:12;kalt;OK;a7533c97-dfa0-4b22-b232-44909c54c1a2;31;7.1.0-rc1-ga1ce3f9b4def #54;_b;1;19;4;18;Treiber-Kernel =y
