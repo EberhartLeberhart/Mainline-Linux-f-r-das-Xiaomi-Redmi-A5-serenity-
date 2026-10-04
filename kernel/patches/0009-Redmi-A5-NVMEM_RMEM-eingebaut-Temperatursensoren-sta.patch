@@ -1,7 +1,7 @@
 From d745a45cfda2d9e247fe164ecd59558fc8515299 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Fri, 2 Oct 2026 18:50:24 +0200
-Subject: [PATCH 09/14] Redmi A5: NVMEM_RMEM eingebaut - Temperatursensoren
+Subject: [PATCH 09/15] Redmi A5: NVMEM_RMEM eingebaut - Temperatursensoren
  starten von selbst (11 Zonen, critical 110C)
 
 ---

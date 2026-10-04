@@ -1,7 +1,7 @@
 From 4c5804e79f96439bf312f463bd01332d357a32ba Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Tue, 29 Sep 2026 19:08:39 +0200
-Subject: [PATCH 06/14] Redmi A5: rst_mode beim Start auf normal setzen (sonst
+Subject: [PATCH 06/15] Redmi A5: rst_mode beim Start auf normal setzen (sonst
  abnormal-mode-Schleife nach Watchdog-Reset)
 
 ---

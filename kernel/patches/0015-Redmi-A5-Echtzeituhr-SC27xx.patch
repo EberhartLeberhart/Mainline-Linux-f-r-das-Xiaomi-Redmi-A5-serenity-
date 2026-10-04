@@ -1,7 +1,7 @@
-From 191fc36717e92583741d225f928c5106ac3d96fb Mon Sep 17 00:00:00 2001
+From 26e1056874b609e87844b9ae6ae074ad85a4ba0d Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
-Date: Sun, 4 Oct 2026 17:40:28 +0200
-Subject: [PATCH 13/15] Redmi A5: Akkuanzeige SC2730-FGU
+Date: Sun, 4 Oct 2026 19:05:17 +0200
+Subject: [PATCH 15/15] Redmi A5: Echtzeituhr SC27xx
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01VxvWB1JV4HbUrm4FtcP56g
@@ -10,17 +10,17 @@ Claude-Session: https://claude.ai/code/session_01VxvWB1JV4HbUrm4FtcP56g
  1 file changed, 1 insertion(+)
 
 diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
-index 32d9c79d6..ff115921a 100644
+index d3c8dc707..caa198360 100644
 --- a/arch/arm64/configs/redmi_a5_defconfig
 +++ b/arch/arm64/configs/redmi_a5_defconfig
-@@ -448,6 +448,7 @@ CONFIG_CHARGER_MT6360=m
- CONFIG_CHARGER_BQ25890=m
- CONFIG_CHARGER_BQ25980=m
- CONFIG_CHARGER_RK817=m
-+CONFIG_FUEL_GAUGE_SC27XX=y
- CONFIG_SENSORS_ARM_SCMI=y
- CONFIG_SENSORS_ARM_SCPI=y
- CONFIG_SENSORS_GPIO_FAN=m
+@@ -825,6 +825,7 @@ CONFIG_RTC_DRV_PCF2127=m
+ CONFIG_RTC_DRV_PCF85063=m
+ CONFIG_RTC_DRV_DA9063=m
+ CONFIG_RTC_DRV_EFI=y
++CONFIG_RTC_DRV_SC27XX=y
+ CONFIG_RTC_DRV_ZYNQMP=m
+ CONFIG_RTC_DRV_CROS_EC=y
+ CONFIG_RTC_DRV_PL031=y
 -- 
 2.43.0
 

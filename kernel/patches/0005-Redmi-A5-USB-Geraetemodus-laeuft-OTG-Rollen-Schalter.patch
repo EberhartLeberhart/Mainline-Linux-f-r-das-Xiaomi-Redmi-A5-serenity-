@@ -1,7 +1,7 @@
 From d514b3e81bbfb6118e108eea2ad8521716bb5392 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Sun, 27 Sep 2026 20:41:24 +0200
-Subject: [PATCH 05/14] Redmi A5: USB-Geraetemodus laeuft (OTG +
+Subject: [PATCH 05/15] Redmi A5: USB-Geraetemodus laeuft (OTG +
  Rollen-Schalter, vddusb33 per ADI), NCM + ACM
 
 ---
