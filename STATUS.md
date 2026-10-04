@@ -28,24 +28,25 @@ Nach echtem Ausschalten oder bei größeren Änderungen hing der Start, noch bev
 **Belege:** Kaltstart 4/4, Warmstart 2/2, Start mit Ladekabel 1/1 (`startreihe.csv`); Logo-Kernel und Treiber-Kernel, die früher hingen, starten jetzt kalt.
 **Genauer Mechanismus** (was der Bootloader oberhalb von `0x83000000` ablegt): ❓ nicht beobachtet, für die Lösung nicht nötig.
 
-## cpufreq und Tiefschlaf (03./04.10.)
+## cpufreq und Tiefschlaf (03./04.10.) – Ursache gefunden
 
-**Befund:** Der Treiber `sprd-cpufreq-v2` funktioniert – alle Firmware-Aufrufe (SMC) kommen zurück, Taktstufen und Spannungen werden geliefert, der Takt wechselt.
-Aber: **Taktwechsel + Tiefschlaf (`cpu-pd-lit`/`cpu-pd-big`, PSCI) = Hänger.** Das Handy wird erst extrem langsam, dann reagiert es gar nicht mehr; keine Fehlermeldung auf dem Display.
+**Befund:** Taktwechsel + Tiefschlaf der großen Kerne = Hänger (erst extrem langsam, dann tot, keine Fehlermeldung).
+**Ursache (belegt 04.10.):** Der Codeberg-Device-Tree meldet der Firmware für die großen Kerne `sprd,pmic-type = 1` (externer Spannungsregler).
+Dieses Handy hat keinen: Der Bootloader übergibt `power.from.extern=0`, Xiaomis Original-Device-Tree hat bei `cpufreq-clus1` `sprd,multi-supply` + `pmic-type-v2 = 0`, und Unisocs Android-Treiber wählt damit Regler **0**.
+Gefunden durch Vergleich mit dem Android-Kernel (Transsion UMS9230, Linux 5.4) und `serenity_stock.dts`.
 
 | Versuch | Ergebnis |
 |---|---|
-| Treiber fest eingebaut (`=y`), Start | ❌ Hänger bei ~13 s (kein Ubuntu-Start) |
-| Modul von Hand geladen, Volllast / Ende der Last | ❌ Hänger (3×) |
-| Ohne Taktwechsel (614 MHz fest) | ✅ |
-| Tiefschlaf **aller** Kerne aus | ✅ 2 min Leerlauf + 5 Lastrunden |
-| Gegenprobe: Tiefschlaf wieder an | ❌ Hänger in Runde 2 (beim Aufwachen) |
-| Tiefschlaf nur **große** Kerne (6, 7) aus | ✅ 5 Runden + **35 min Dauertest** (~26 000× Aufwachen der kleinen Kerne) |
-| Tiefschlaf nur **kleine** Kerne aus | ✅ 5 Runden – **aber** große Kerne nur 10× im Tiefschlaf, also **keine Aussage** |
+| Treiber fest eingebaut (`=y`), Start | ❌ Hänger bei ~13 s |
+| Modul von Hand, Volllast / Ende der Last | ❌ Hänger (3×) |
+| Tiefschlaf **aller** Kerne aus | ✅ |
+| Gegenprobe: Tiefschlaf wieder an | ❌ Hänger in Runde 2 |
+| Tiefschlaf nur große Kerne aus (Umgehung) | ✅ 35 min, ~26 000× Aufwachen klein |
+| **`pmic-type = 0`, KEINE Sperre** | ✅ **10/10 Lastrunden + 51 min Dauertest**, große Kerne ~520× sauber aus dem Tiefschlaf aufgewacht |
 
-**Umgehung (aktiv):** `redmi-cpufreq.sh` sperrt beim Start `cpu-pd-big` auf cpu6/7, prüft die Sperre und lädt erst dann den Treiber. `/etc/modprobe.d/redmi-dvfs.conf` verhindert das automatische Laden ohne Sperre.
-**Ursache:** ❓ Entweder ist der Tiefschlaf der großen Kerne schuld, oder erst das gleichzeitige Schlafen aller Kerne. Antwort im Android-Kernel (A7 Pro) suchen, nicht weiter blind testen.
-**Offen:** Bleibt die Sperre nach Ab-/Anschalten eines Kerns (Hotplug) erhalten? ❓ – wichtig für kexec.
+**Stand:** `vendor_boot_pmic0_ok.img` (cpufreq `okay` + `cluster@1 sprd,pmic-type = 0`). `redmi-cpufreq.sh` lädt den Treiber ohne Sperre; nur bei altem Device-Tree (Wert 1) sperrt es als Sicherheitsnetz den Tiefschlaf von cpu6/7.
+Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi schickt für die Kerne **kein** `dvfs_bin` und keine Chip-Version.
+**Offen:** Treiber wieder fest einbauen (`=y`) testen; sauberer Patch für Codeberg: Treiber wertet `power.from.extern` / `pmic-type-v2` aus wie Android.
 
 ## Start und Grundsystem
 
@@ -59,7 +60,7 @@ Aber: **Taktwechsel + Tiefschlaf (`cpu-pd-lit`/`cpu-pd-big`, PSCI) = Hänger.** 
 | rst_mode-Fix (keine abnormal-mode-Schleife) | ✅ | 0x40 beim ADI-Probe; nach echtem Aus ist rst_mode 0x0, Start klappt trotzdem |
 | PMIC-Wachhund gestoppt | ✅ | kein Neustart alle 5 Minuten mehr |
 | 8 CPU-Kerne | ✅ | 01.10.: online 0-7; Kerne lassen sich ab- und anschalten (02.10., PSCI CPU_OFF) |
-| CPU-Takt (cpufreq) | 🟡 | 04.10.: läuft als Modul über `redmi-cpufreq.service`, 2 Gruppen: klein 614–1612 MHz (8 Stufen), groß 768–1820 MHz (7 Stufen), Spannungen von der Firmware. **Nur mit gesperrtem Tiefschlaf der großen Kerne** (siehe Abschnitt oben). Belegt: 35 min Dauertest, ~26 000 Aufwachvorgänge der kleinen Kerne, 11 Lastrunden, 1 Neustart mit Dienst |
+| CPU-Takt (cpufreq) | ✅ | 04.10.: läuft als Modul über `redmi-cpufreq.service`, 2 Gruppen: klein 614–1612 MHz (8 Stufen), groß 768–1820 MHz (7 Stufen), Spannungen von der Firmware. Tiefschlaf aller Kerne erlaubt seit `pmic-type = 0` (siehe Abschnitt oben). Kühlung: Bremse wirkt (vorgetäuschte 80 °C → 1536 MHz). Hotplug ✅ |
 | eMMC, Root auf userdata | ✅ | Ubuntu 24.04 läuft von `PARTLABEL=userdata` |
 | Kernel-Größe | ✅ | 27 918 336 → 28 246 016 Bytes Platzbedarf (Grenze ≈ 48 MB) |
 | Versionsstring (`uname -r`/`-v`) | ✅ | 02.10.: `g612fb8b51e06 #55` – durch den vollständigen Neubau repariert |
@@ -95,7 +96,7 @@ Aber: **Taktwechsel + Tiefschlaf (`cpu-pd-lit`/`cpu-pd-big`, PSCI) = Hänger.** 
 | Bereich | Status | Beleg / Notiz |
 |---|---|---|
 | Temperatursensoren | ✅ | 02.10.: 11 Zonen starten von selbst (`NVMEM_RMEM=y`), 25–26 °C |
-| Überhitzungsschutz | 🟡 | 10 Zonen: passive 70 °C, critical 110 °C. **critical wirkt** (Abschaltung über den neuen Poweroff), **passive** ❓ – cpufreq läuft jetzt, ob die Zonen die CPUs als Kühlgerät nutzen, ist nicht geprüft. `gpu-thermal` hat keine Grenze → vor dem GPU-Schritt ergänzen |
+| Überhitzungsschutz | 🟡 | 10 Zonen: passive 70 °C, critical 110 °C. **critical wirkt** (Abschaltung über den neuen Poweroff), **passive wirkt** (04.10.: 2 Kühlgeräte, 4 Zonen verbunden, Test mit vorgetäuschter Temperatur). `gpu-thermal` hat keine Grenze → vor dem GPU-Schritt ergänzen |
 
 ## Treiber
 
@@ -134,7 +135,7 @@ Aber: **Taktwechsel + Tiefschlaf (`cpu-pd-lit`/`cpu-pd-big`, PSCI) = Hänger.** 
 
 ## Nächste Schritte
 
-1. cpufreq: Hotplug-Test, Kühlung (passive 70 °C) prüfen, Ursache im A7-Kernel suchen
+1. Akku: PMIC-Grundtreiber → Spannungsmesser/eFuse → Akkuanzeige (Profile aus `dtbo`) → Uhr, Taste → Ladechip (SGM41513/SC89601/UPM6922 an I2C2, zuerst nur lesen)
 2. Audio: Domain `/audio-dsp` → DMA → Codec
 3. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
 4. Echtzeituhr, Einschalttaste, Akku/Laden

@@ -4,6 +4,7 @@
 #
 #   ~/redmi-build/vendorboot_dt.sh <name> <knoten> <eigenschaft> <wert> [...weitere Dreiergruppen]
 #   Beispiel: ~/redmi-build/vendorboot_dt.sh cpufreq /cpufreq status okay
+#   Zahl:     ~/redmi-build/vendorboot_dt.sh pmic0 /cpufreq status okay /cpufreq/cluster@1 sprd,pmic-type u:0
 #   Ergebnis: ~/redmi-build/vendor_boot_<name>.img  ->  ~/redmi-build/deploy.sh vendor_boot_<name>.img
 set -e
 cd ~/redmi-build
@@ -31,9 +32,11 @@ fi
 cp "$BASE" $W/neu.dtb
 while [ $# -gt 0 ]; do
     knoten=$1; eig=$2; wert=$3; shift 3
-    vorher=$(fdtget -t s $W/neu.dtb "$knoten" "$eig" 2>/dev/null || echo "(nicht gesetzt)")
-    fdtput -t s $W/neu.dtb "$knoten" "$eig" "$wert"
-    echo ">>> $knoten $eig: $vorher -> $(fdtget -t s $W/neu.dtb "$knoten" "$eig")"
+    # Zahlen (u32) mit "u:" davor, z.B. u:0 - sonst wird der Wert als Text geschrieben
+    case "$wert" in u:*) typ=u; wert=${wert#u:} ;; *) typ=s ;; esac
+    vorher=$(fdtget -t $typ $W/neu.dtb "$knoten" "$eig" 2>/dev/null || echo "(nicht gesetzt)")
+    fdtput -t $typ $W/neu.dtb "$knoten" "$eig" $wert
+    echo ">>> $knoten $eig: $vorher -> $(fdtget -t $typ $W/neu.dtb "$knoten" "$eig")"
 done
 
 # 3) Gegenprobe: ausser den Aenderungen ist alles gleich

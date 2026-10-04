@@ -31,14 +31,17 @@ root=$(findmnt -no SOURCE,FSTYPE /)
 case "$root" in *mmcblk*) r OK "Root-Dateisystem" "$root (eMMC)";; *) r TEIL "Root-Dateisystem" "$root";; esac
 [ "$(bound sdhci_sprd_r11)" -ge 1 ] && r OK "eMMC-Treiber" "sdhci gebunden" || r FEHLT "eMMC-Treiber" "sdhci nicht gebunden"
 if [ -d /sys/devices/system/cpu/cpufreq/policy0 ]; then
-    # cpufreq ist nur mit gesperrtem Tiefschlaf der grossen Kerne stabil (Tests 04.10.)
+    # sicher nur mit pmic-type 0 fuer die grossen Kerne ODER mit Tiefschlaf-Sperre cpu6/7 (04.10.)
+    typ=$(od -An -tu4 --endian=big /proc/device-tree/cpufreq/cluster@1/sprd,pmic-type 2>/dev/null | tr -d ' ')
     sp=$(cat /sys/devices/system/cpu/cpu6/cpuidle/state1/disable /sys/devices/system/cpu/cpu7/cpuidle/state1/disable 2>/dev/null | tr -d '\n')
     pol=$(ls -d /sys/devices/system/cpu/cpufreq/policy* | wc -l)
     frq="$(for p in /sys/devices/system/cpu/cpufreq/policy*; do printf '%s ' $(( $(cat $p/scaling_cur_freq)/1000 )); done)MHz"
-    if [ "$sp" != "11" ]; then
-        r FEHLT "CPU-Takt (cpufreq)" "!! laeuft OHNE Tiefschlaf-Sperre cpu6/7 ($sp) - Haenger droht"
+    if [ "$typ" != "0" ] && [ "$sp" != "11" ]; then
+        r FEHLT "CPU-Takt (cpufreq)" "!! pmic-type grosse Kerne=$typ und keine Tiefschlaf-Sperre ($sp) - Haenger droht"
+    elif [ "$pol" -eq 2 ] && [ "$typ" = "0" ]; then
+        r OK "CPU-Takt (cpufreq)" "2 Gruppen, jetzt $frq, Regler grosse Kerne 0, Tiefschlaf-Sperre: $sp"
     elif [ "$pol" -eq 2 ]; then
-        r OK "CPU-Takt (cpufreq)" "2 Gruppen, jetzt $frq, Tiefschlaf cpu6/7 gesperrt"
+        r TEIL "CPU-Takt (cpufreq)" "2 Gruppen, jetzt $frq - nur mit Umgehung (alter Device-Tree, Tiefschlaf cpu6/7 gesperrt)"
     else
         r TEIL "CPU-Takt (cpufreq)" "$pol Gruppen statt 2, jetzt $frq"
     fi

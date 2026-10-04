@@ -23,3 +23,6 @@ zeit;art;ergebnis;boot_id;laufzeit_s;kernel;slot;poweroff_handler;check_ok;check
 2026-10-04 13:53:18;kalt;OK;b9f2ab23-725d-4558-bb07-c6dcefb692d9;31;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;25;3;13;nach Gegenprobe
 2026-10-04 14:37:13;warm;OK;3e0a75f8-b2c1-43d3-83d6-7e1f78c54ff1;33;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;cpufreq-Dienst, Modul ohne Kontrollzeilen
 2026-10-04 14:41:28;kalt;OK;2b8c1dcf-b9d2-4210-b164-45bf25b3bbb0;31;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;cpufreq-Dienst
+2026-10-04 15:19:56;warm;LAUFZEIT ZU LANG?;d65bf207-f63f-44a7-8f6a-2d568d5ab41b;783;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;vendor_boot_pmic0: grosse Kerne Regler 0 (wie Xiaomi), Sperre noch aktiv
+2026-10-04 16:09:34;warm;OK;81930d77-0da9-4b6a-856c-53fdb56eeef7;158;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;pmic0 dauerhaft, Dienst ohne Sperre
+2026-10-04 16:13:23;kalt;OK;bb84d259-4bba-4960-9f88-f62abd116ca6;35;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;pmic0 dauerhaft, Dienst ohne Sperre

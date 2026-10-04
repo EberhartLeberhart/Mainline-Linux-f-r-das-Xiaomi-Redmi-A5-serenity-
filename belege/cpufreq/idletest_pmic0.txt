@@ -1,0 +1,22 @@
+14:38:12 PMIC0-TEST: alle Kerne duerfen schlafen: 00000000 (00000000 erwartet)
+14:38:32 Runde 1: Last vorbei
+14:38:43 Runde 1: Leerlauf ok, Tiefschlaf klein=2146 gross=227
+14:39:03 Runde 2: Last vorbei
+14:39:13 Runde 2: Leerlauf ok, Tiefschlaf klein=2182 gross=236
+14:39:33 Runde 3: Last vorbei
+14:39:43 Runde 3: Leerlauf ok, Tiefschlaf klein=2239 gross=246
+14:40:03 Runde 4: Last vorbei
+14:40:13 Runde 4: Leerlauf ok, Tiefschlaf klein=2292 gross=277
+14:40:33 Runde 5: Last vorbei
+14:40:43 Runde 5: Leerlauf ok, Tiefschlaf klein=2326 gross=297
+14:41:03 Runde 6: Last vorbei
+14:41:13 Runde 6: Leerlauf ok, Tiefschlaf klein=2366 gross=326
+14:41:33 Runde 7: Last vorbei
+14:41:43 Runde 7: Leerlauf ok, Tiefschlaf klein=2435 gross=339
+14:42:03 Runde 8: Last vorbei
+14:42:13 Runde 8: Leerlauf ok, Tiefschlaf klein=2477 gross=353
+14:42:33 Runde 9: Last vorbei
+14:42:43 Runde 9: Leerlauf ok, Tiefschlaf klein=2511 gross=372
+14:43:03 Runde 10: Last vorbei
+14:43:13 Runde 10: Leerlauf ok, Tiefschlaf klein=2553 gross=388
+14:43:13 PMIC0-TEST BESTANDEN
