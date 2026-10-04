@@ -88,7 +88,10 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | Power-Domains | ✅ | 02.10.: Commit 1dcd2ff05 (gpu_top, mm, pubcp, wcn) – alle Taktcontroller starten; `/audio-dsp` (agdsp) fehlt noch |
 | Taktcontroller (alle 14) | ✅ | 02.10.: starten nach den Power-Domains |
 | Echtzeituhr | ❌ | Uhrzeit falsch; die PMIC-Uhr **läuft** (Bootloader übergibt `charge.shutdown_rtc_time`), nur der Treiber fehlt |
-| Akku / Laden | ❌ | Akkudaten aus Xiaomis dtbo (5200 mAh, 3 Lieferanten × 4 Alterungsstufen; hier `bat`, Stufe 0). Ladechip an I2C2: SGM41513 (0x1a) / SC89601 (0x6b) / UPM6922 (0x6a), kein Treiber im Kernel. Nächster Schritt: Akkuanzeige |
+| Akkuanzeige (FGU) | 🟡 | 04.10.: Spannung (4,42 V, deckt sich mit ADC-Kanal 5), Ladestand (97 %), Strom mit richtigem Vorzeichen. **Temperatur falsch** (zeigt Rohwert 355 mV als 35,5 °C; richtig ~22 °C laut Xiaomis `voltage-temp-table`) → vor dem Ladechip beheben |
+| Kabel-Erkennung | ✅ | 04.10.: USB-Spannung (ADC-Kanal 14) 4,86 V → 0,13 V beim Abziehen → 4,91 V beim Einstecken; Strom springt von +1 mA auf −100 mA |
+| Verbrauch | ✅ gemessen | 04.10.: **~102 mA bei 4,40 V ≈ 0,45 W** im Leerlauf ohne Kabel, Display an (Hintergrundlicht vom Bootloader, nicht abschaltbar solange PWM fehlt). Reicht rechnerisch ~2 Tage mit vollem Akku |
+| Ladechip | ❌ | Laden läuft mit den Einstellungen des Bootloaders weiter (Akku bei 4,42 V, unter Xiaomis 4,45 V). Chip an I2C2: SGM41513 (0x1a) / SC89601 (0x6b) / UPM6922 (0x6a), kein Treiber im Kernel. Im Server-Betrieb bleibt der Akku dauernd bei ~97–100 % → später Ladegrenze (z. B. 80 %) für die Lebensdauer |
 | Tasten | ✅ | 04.10.: Einschalttaste, Lauter, Leiser melden sich (PMIC-EIC + GPIO 124). **Einschalttaste 3 s halten = Herunterfahren** (`redmi-taste.service`), kurzer Druck tut nichts |
 | PMIC SC2730 | ✅ | 04.10.: Grundtreiber, ADC (Akkuspannung ~4,42 V, Akkutemperatur ~22 °C, USB 4,86 V, Akku-ID → `bat.id=0`), eFuse, EIC |
 
@@ -136,9 +139,14 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 ## Nächste Schritte
 
-1. Akku: PMIC-Grundtreiber → Spannungsmesser/eFuse → Akkuanzeige (Profile aus `dtbo`) → Uhr, Taste → Ladechip (SGM41513/SC89601/UPM6922 an I2C2, zuerst nur lesen)
+1. Akku: Temperatur-Umrechnung der Akkuanzeige → Echtzeituhr → Ladechip (zuerst nur lesen) → Ladegrenze für den Server-Betrieb
+2. Hintergrundlicht (PWM): vermutlich ❓ größter Verbraucher im Leerlauf – für den Server abschaltbar machen, dann Verbrauch neu messen
 2. Audio: Domain `/audio-dsp` → DMA → Codec
 3. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
 4. Echtzeituhr, Einschalttaste, Akku/Laden
 5. PWM/Helligkeit neu testen
 6. USB-Host, dann Marlin3 (WLAN …)
+
+## Ideen für später (niedrige Priorität)
+
+- **Ladeanzeige im Handy-Modus:** Startet das Handy durchs Einstecken (`sprdboot.mode=charger`), nicht voll hochfahren, sondern Ziege + Akkustand zeigen; Kabel ab → aus, Einschalttaste 3 s → richtig starten. Bausteine fast alle vorhanden (04.10.).
