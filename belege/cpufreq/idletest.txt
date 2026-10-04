@@ -1,0 +1,18 @@
+14:26:57 Tiefschlaf aus: 11111111 (8x 1 erwartet)
+14:26:57 Treiber geladen
+14:27:27 Leerlauf 30s ok
+14:27:57 Leerlauf 60s ok
+14:28:27 Leerlauf 90s ok
+14:28:57 Leerlauf 120s ok
+14:29:17 Runde 1: Last vorbei, klein=614 gross=1820 MHz
+14:29:27 Runde 1: Leerlauf danach ok
+14:29:48 Runde 2: Last vorbei, klein=1536 gross=1820 MHz
+14:29:58 Runde 2: Leerlauf danach ok
+14:30:18 Runde 3: Last vorbei, klein=1040 gross=1820 MHz
+14:30:28 Runde 3: Leerlauf danach ok
+14:30:48 Runde 4: Last vorbei, klein=614 gross=1820 MHz
+14:30:58 Runde 4: Leerlauf danach ok
+14:31:18 Runde 5: Last vorbei, klein=1612 gross=1820 MHz
+14:31:28 Runde 5: Leerlauf danach ok
+14:31:28 Tiefschlaf-Nutzung seit Start des Tests: 0 (0 erwartet)
+14:31:28 BESTANDEN

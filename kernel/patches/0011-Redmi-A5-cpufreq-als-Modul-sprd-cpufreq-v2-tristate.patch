@@ -1,0 +1,45 @@
+From 5b29f471ea45b026f18edcfb1a41ebf005db9202 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 4 Oct 2026 14:47:16 +0200
+Subject: [PATCH 11/11] Redmi A5: cpufreq als Modul (sprd-cpufreq-v2 tristate)
+
+Fest eingebaut haengt der Kernel beim Start: Taktwechsel plus PSCI-Tiefschlaf
+(cpu-pd-big) friert das System ein. Als Modul wird der Treiber erst geladen,
+nachdem redmi-cpufreq.sh den Tiefschlaf von cpu6/7 gesperrt hat
+(Tests vom 04.10., siehe STATUS.md). Ursache noch offen.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VxvWB1JV4HbUrm4FtcP56g
+---
+ arch/arm64/configs/redmi_a5_defconfig | 1 +
+ drivers/cpufreq/Kconfig.arm           | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index 7aff63dd7..73ed7ad0a 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -56,6 +56,7 @@ CONFIG_CPU_FREQ_GOV_CONSERVATIVE=m
+ CONFIG_CPUFREQ_DT=y
+ CONFIG_ARM_SCPI_CPUFREQ=y
+ CONFIG_ARM_SCMI_CPUFREQ=y
++CONFIG_ARM_SPRD_CPUFREQ_V2=m
+ CONFIG_VIRTUALIZATION=y
+ CONFIG_KVM=y
+ CONFIG_MODULES=y
+diff --git a/drivers/cpufreq/Kconfig.arm b/drivers/cpufreq/Kconfig.arm
+index a78cba73b..683a0715d 100644
+--- a/drivers/cpufreq/Kconfig.arm
++++ b/drivers/cpufreq/Kconfig.arm
+@@ -213,7 +213,7 @@ config ARM_SPEAR_CPUFREQ
+ 	  This adds the CPUFreq driver support for SPEAr SOCs.
+ 
+ config ARM_SPRD_CPUFREQ_V2
+-	bool "Spreadtrum/Unisoc CPUFreq v2 support"
++	tristate "Spreadtrum/Unisoc CPUFreq v2 support"
+ 	depends on ARCH_SPRD || COMPILE_TEST
+ 	default y
+ 	help
+-- 
+2.43.0
+

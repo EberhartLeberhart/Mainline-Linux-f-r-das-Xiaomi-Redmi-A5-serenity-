@@ -1,0 +1,17 @@
+14:25:07 policy0 CPUs 0 1 2 3 4 5: begrenzt auf 614 MHz
+14:25:07 policy6 CPUs 6 7: begrenzt auf 768 MHz
+14:25:08 policy0: teste 614 MHz unter Last fuer 30s (Temp 24C)
+   5s: policy0=614 policy6=768 MHz  Temp 25C
+   10s: policy0=614 policy6=768 MHz  Temp 25C
+   15s: policy0=614 policy6=768 MHz  Temp 25C
+   20s: policy0=614 policy6=768 MHz  Temp 25C
+   25s: policy0=614 policy6=768 MHz  Temp 26C
+   30s: policy0=614 policy6=768 MHz  Temp 24C
+14:25:39 policy0: 614 MHz OK
+14:25:41 policy0: teste 768 MHz unter Last fuer 30s (Temp 24C)
+   5s: policy0=768 policy6=768 MHz  Temp 26C
+   10s: policy0=768 policy6=768 MHz  Temp 26C
+   15s: policy0=768 policy6=768 MHz  Temp 26C
+   20s: policy0=768 policy6=768 MHz  Temp 26C
+   25s: policy0=768 policy6=768 MHz  Temp 26C
+   30s: policy0=768 policy6=768 MHz  Temp 24C

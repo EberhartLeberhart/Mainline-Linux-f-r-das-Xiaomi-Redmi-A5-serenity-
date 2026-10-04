@@ -1,0 +1,13 @@
+14:25:07 Tiefschlaf aus nur fuer CPU 6 7: 00000011
+14:25:07 Treiber geladen
+14:25:27 Runde 1: Last vorbei
+14:25:37 Runde 1: Leerlauf ok
+14:25:57 Runde 2: Last vorbei
+14:26:08 Runde 2: Leerlauf ok
+14:26:28 Runde 3: Last vorbei
+14:26:38 Runde 3: Leerlauf ok
+14:26:58 Runde 4: Last vorbei
+14:27:08 Runde 4: Leerlauf ok
+14:27:28 Runde 5: Last vorbei
+14:27:38 Runde 5: Leerlauf ok
+14:27:38 BESTANDEN mit Tiefschlaf aus fuer CPU 6 7

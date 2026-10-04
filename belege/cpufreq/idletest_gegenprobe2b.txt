@@ -1,0 +1,5 @@
+15:04:51 GEGENPROBE 2b: grosse Kerne gezwungen in Tiefschlaf: 0 mal in 5 s
+15:05:11 Runde 1: Last vorbei
+15:05:21 Runde 1: Leerlauf ok, Tiefschlaf gross=208
+15:05:42 Runde 2: Last vorbei
+15:05:52 Runde 2: Leerlauf ok, Tiefschlaf gross=208

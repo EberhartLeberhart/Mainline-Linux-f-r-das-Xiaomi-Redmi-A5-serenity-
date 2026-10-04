@@ -1,8 +1,8 @@
 From a086b6c4d45ef4922f922e0d95148d10031998da Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Sun, 27 Sep 2026 18:17:41 +0200
-Subject: [PATCH 1/9] Redmi A5 (serenity): bootet warm+kalt bis Userspace (ACPI
- aus, TRNG aus, ADI-Neustart, Debug-Marker)
+Subject: [PATCH 01/11] Redmi A5 (serenity): bootet warm+kalt bis Userspace
+ (ACPI aus, TRNG aus, ADI-Neustart, Debug-Marker)
 
 ---
  .../boot/dts/sprd/ums9230-xiaomi-serenity.dts | 137 ++++++++++++++++++

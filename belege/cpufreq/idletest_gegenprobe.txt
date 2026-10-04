@@ -1,0 +1,3 @@
+14:32:36 GEGENPROBE: Tiefschlaf wieder AN: 00000000 (8x 0 erwartet)
+14:32:56 Runde 1: Last vorbei
+14:33:06 Runde 1: Leerlauf ok, Tiefschlaf-Nutzung cpu0=1468

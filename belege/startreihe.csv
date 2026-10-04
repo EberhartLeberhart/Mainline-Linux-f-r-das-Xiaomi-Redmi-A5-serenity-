@@ -7,3 +7,19 @@ zeit;art;ergebnis;boot_id;laufzeit_s;kernel;slot;poweroff_handler;check_ok;check
 2026-10-02 18:23:02;kalt-kabel;OK;d917ca41-6e92-4e12-a2f2-33f9390f57ef;10;7.1.0-rc1-ga1ce3f9b4def #52;_b;1;16;3;22;kam von selbst
 2026-10-02 18:33:54;kalt;OK;489e8ea9-e18c-43d9-b019-c6c9b5099d04;102;7.1.0-rc1-ga1ce3f9b4def #53;_b;1;15;4;22;Ziegen-Kernel
 2026-10-02 18:44:12;kalt;OK;a7533c97-dfa0-4b22-b232-44909c54c1a2;31;7.1.0-rc1-ga1ce3f9b4def #54;_b;1;19;4;18;Treiber-Kernel =y
+2026-10-02 21:53:34;kalt;OK;3ac273cb-970f-4532-b047-590b2ee03187;30;7.1.0-rc1-gd745a45cfda2 #56;_b;1;25;3;13;Power-Domains
+2026-10-03 10:33:35;kalt;OK;be523ee3-59b2-44ef-bb37-492e427c0715;30;7.1.0-rc1-gd745a45cfda2 #56;_b;1;25;3;13;Morgenstart nach Nacht aus
+2026-10-03 11:02:22;haenger;FEHLER;;;;;;;;;vendor_boot_cpufreq: steht bei 13,3 s, keine OK-Zeilen, kein SSH
+2026-10-04 11:46:32;warm;LAUFZEIT ZU LANG?;0591e3a8-737a-4aac-b0d2-c3bbff8a08ac;89048;7.1.0-rc1-gd745a45cfda2 #56;_b;1;25;3;13;Rettung nach cpufreq-Haenger, vendor_boot_usb2
+2026-10-04 13:13:33;warm;OK;29fc0568-0745-4cd7-9064-92c2c33db74a;255;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;25;3;13;dvfs-test: Treiber als Modul, nicht geladen, DT okay
+2026-10-04 13:22:11;haenger;FEHLER;;;;;;;;;insmod ok, harter Haenger bei Volllast, Display eingefroren ohne Meldung
+2026-10-04 13:22:36;kalt;OK;cc4059d3-346b-4a79-91e8-02725446fa10;30;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;25;3;13;nach Lasthaenger
+2026-10-04 13:27:18;haenger;FEHLER;;;;;;;;;stufentest: Haenger nach 768-MHz-Last (Wechsel runter)
+2026-10-04 13:27:35;kalt;OK;5637d5df-272e-4bab-aa74-30dfe3efe281;30;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;25;3;13;nach stufentest
+2026-10-04 13:38:11;haenger;FEHLER;;;;;;;;;wechseltest: Haenger 0,2 s nach insmod, vor userspace-Regler
+2026-10-04 13:40:20;haenger;FEHLER;;;;;;;;;wechseltest: Haenger 0,2 s nach insmod, vor userspace-Regler
+2026-10-04 13:40:22;kalt;OK;13e3a8d8-969f-46de-9486-cd8c0872dba7;95;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;25;3;13;nach wechseltest
+2026-10-04 13:52:58;haenger;FEHLER;;;;;;;;;Gegenprobe: Tiefschlaf an + cpufreq -> Haenger in erster Ruhephase, kein Netz
+2026-10-04 13:53:18;kalt;OK;b9f2ab23-725d-4558-bb07-c6dcefb692d9;31;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;25;3;13;nach Gegenprobe
+2026-10-04 14:37:13;warm;OK;3e0a75f8-b2c1-43d3-83d6-7e1f78c54ff1;33;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;cpufreq-Dienst, Modul ohne Kontrollzeilen
+2026-10-04 14:41:28;kalt;OK;2b8c1dcf-b9d2-4210-b164-45bf25b3bbb0;31;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;cpufreq-Dienst

@@ -1,0 +1,12 @@
+15:00:47 GEGENPROBE 2: nur grosse Kerne duerfen schlafen: 11111100 (11111100 erwartet)
+15:01:07 Runde 1: Last vorbei
+15:01:17 Runde 1: Leerlauf ok, Tiefschlaf gross=198
+15:01:37 Runde 2: Last vorbei
+15:01:47 Runde 2: Leerlauf ok, Tiefschlaf gross=199
+15:02:07 Runde 3: Last vorbei
+15:02:17 Runde 3: Leerlauf ok, Tiefschlaf gross=207
+15:02:37 Runde 4: Last vorbei
+15:02:48 Runde 4: Leerlauf ok, Tiefschlaf gross=207
+15:03:08 Runde 5: Last vorbei
+15:03:18 Runde 5: Leerlauf ok, Tiefschlaf gross=207
+15:03:18 GEGENPROBE 2 ohne Haenger - Folgerung stimmt NICHT

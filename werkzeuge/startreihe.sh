@@ -34,9 +34,15 @@ an)
     art=${2:-kalt}; notiz=$3
     if [ "$art" = "haenger" ]; then
         echo "$(date '+%F %T');haenger;FEHLER;;;;;;;;;${notiz}" >> "$LOG"
+        rm -f /tmp/startreihe_alt_id
         echo ">>> Haenger eingetragen."; exit 0
     fi
     ~/redmi-build/net.sh || { echo "$(date '+%F %T');$art;KEIN NETZ;;;;;;;;;${notiz}" >> "$LOG"; exit 1; }
+    # derselbe Start darf nur einmal im Protokoll stehen
+    neu=$(ssh $H 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null)
+    if [ -n "$neu" ] && cut -d';' -f4 "$LOG" | grep -qx "$neu"; then
+        echo "HINWEIS: Dieser Start (boot_id $neu) steht schon im Protokoll - nichts eingetragen."; exit 1
+    fi
     # erst pruefen, wenn der Kernel fertig ist: Treiber-Timeouts (-110) kommen erst nach ~15 s
     up0=$(ssh $H 'cut -d. -f1 /proc/uptime'); [ "${up0:-0}" -lt 30 ] && { echo ">>> warte $((30-up0)) s, bis der Start abgeschlossen ist ..."; sleep $((30-up0)); }
     r=$(ssh $H 'echo "$(cat /proc/sys/kernel/random/boot_id);$(cut -d. -f1 /proc/uptime);$(uname -r) $(uname -v | cut -d" " -f1);$(grep -ao "slot_suffix=[^ ]*" /proc/device-tree/chosen/bootargs | cut -d= -f2);$(dmesg | grep -c "Poweroff-Handler SC2730 angemeldet")"')

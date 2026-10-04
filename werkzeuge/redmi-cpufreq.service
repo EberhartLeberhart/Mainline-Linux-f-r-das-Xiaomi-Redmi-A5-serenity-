@@ -1,0 +1,12 @@
+[Unit]
+Description=Redmi A5: cpufreq laden (Tiefschlaf der grossen Kerne vorher gesperrt)
+After=systemd-modules-load.service local-fs.target
+ConditionPathExists=/usr/local/lib/redmi/sprd-cpufreq-v2.ko
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/redmi-cpufreq.sh
+
+[Install]
+WantedBy=multi-user.target
