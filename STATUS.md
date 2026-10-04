@@ -87,11 +87,12 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | AP-Wachhund (sprd-wdt) | ✅ | gebunden (644e0000) |
 | Power-Domains | ✅ | 02.10.: Commit 1dcd2ff05 (gpu_top, mm, pubcp, wcn) – alle Taktcontroller starten; `/audio-dsp` (agdsp) fehlt noch |
 | Taktcontroller (alle 14) | ✅ | 02.10.: starten nach den Power-Domains |
-| Echtzeituhr | ❌ | Uhrzeit falsch; die PMIC-Uhr **läuft** (Bootloader übergibt `charge.shutdown_rtc_time`), nur der Treiber fehlt |
+| Echtzeituhr | ✅ | 04.10.: `RTC_DRV_SC27XX`, Kernel übernimmt die Zeit beim Start (`setting system clock …`). Einmal gestellt mit `timedatectl set-time` (kein `hwclock` auf dem Handy), Zeitzone Europe/Berlin (Datei vom PC kopiert, `tzdata` fehlt). **Kaltstart: Uhr stimmt auf die Sekunde.** Offen: Zeit aus dem Netz (timesyncd fehlt), Paketquellen prüfen (`util-linux-extra` nicht gefunden) |
 | Akkuanzeige (FGU) | ✅ | 04.10.: Spannung (4,42 V, deckt sich mit ADC-Kanal 5), Ladestand (97 %), Strom mit richtigem Vorzeichen, **Temperatur 22,4 °C** über Xiaomis `voltage-temp-table` (eigener Patch `patch_fgu_temp.py`, DT-Eigenschaft `sprd,voltage-temp-table`) |
 | Kabel-Erkennung | ✅ | 04.10.: USB-Spannung (ADC-Kanal 14) 4,86 V → 0,13 V beim Abziehen → 4,91 V beim Einstecken; Strom springt von +1 mA auf −100 mA |
 | Verbrauch | ✅ gemessen | 04.10.: **~102 mA bei 4,40 V ≈ 0,45 W** im Leerlauf ohne Kabel, Display an (Hintergrundlicht vom Bootloader, nicht abschaltbar solange PWM fehlt). Reicht rechnerisch ~2 Tage mit vollem Akku |
-| Ladechip | ❌ | Laden läuft mit den Einstellungen des Bootloaders weiter (Akku bei 4,42 V, unter Xiaomis 4,45 V). Chip an I2C2: SGM41513 (0x1a) / SC89601 (0x6b) / UPM6922 (0x6a), kein Treiber im Kernel. Im Server-Betrieb bleibt der Akku dauernd bei ~97–100 % → später Ladegrenze (z. B. 80 %) für die Lebensdauer |
+| Ladechip | 🟡 nur gelesen | 04.10.: I2C-Bus 2 läuft (`/soc/i2c@200f0000` + Alias `i2c2` nötig). **SGM41513 an 0x1a** antwortet (REG0B PN=1); 0x6a/0x6b leer. Zustand vom Bootloader: Laden an, Eingang 500 mA (USB-PC), Ladestrom max. 1980 mA, Ladeschluss ≈ 4,46 V ❓ (REG04=0x99, Umrechnung nach Unisoc-SGM4151x-Treiber), **Wachhund aus** (Einstellungen bleiben), Status „fertig geladen, Power good, keine Fehler“. ITERM-Wert unplausibel (❓). Kein Treiber im Kernel |
+| I2C-Treiber (i2c-sprd) | 🟡 | 04.10.: meldet **kein NACK** – leere Adressen liefern den zuletzt gelesenen Wert (0x08 überall). Bei Bus-Scans nie auf „antwortet“ vertrauen, immer mehrere Register vergleichen |
 | Tasten | ✅ | 04.10.: Einschalttaste, Lauter, Leiser melden sich (PMIC-EIC + GPIO 124). **Einschalttaste 3 s halten = Herunterfahren** (`redmi-taste.service`), kurzer Druck tut nichts |
 | PMIC SC2730 | ✅ | 04.10.: Grundtreiber, ADC (Akkuspannung ~4,42 V, Akkutemperatur ~22 °C, USB 4,86 V, Akku-ID → `bat.id=0`), eFuse, EIC |
 
@@ -111,7 +112,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | pinctrl-sprd(-ums9230) | ✅ | 02.10.: fest eingebaut, bindet beim Start |
 | sprd-mailbox | ✅ | 02.10.: fest eingebaut, bindet beim Start |
 | sprd-thermal | ✅ | 02.10.: fest eingebaut, 2 Geräte |
-| i2c-sprd | ❓ | alle I2C-Knoten `disabled` → **nicht getestet** |
+| i2c-sprd | 🟡 | 04.10.: Bus 2 läuft (mit Alias), aber kein NACK – siehe Ladechip |
 | sprd-dma | ❌ | 56580000: -110, hängt an der Domain `/audio-dsp` (agdsp_pd) |
 | PWM / Backlight | ❓ | hing früher; wahrscheinlich dieselbe Größen-Ursache → neu testen |
 | Hänger bei `=y` (Treiber eingebaut) | ✅ gelöst | 02.10.: Treiber-Kernel startet kalt und warm; Ursache war die Kernel-Größe |
@@ -139,7 +140,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 ## Nächste Schritte
 
-1. Akku: Echtzeituhr → Ladechip (zuerst nur lesen) → Ladegrenze für den Server-Betrieb
+1. Akku: Ladechip (zuerst nur lesen) → Ladegrenze für den Server-Betrieb
 2. Hintergrundlicht (PWM): vermutlich ❓ größter Verbraucher im Leerlauf – für den Server abschaltbar machen, dann Verbrauch neu messen
 2. Audio: Domain `/audio-dsp` → DMA → Codec
 3. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel

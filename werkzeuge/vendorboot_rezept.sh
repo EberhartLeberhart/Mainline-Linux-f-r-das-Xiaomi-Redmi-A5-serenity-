@@ -49,4 +49,8 @@ fi
   /gpio-keys/key-volumedown linux,code u:114 \
   /gpio-keys/key-volumedown gpios "u:$GP_PH 124 1" \
   /gpio-keys/key-volumedown debounce-interval u:2 \
+  `# 04.10.: I2C-Bus 2 (Xiaomi-Alias i2c2) fuer den Ladechip - nur der Bus, noch kein Chip-Knoten` \
+  /soc/i2c@200f0000 status okay \
+  `# 04.10.: i2c-sprd braucht einen Alias als Busnummer, sonst WARNING in i2c_add_numbered_adapter und kein Bus` \
+  /aliases i2c2 /soc/i2c@200f0000 \
   "${AKKU_ARGS[@]}"

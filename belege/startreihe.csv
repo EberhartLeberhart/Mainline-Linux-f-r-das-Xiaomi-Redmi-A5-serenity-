@@ -39,3 +39,5 @@ zeit;art;ergebnis;boot_id;laufzeit_s;kernel;slot;poweroff_handler;check_ok;check
 2026-10-04 18:44:53;warm;OK;f10f8eaa-00c5-44d0-968e-3be540e85c22;84;7.1.0-rc1-g357089b7ccd6 #65;_b;1;29;4;8;Echtzeituhr SC27xx
 2026-10-04 18:50:56;kalt;OK;f9c8ddbf-1fa1-4fac-92e7-84ae8aa30fc2;51;7.1.0-rc1-g357089b7ccd6 #65;_b;1;29;4;8;Echtzeituhr gestellt - ueberlebt Kaltstart?
 2026-10-04 19:04:15;kalt;OK;dd0052b9-c8d2-416e-a0d0-08c406023342;31;7.1.0-rc1-g357089b7ccd6 #65;_b;1;29;4;8;Kaltstart per Taste 3 s, Echtzeituhr gestellt
+2026-10-04 19:17:14;warm;OK;dbddaacc-2e09-46d8-8300-45b3bb5d0a81;30;7.1.0-rc1-g357089b7ccd6 #65;_b;1;29;4;8;I2C-Bus 2 an
+2026-10-04 19:23:47;warm;OK;55600c5a-6e2f-44a7-83ba-a47cb8496001;127;7.1.0-rc1-g357089b7ccd6 #65;_b;1;30;4;7;I2C-Bus 2 mit Alias
