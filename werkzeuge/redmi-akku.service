@@ -1,0 +1,12 @@
+[Unit]
+Description=Redmi A5: Ladegrenze fuer den Server-Betrieb (nur bei MODUS=server)
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/local/sbin/redmi-akku.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

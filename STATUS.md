@@ -91,7 +91,8 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | Akkuanzeige (FGU) | ✅ | 04.10.: Spannung (4,42 V, deckt sich mit ADC-Kanal 5), Ladestand (97 %), Strom mit richtigem Vorzeichen, **Temperatur 22,4 °C** über Xiaomis `voltage-temp-table` (eigener Patch `patch_fgu_temp.py`, DT-Eigenschaft `sprd,voltage-temp-table`) |
 | Kabel-Erkennung | ✅ | 04.10.: USB-Spannung (ADC-Kanal 14) 4,86 V → 0,13 V beim Abziehen → 4,91 V beim Einstecken; Strom springt von +1 mA auf −100 mA |
 | Verbrauch | ✅ gemessen | 04.10.: **~102 mA bei 4,40 V ≈ 0,45 W** im Leerlauf ohne Kabel, Display an (Hintergrundlicht vom Bootloader, nicht abschaltbar solange PWM fehlt). Reicht rechnerisch ~2 Tage mit vollem Akku |
-| Ladechip | 🟡 nur gelesen | 04.10.: I2C-Bus 2 läuft (`/soc/i2c@200f0000` + Alias `i2c2` nötig). **SGM41513 an 0x1a** antwortet (REG0B PN=1); 0x6a/0x6b leer. Zustand vom Bootloader: Laden an, Eingang 500 mA (USB-PC), Ladestrom max. 1980 mA, Ladeschluss ≈ 4,46 V ❓ (REG04=0x99, Umrechnung nach Unisoc-SGM4151x-Treiber), **Wachhund aus** (Einstellungen bleiben), Status „fertig geladen, Power good, keine Fehler“. ITERM-Wert unplausibel (❓). Kein Treiber im Kernel |
+| Ladechip | ✅ gesteuert | 04.10.: I2C-Bus 2 läuft (`/soc/i2c@200f0000` + Alias `i2c2` nötig). **SGM41513 an 0x1a** (REG0B PN=1). Drei Schalter belegt, alle ohne Fehler: **HIZ** (REG00 Bit 7) trennt den Eingang → Handy läuft aus dem Akku (−102…−117 mA), USB-Netz bleibt; **Laden aus** (REG01 Bit 4) → 223 mA → 1 mA, Status „lädt nicht“, Handy läuft vom Kabel; **Ladespannung** (REG04) begrenzt das Nachladen. ⚠️ REG04 schlagartig weit unter die Akkuspannung → BAT_FAULT (Überspannung). Nach HIZ aus erkennt der Chip den Eingang neu und setzt den Eingangsstrom selbst auf 2400 mA (zurückstellen!). **Über Neustart:** HIZ und Laden-aus werden zurückgestellt, REG04 bleibt stehen (der Wert 0x99 ≈ 4,45 V stammt also vom alten Android). Wachhund aus. Ausschalten mit Kabel noch nicht geprüft ❓. ITERM-Wert unplausibel (❓). Kein Kernel-Treiber, Steuerung per i2cset |
+| Ladegrenze (Server) | ✅ läuft | 04.10.: `redmi-akku.sh`/`.service`, Einstellungen `/etc/redmi/akku.conf` (MODUS=server, 75–80 %, Notfall < 20 %). Über 80 % Strom kappen, 75–80 % ruhen (vom Kabel), darunter laden. Test auf dem Handy: ruhen → `0x01=0x0a`, entladen → `0x00=0x84`, −117 mA, Beenden stellt alles zurück. Seit 20:06 im Dauerbetrieb – Umschalten bei 80 % noch nicht beobachtet ❓ |
 | I2C-Treiber (i2c-sprd) | 🟡 | 04.10.: meldet **kein NACK** – leere Adressen liefern den zuletzt gelesenen Wert (0x08 überall). Bei Bus-Scans nie auf „antwortet“ vertrauen, immer mehrere Register vergleichen |
 | Tasten | ✅ | 04.10.: Einschalttaste, Lauter, Leiser melden sich (PMIC-EIC + GPIO 124). **Einschalttaste 3 s halten = Herunterfahren** (`redmi-taste.service`), kurzer Druck tut nichts |
 | PMIC SC2730 | ✅ | 04.10.: Grundtreiber, ADC (Akkuspannung ~4,42 V, Akkutemperatur ~22 °C, USB 4,86 V, Akku-ID → `bat.id=0`), eFuse, EIC |
@@ -140,11 +141,11 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 ## Nächste Schritte
 
-1. Akku: Ladechip (zuerst nur lesen) → Ladegrenze für den Server-Betrieb
+1. Akku: Umschalten bei 80 % im Dauerbetrieb belegen; Ausschalten mit Kabel bei gekapptem Strom prüfen; später eigener Ladechip-Treiber statt i2cset
 2. Hintergrundlicht (PWM): vermutlich ❓ größter Verbraucher im Leerlauf – für den Server abschaltbar machen, dann Verbrauch neu messen
 2. Audio: Domain `/audio-dsp` → DMA → Codec
 3. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
-4. Echtzeituhr, Einschalttaste, Akku/Laden
+4. USB-Host (OTG, Boost im Ladechip)
 5. Helligkeit: kommt mit dem Display-Treiber (siehe Anzeige)
 6. USB-Host, dann Marlin3 (WLAN …)
 
