@@ -2,7 +2,7 @@
 
 Basis: https://codeberg.org/ums9230-mainline/linux.git
 Basis-Commit: 4a5b97b821b846f9a25a99a4fdcb3040fd910965
-Stand: 191fc3671 Redmi A5: Akkuanzeige SC2730-FGU
+Stand: 357089b7c Redmi A5: Akkutemperatur ueber DT-Tabelle (sprd,voltage-temp-table), PWM-Treiber
 
 Bauen:
 ```

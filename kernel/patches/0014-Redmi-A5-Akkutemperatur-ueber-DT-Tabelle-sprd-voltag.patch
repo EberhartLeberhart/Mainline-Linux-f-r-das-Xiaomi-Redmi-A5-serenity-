@@ -1,0 +1,117 @@
+From 357089b7ccd6e5bdc856254c841835229782aeb0 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 4 Oct 2026 18:39:43 +0200
+Subject: [PATCH 14/14] Redmi A5: Akkutemperatur ueber DT-Tabelle
+ (sprd,voltage-temp-table), PWM-Treiber
+
+Ohne Tabelle meldete die SC27xx-Akkuanzeige die Rohspannung des NTC (mV) als Temperatur.
+Die optionale Tabelle (Paare uV / 0,1 Grad + 1000, Xiaomi-Format) wird linear interpoliert.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VxvWB1JV4HbUrm4FtcP56g
+---
+ arch/arm64/configs/redmi_a5_defconfig    |  2 +
+ drivers/power/supply/sc27xx_fuel_gauge.c | 56 ++++++++++++++++++++++--
+ 2 files changed, 55 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index ff115921a..d3c8dc707 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -921,6 +921,8 @@ CONFIG_VCNL4000=m
+ CONFIG_IIO_ST_MAGN_3AXIS=m
+ CONFIG_IIO_CROS_EC_BARO=m
+ CONFIG_MPL3115=m
++CONFIG_PWM=y
++CONFIG_PWM_SPRD=y
+ CONFIG_XILINX_INTC=y
+ CONFIG_RESET_GPIO=m
+ CONFIG_RESET_TI_SYSCON=y
+diff --git a/drivers/power/supply/sc27xx_fuel_gauge.c b/drivers/power/supply/sc27xx_fuel_gauge.c
+index 356868253..125b6e2ef 100644
+--- a/drivers/power/supply/sc27xx_fuel_gauge.c
++++ b/drivers/power/supply/sc27xx_fuel_gauge.c
+@@ -104,6 +104,8 @@ struct sc27xx_fgu_variant_data {
+  * @pdata: PMIC variant register information
+  */
+ struct sc27xx_fgu_data {
++	u32 *vt_table;		/* Paare: Mikrovolt, Temperatur-Code (0,1 Grad + 1000) */
++	int vt_len;		/* Anzahl der Paare */
+ 	struct regmap *regmap;
+ 	struct device *dev;
+ 	struct power_supply *battery;
+@@ -547,13 +549,36 @@ static int sc27xx_fgu_get_charge_vol(struct sc27xx_fgu_data *data, int *val)
+ 
+ static int sc27xx_fgu_get_temp(struct sc27xx_fgu_data *data, int *temp)
+ {
+-	int ret;
++	const u32 *t = data->vt_table;
++	int ret, mv, uv, i, n = data->vt_len;
+ 
+-	ret = iio_read_channel_processed(data->channel, temp);
++	ret = iio_read_channel_processed(data->channel, &mv);
+ 	if (ret < 0)
+ 		return ret;
++	if (!n) {
++		*temp = mv;
++		return ret;
++	}
+ 
+-	return 0;
++	uv = mv * 1000;
++	if (uv >= (int)t[0]) {
++		*temp = (int)t[1] - 1000;
++		return 0;
++	}
++	if (uv <= (int)t[2 * (n - 1)]) {
++		*temp = (int)t[2 * (n - 1) + 1] - 1000;
++		return 0;
++	}
++	for (i = 1; i < n; i++) {
++		int v0 = t[2 * (i - 1)], c0 = t[2 * (i - 1) + 1];
++		int v1 = t[2 * i], c1 = t[2 * i + 1];
++
++		if (uv >= v1) {
++			*temp = c1 + (int)((s64)(uv - v1) * (c0 - c1) / (v0 - v1)) - 1000;
++			return 0;
++		}
++	}
++	return -EINVAL;
+ }
+ 
+ static int sc27xx_fgu_get_health(struct sc27xx_fgu_data *data, int *health)
+@@ -1222,6 +1247,31 @@ static int sc27xx_fgu_probe(struct platform_device *pdev)
+ 		return PTR_ERR(data->channel);
+ 	}
+ 
++	ret = device_property_count_u32(dev, "sprd,voltage-temp-table");
++	if (ret > 0) {
++		int i;
++
++		if (ret % 2 || ret < 4) {
++			dev_err(dev, "sprd,voltage-temp-table: %d Werte, erwartet gerade Anzahl >= 4\n", ret);
++			return -EINVAL;
++		}
++		data->vt_len = ret / 2;
++		data->vt_table = devm_kcalloc(dev, ret, sizeof(u32), GFP_KERNEL);
++		if (!data->vt_table)
++			return -ENOMEM;
++		ret = device_property_read_u32_array(dev, "sprd,voltage-temp-table",
++						     data->vt_table, ret);
++		if (ret)
++			return ret;
++		for (i = 1; i < data->vt_len; i++) {
++			if (data->vt_table[2 * i] >= data->vt_table[2 * (i - 1)]) {
++				dev_err(dev, "sprd,voltage-temp-table: Spannung muss fallen (Punkt %d)\n", i);
++				return -EINVAL;
++			}
++		}
++		dev_info(dev, "Akkutemperatur ueber Tabelle mit %d Punkten\n", data->vt_len);
++	}
++
+ 	data->charge_chan = devm_iio_channel_get(dev, "charge-vol");
+ 	if (IS_ERR(data->charge_chan)) {
+ 		dev_err(dev, "failed to get charge IIO channel\n");
+-- 
+2.43.0
+

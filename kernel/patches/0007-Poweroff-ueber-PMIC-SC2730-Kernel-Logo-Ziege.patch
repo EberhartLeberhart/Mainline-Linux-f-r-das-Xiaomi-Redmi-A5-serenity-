@@ -1,7 +1,7 @@
 From a1ce3f9b4def2d7f4f6133dfbbf41c74590b5c00 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Thu, 1 Oct 2026 16:07:16 +0200
-Subject: [PATCH 07/13] Poweroff ueber PMIC SC2730, Kernel-Logo Ziege
+Subject: [PATCH 07/14] Poweroff ueber PMIC SC2730, Kernel-Logo Ziege
 
 ---
  drivers/spi/spi-sprd-adi.c | 33 +++++++++++++++++++++++++++++++++

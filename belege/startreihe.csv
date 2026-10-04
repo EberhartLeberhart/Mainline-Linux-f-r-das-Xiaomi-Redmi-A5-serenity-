@@ -33,3 +33,6 @@ zeit;art;ergebnis;boot_id;laufzeit_s;kernel;slot;poweroff_handler;check_ok;check
 2026-10-04 17:13:36;warm;OK;a446dddb-9d87-4934-9874-6ee19959a8f4;30;7.1.0-rc1-g5b29f471ea45 #61;_b;1;26;3;12;vendor_boot_tasten: Lauter + Leiser
 2026-10-04 17:17:18;warm;OK;f97662fa-7d32-4db9-9b24-ca9d39966564;31;7.1.0-rc1-g5b29f471ea45 #61;_b;1;27;3;11;vendor_boot_tasten: Lauter + Leiser (0x38 korrekt)
 2026-10-04 17:32:20;warm;OK;9ab5d9fc-e66b-416c-a072-3efe5975e412;39;7.1.0-rc1-g0c23996ca877 #62;_b;1;27;4;10;Akku 4: Akkuanzeige (FGU) mit Xiaomi-Profil bat
+2026-10-04 17:57:08;warm;OK;8e9421b6-8d19-413d-a656-86dc2ccd1e82;31;7.1.0-rc1-g191fc36717e9 #63;_b;1;28;4;9;Licht A: PWM-Treiber
+2026-10-04 18:29:00;warm;OK;bf483fac-03c6-4787-961d-1639fca49e1b;43;7.1.0-rc1-g191fc36717e9 #63;_b;1;28;4;9;Akku 5: Temperatur ueber Xiaomi-Tabelle
+2026-10-04 18:36:54;warm;OK;e7513414-a986-467d-90dc-e0e999577340;182;7.1.0-rc1-g191fc36717e9-dirty #64;_b;1;28;4;9;Akku 5: Temperatur ueber Xiaomi-Tabelle (Patch drin)

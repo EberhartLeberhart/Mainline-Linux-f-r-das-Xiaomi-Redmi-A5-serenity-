@@ -88,7 +88,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | Power-Domains | ✅ | 02.10.: Commit 1dcd2ff05 (gpu_top, mm, pubcp, wcn) – alle Taktcontroller starten; `/audio-dsp` (agdsp) fehlt noch |
 | Taktcontroller (alle 14) | ✅ | 02.10.: starten nach den Power-Domains |
 | Echtzeituhr | ❌ | Uhrzeit falsch; die PMIC-Uhr **läuft** (Bootloader übergibt `charge.shutdown_rtc_time`), nur der Treiber fehlt |
-| Akkuanzeige (FGU) | 🟡 | 04.10.: Spannung (4,42 V, deckt sich mit ADC-Kanal 5), Ladestand (97 %), Strom mit richtigem Vorzeichen. **Temperatur falsch** (zeigt Rohwert 355 mV als 35,5 °C; richtig ~22 °C laut Xiaomis `voltage-temp-table`) → vor dem Ladechip beheben |
+| Akkuanzeige (FGU) | ✅ | 04.10.: Spannung (4,42 V, deckt sich mit ADC-Kanal 5), Ladestand (97 %), Strom mit richtigem Vorzeichen, **Temperatur 22,4 °C** über Xiaomis `voltage-temp-table` (eigener Patch `patch_fgu_temp.py`, DT-Eigenschaft `sprd,voltage-temp-table`) |
 | Kabel-Erkennung | ✅ | 04.10.: USB-Spannung (ADC-Kanal 14) 4,86 V → 0,13 V beim Abziehen → 4,91 V beim Einstecken; Strom springt von +1 mA auf −100 mA |
 | Verbrauch | ✅ gemessen | 04.10.: **~102 mA bei 4,40 V ≈ 0,45 W** im Leerlauf ohne Kabel, Display an (Hintergrundlicht vom Bootloader, nicht abschaltbar solange PWM fehlt). Reicht rechnerisch ~2 Tage mit vollem Akku |
 | Ladechip | ❌ | Laden läuft mit den Einstellungen des Bootloaders weiter (Akku bei 4,42 V, unter Xiaomis 4,45 V). Chip an I2C2: SGM41513 (0x1a) / SC89601 (0x6b) / UPM6922 (0x6a), kein Treiber im Kernel. Im Server-Betrieb bleibt der Akku dauernd bei ~97–100 % → später Ladegrenze (z. B. 80 %) für die Lebensdauer |
@@ -122,7 +122,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 |---|---|---|
 | Bildschirm (Bootloader-Framebuffer) | ✅ | läuft über **simpledrm** (720×1640) → Grundlage für eine Oberfläche |
 | Echter Display-Treiber (DRM) | ❌ | nur simpledrm |
-| Helligkeit | ❌ | siehe PWM |
+| Helligkeit | 🟡 | 04.10.: PWM-Treiber läuft, Kanal 2 erzeugt nachweislich 25 kHz (Takte an, `actual: enabled`), **Licht reagiert aber nicht** – weder 0 % noch 100 %. Xiaomi/Android nutzen genau diesen Kanal. Vermutung ❓: Display-Chip NT36528 muss erst selbst initialisiert werden (DSI) → mit dem Display-Treiber |
 | Touchscreen | ❌ | Novatek NT36528A über **SPI** (laut Android-Modulen) |
 | Kernel-Logo (Ziege) | ✅ | 02.10.: Ziege mittig statt Pinguine, auch beim Kaltstart; hing früher nur wegen der Größe |
 | Bootlogo (Bootloader) | 🟡 | Werkzeug fertig, `logo_b` wirkt nicht → Partition klären (`logo_a`/`fbootlogo`?) – Kosmetik, niedrige Priorität |
@@ -139,12 +139,12 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 ## Nächste Schritte
 
-1. Akku: Temperatur-Umrechnung der Akkuanzeige → Echtzeituhr → Ladechip (zuerst nur lesen) → Ladegrenze für den Server-Betrieb
+1. Akku: Echtzeituhr → Ladechip (zuerst nur lesen) → Ladegrenze für den Server-Betrieb
 2. Hintergrundlicht (PWM): vermutlich ❓ größter Verbraucher im Leerlauf – für den Server abschaltbar machen, dann Verbrauch neu messen
 2. Audio: Domain `/audio-dsp` → DMA → Codec
 3. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
 4. Echtzeituhr, Einschalttaste, Akku/Laden
-5. PWM/Helligkeit neu testen
+5. Helligkeit: kommt mit dem Display-Treiber (siehe Anzeige)
 6. USB-Host, dann Marlin3 (WLAN …)
 
 ## Ideen für später (niedrige Priorität)
