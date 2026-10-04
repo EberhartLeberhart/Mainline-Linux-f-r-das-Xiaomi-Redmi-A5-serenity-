@@ -1,0 +1,10 @@
+[Unit]
+Description=Redmi A5: Einschalttaste 3 s halten = Herunterfahren
+
+[Service]
+ExecStart=/usr/local/sbin/redmi-taste.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

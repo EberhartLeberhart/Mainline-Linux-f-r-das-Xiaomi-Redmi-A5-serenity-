@@ -1,7 +1,7 @@
 From e8e715ab6723f852f2c80c06735502297f84436f Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Sun, 27 Sep 2026 18:35:49 +0200
-Subject: [PATCH 03/11] Redmi A5: eMMC (sdio3, Highspeed) funktioniert
+Subject: [PATCH 03/12] Redmi A5: eMMC (sdio3, Highspeed) funktioniert
 
 ---
  .../boot/dts/sprd/ums9230-xiaomi-serenity.dts      | 14 ++++++++++++++

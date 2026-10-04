@@ -88,8 +88,9 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | Power-Domains | ✅ | 02.10.: Commit 1dcd2ff05 (gpu_top, mm, pubcp, wcn) – alle Taktcontroller starten; `/audio-dsp` (agdsp) fehlt noch |
 | Taktcontroller (alle 14) | ✅ | 02.10.: starten nach den Power-Domains |
 | Echtzeituhr | ❌ | Uhrzeit falsch; die PMIC-Uhr **läuft** (Bootloader übergibt `charge.shutdown_rtc_time`), nur der Treiber fehlt |
-| Akku / Laden | ❌ | Bootloader nennt Lade-Chip `bq2560x` (kompatibel SGM41513); FGU fehlt |
-| Einschalttaste | ❌ | gpio-keys wartet, PMIC-EIC nicht gebaut |
+| Akku / Laden | ❌ | Akkudaten aus Xiaomis dtbo (5200 mAh, 3 Lieferanten × 4 Alterungsstufen; hier `bat`, Stufe 0). Ladechip an I2C2: SGM41513 (0x1a) / SC89601 (0x6b) / UPM6922 (0x6a), kein Treiber im Kernel. Nächster Schritt: Akkuanzeige |
+| Tasten | ✅ | 04.10.: Einschalttaste, Lauter, Leiser melden sich (PMIC-EIC + GPIO 124). **Einschalttaste 3 s halten = Herunterfahren** (`redmi-taste.service`), kurzer Druck tut nichts |
+| PMIC SC2730 | ✅ | 04.10.: Grundtreiber, ADC (Akkuspannung ~4,42 V, Akkutemperatur ~22 °C, USB 4,86 V, Akku-ID → `bat.id=0`), eFuse, EIC |
 
 ## Temperatur
 

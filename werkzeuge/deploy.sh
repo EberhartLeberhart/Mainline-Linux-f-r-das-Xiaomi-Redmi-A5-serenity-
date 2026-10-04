@@ -5,7 +5,7 @@
 # Nutzung: ~/redmi-build/deploy.sh [vendor_boot-image]
 set -e
 cd ~/redmi-build
-VB=${1:-vendor_boot_pmic0_ok.img}   # Standard seit 04.10. (cpufreq an, grosse Kerne Regler 0); Rettung: vendor_boot_usb2.img
+VB=${1:-vendor_boot_ok.img}   # immer der zuletzt belegte Stand aus vendorboot_rezept.sh; Rettung: vendor_boot_usb2.img
 
 for f in boot_mainline.img "$VB" misc_b.img; do
     [ -f "$f" ] || { echo "FEHLER: $f fehlt"; exit 1; }

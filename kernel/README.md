@@ -2,7 +2,7 @@
 
 Basis: https://codeberg.org/ums9230-mainline/linux.git
 Basis-Commit: 4a5b97b821b846f9a25a99a4fdcb3040fd910965
-Stand: 5b29f471e Redmi A5: cpufreq als Modul (sprd-cpufreq-v2 tristate)
+Stand: 0c23996ca Redmi A5: PMIC SC2730 - Grundtreiber, ADC, eFuse, PMIC-EIC (Einschalttaste)
 
 Bauen:
 ```

@@ -1,7 +1,7 @@
 From 1dcd2ff05af2d1315f03d07d4d61dca35867794a Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Fri, 2 Oct 2026 21:53:37 +0200
-Subject: [PATCH 10/11] Redmi A5: Power-Domains (gpu_top, mm, pubcp, wcn) -
+Subject: [PATCH 10/12] Redmi A5: Power-Domains (gpu_top, mm, pubcp, wcn) -
  alle Taktcontroller starten
 
 ---

@@ -26,3 +26,9 @@ zeit;art;ergebnis;boot_id;laufzeit_s;kernel;slot;poweroff_handler;check_ok;check
 2026-10-04 15:19:56;warm;LAUFZEIT ZU LANG?;d65bf207-f63f-44a7-8f6a-2d568d5ab41b;783;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;vendor_boot_pmic0: grosse Kerne Regler 0 (wie Xiaomi), Sperre noch aktiv
 2026-10-04 16:09:34;warm;OK;81930d77-0da9-4b6a-856c-53fdb56eeef7;158;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;pmic0 dauerhaft, Dienst ohne Sperre
 2026-10-04 16:13:23;kalt;OK;bb84d259-4bba-4960-9f88-f62abd116ca6;35;7.1.0-rc1-g1dcd2ff05af2-dirty #57;_b;1;26;3;12;pmic0 dauerhaft, Dienst ohne Sperre
+2026-10-04 16:16:37;warm;OK;e0dc5b78-ed40-42bf-86b4-46dc8b63cb02;31;7.1.0-rc1-g5b29f471ea45 #58;_b;1;26;3;12;Akku 1: nur MFD_SC27XX_PMIC
+2026-10-04 16:23:25;warm;OK;1c4ef6ca-276f-4e67-b1f4-d27ce9e4dad2;143;7.1.0-rc1-g5b29f471ea45 #59;_b;1;26;3;12;Akku 2: ADC + eFuse
+2026-10-04 16:45:09;warm;OK;4f658f54-ffa5-4a4a-bb85-ebf59b882432;31;7.1.0-rc1-g5b29f471ea45 #59;_b;1;26;3;12;Akku 3: PMIC-EIC
+2026-10-04 16:55:06;warm;OK;a088e3b5-2af4-4cfb-8e06-bcb24614e209;166;7.1.0-rc1-g5b29f471ea45 #61;_b;1;27;3;11;Akku 3: PMIC-EIC (2. Versuch, Bau ok)
+2026-10-04 17:13:36;warm;OK;a446dddb-9d87-4934-9874-6ee19959a8f4;30;7.1.0-rc1-g5b29f471ea45 #61;_b;1;26;3;12;vendor_boot_tasten: Lauter + Leiser
+2026-10-04 17:17:18;warm;OK;f97662fa-7d32-4db9-9b24-ca9d39966564;31;7.1.0-rc1-g5b29f471ea45 #61;_b;1;27;3;11;vendor_boot_tasten: Lauter + Leiser (0x38 korrekt)
