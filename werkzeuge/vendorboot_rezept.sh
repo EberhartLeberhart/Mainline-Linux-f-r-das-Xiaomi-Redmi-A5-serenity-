@@ -8,6 +8,29 @@
 set -e
 GP=/soc/gpio@641b0000      # GPIO-Baustein des Chips, hatte keine phandle
 GP_PH=105                  # frei gewaehlt (hoechste vorhandene phandle war 104)
+FG=/soc/spi@64200000/pmic@0/fuel-gauge@c00   # Akkuanzeige im PMIC
+BAT_PH=106                 # phandle fuer den neuen Akku-Knoten
+# Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
+AKKU=${AKKU:-1}
+AKKU_ARGS=()
+if [ "$AKKU" = 1 ]; then AKKU_ARGS=(
+  `# 04.10.: Akku-Profil "bat", Alterungsstufe 0 aus Xiaomis dtbo (bat.id=0, charge.total_mah=5080000)` \
+  /battery compatible simple-battery \
+  /battery phandle u:$BAT_PH \
+  /battery charge-full-design-microamp-hours u:0x4f5880 \
+  /battery charge-full-microamp-hours u:0x4d83c0 \
+  /battery precharge-current-microamp u:0x3a980 \
+  /battery charge-term-current-microamp u:0x3a980 \
+  /battery constant-charge-voltage-max-microvolt u:0x43e6d0 \
+  /battery factory-internal-resistance-micro-ohms u:0x1d4c0 \
+  /battery voltage-min-design-microvolt u:0x34a490 \
+  /battery ocv-capacity-celsius u:0x19 \
+  /battery ocv-capacity-table-0 "u:0x42ecd0 0x64 0x41bc20 0x5f 0x40c9f0 0x5a 0x3ff318 0x55 0x3f2028 0x50 0x3e5508 0x4b 0x3d91b8 0x46 0x3cda20 0x41 0x3c39f8 0x3c 0x3b8e18 0x37 0x3ac6e0 0x32 0x3a5d68 0x2d 0x3a1330 0x28 0x39d898 0x23 0x39b570 0x1e 0x398e60 0x19 0x394bf8 0x14 0x38f608 0x0f 0x386968 0x0a 0x3782f0 0x05 0x33e140 0x00" \
+  `# 04.10.: Akkuanzeige einschalten, Messwiderstand wie Xiaomi (sprd,calib-resistance-micro-ohms = 0x12f2)` \
+  $FG monitored-battery u:$BAT_PH \
+  $FG sprd,calib-resistance-micro-ohms u:0x12f2 \
+  $FG status okay )
+fi
 
 ~/redmi-build/vendorboot_dt.sh rezept \
   `# 03./04.10.: cpufreq einschalten` \
@@ -23,4 +46,5 @@ GP_PH=105                  # frei gewaehlt (hoechste vorhandene phandle war 104)
   /gpio-keys/key-volumedown label "Volume Down Key" \
   /gpio-keys/key-volumedown linux,code u:114 \
   /gpio-keys/key-volumedown gpios "u:$GP_PH 124 1" \
-  /gpio-keys/key-volumedown debounce-interval u:2
+  /gpio-keys/key-volumedown debounce-interval u:2 \
+  "${AKKU_ARGS[@]}"

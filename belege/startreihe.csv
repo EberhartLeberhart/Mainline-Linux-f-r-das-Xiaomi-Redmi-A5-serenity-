@@ -32,3 +32,4 @@ zeit;art;ergebnis;boot_id;laufzeit_s;kernel;slot;poweroff_handler;check_ok;check
 2026-10-04 16:55:06;warm;OK;a088e3b5-2af4-4cfb-8e06-bcb24614e209;166;7.1.0-rc1-g5b29f471ea45 #61;_b;1;27;3;11;Akku 3: PMIC-EIC (2. Versuch, Bau ok)
 2026-10-04 17:13:36;warm;OK;a446dddb-9d87-4934-9874-6ee19959a8f4;30;7.1.0-rc1-g5b29f471ea45 #61;_b;1;26;3;12;vendor_boot_tasten: Lauter + Leiser
 2026-10-04 17:17:18;warm;OK;f97662fa-7d32-4db9-9b24-ca9d39966564;31;7.1.0-rc1-g5b29f471ea45 #61;_b;1;27;3;11;vendor_boot_tasten: Lauter + Leiser (0x38 korrekt)
+2026-10-04 17:32:20;warm;OK;9ab5d9fc-e66b-416c-a072-3efe5975e412;39;7.1.0-rc1-g0c23996ca877 #62;_b;1;27;4;10;Akku 4: Akkuanzeige (FGU) mit Xiaomi-Profil bat

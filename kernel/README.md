@@ -2,7 +2,7 @@
 
 Basis: https://codeberg.org/ums9230-mainline/linux.git
 Basis-Commit: 4a5b97b821b846f9a25a99a4fdcb3040fd910965
-Stand: 0c23996ca Redmi A5: PMIC SC2730 - Grundtreiber, ADC, eFuse, PMIC-EIC (Einschalttaste)
+Stand: 191fc3671 Redmi A5: Akkuanzeige SC2730-FGU
 
 Bauen:
 ```
