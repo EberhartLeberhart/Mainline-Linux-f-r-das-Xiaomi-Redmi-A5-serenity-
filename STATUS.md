@@ -74,7 +74,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | USB-Gadget NCM + ACM | ✅ | `usb0` 192.168.7.2, Konsole auf ttyGS0 |
 | SSH | ✅ | täglich in Gebrauch |
 | Internet über PC (NAT) | ✅ | `net.sh` |
-| USB-Host-Modus (LAN-Hub, Sticks) | ✅ von Hand | 04.10.: Rolle per `/sys/class/usb_role/64900000.usb-role-switch/role` = host, **5 V aus dem Ladechip** (REG01 Bit 5 OTG, Laden aus; REG08 → 0xe0 = OTG; 5,15 V, Grenze 1,2 A). DT hat **keine vbus-supply** – der Treiber schaltet die 5 V nicht selbst. USB-Stick: High-Speed 480 Mbit, **200 MB lesen mit 10,4–11,2 MB/s, 3× ohne Fehler**, vfat nur lesend eingehängt. Verbrauch mit Stick ~−180 mA, beim Lesen ~−215 mA (aus dem Akku – **Host und Laden gehen nicht gleichzeitig**). ⚠️ Belegt: PC-Kabel einstecken, solange die 5 V an sind → Handy speist ~0,2 A in den PC zurück (−325 mA). Testskript `redmi-otgtest.sh` mit Wächter: Gerät ab → 5 V nach **1,2 s** aus (belegt), dazu Stromgrenze als 2. Sicherung (nicht ausgelöst getestet ❓). Babble/Abbruch nur beim Wackeln am billigen Stick. ❓ einmal `musb-hdrc: unexpected dma_addr` nach der Rückspeisung, ohne Folgen. Kein Dauerbetrieb/Dienst |
+| USB-Host-Modus (LAN-Hub, Sticks) | ✅ von Hand | 04.10.: Rolle per `/sys/class/usb_role/64900000.usb-role-switch/role` = host, **5 V aus dem Ladechip** (REG01 Bit 5 OTG, Laden aus; REG08 → 0xe0 = OTG; 5,15 V, Grenze 1,2 A). DT hat **keine vbus-supply** – der Treiber schaltet die 5 V nicht selbst. USB-Stick: High-Speed 480 Mbit, **200 MB lesen mit 10,4–11,2 MB/s, 3× ohne Fehler**, vfat nur lesend eingehängt. Verbrauch mit Stick ~−180 mA, beim Lesen ~−215 mA (aus dem Akku – **Host und Laden gehen nicht gleichzeitig**). ⚠️ Belegt: PC-Kabel einstecken, solange die 5 V an sind → Handy speist ~0,2 A in den PC zurück (−325 mA). Testskript `redmi-otgtest.sh` mit Wächter: Gerät ab → 5 V nach **1,2 s** aus (belegt), dazu Stromgrenze als 2. Sicherung (nicht ausgelöst getestet ❓). Babble/Abbruch nur beim Wackeln am billigen Stick. ❓ einmal `musb-hdrc: unexpected dma_addr` nach der Rückspeisung, ohne Folgen. **05.10. Hub mit Einspeisung ✅:** Rolle host, eigene 5 V AUS, Hub (`1a40:0101`, 4 Ports, am PC als Netzteil) speist ein → REG08=0xb4, **Handy lädt (+384 mA) und ist gleichzeitig Host**; Stick hinter dem Hub (`1-1.3`) gelesen mit 10,5 MB/s, dabei weiter +354 mA. Eingangsstrom blieb 0x04 (500 mA). Umstecken auf PC-Kabel im Host-Betrieb unbedenklich (keine eigenen 5 V). `unexpected dma_addr` (05.10. 5×) kommt nur nach Umstecken im **Geräte**-Modus, nie im Host-Betrieb ❓. Kein Dauerbetrieb/Dienst – Schalter `USB=geraet|hub` geplant |
 | Feste MAC-Adresse fürs Gadget | ❌ | Interface-Name am PC wechselt bei jedem Start |
 
 ## Strom und Stabilität
@@ -145,7 +145,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 2. Hintergrundlicht (PWM): vermutlich ❓ größter Verbraucher im Leerlauf – für den Server abschaltbar machen, dann Verbrauch neu messen
 2. Audio: Domain `/audio-dsp` → DMA → Codec
 3. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
-4. USB-Host als Dienst nur, wenn ein Zugang ohne USB da ist (WLAN) – sonst sperrt man sich aus
+4. USB-Schalter `geraet|hub` als Dienst, mit Rückfall auf `geraet`, wenn im Hub-Betrieb kein Netz kommt (Zugang dann über USB-LAN-Adapter am Hub)
 5. Helligkeit: kommt mit dem Display-Treiber (siehe Anzeige)
 6. Marlin3 (WLAN …) – Voraussetzung für USB-Host im Server-Betrieb
 

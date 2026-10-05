@@ -13,7 +13,11 @@
 #
 # Ladechip SGM41513 (i2c-2, 0x1a): REG01 Bit 5 OTG, Bit 4 Laden; REG08 Bit 2 = Eingang ok (PG),
 # Bits 7:5 = Eingangsart (111 = OTG); REG09 Bit 6 = Boost-Fehler (Ueberlast/Kurzschluss).
+#
+# HUB=1: Hub MIT eigener Stromversorgung (speist ins Handy ein). Dann: Rolle host, eigene 5 V
+#        bleiben IMMER aus, der Ladechip laedt aus dem Hub. Ohne fremden Strom -> Abbruch.
 set -u
+HUB=${HUB:-0}
 LOG=/root/otgtest.log
 R=/sys/class/usb_role/64900000.usb-role-switch/role
 BUS=2; ADR=0x1a
@@ -77,6 +81,30 @@ done
 [ $ok -ge 3 ] || { log "ABBRUCH: Kabel nicht abgezogen"; exit 1; }
 log "Kabel ab (REG08=$(rd 0x08), Strom $(strom) mA) - jetzt 20 s fuer OTG-Adapter + Geraet"
 sleep 20
+if [ "$HUB" = 1 ]; then
+    # Hub-Modus: der Hub MUSS Strom liefern, eigene 5 V bleiben aus
+    kein_eingang && { log "ABBRUCH (Hub-Modus): kein Strom vom Hub (REG08=$(rd 0x08)) - Netzteil am Hub?"; exit 1; }
+    log "Hub liefert Strom: REG08=$(rd 0x08) REG00=$(rd 0x00) Strom $(strom) mA"
+    echo host > $R; sleep 1
+    log "Rolle jetzt: $(cat $R), Modus: $(cat /sys/devices/platform/soc/64900000.usb/musb-hdrc.9.auto/mode) - eigene 5 V AUS (REG01=$(rd 0x01))"
+    sleep 4
+    log "Geraete am Hub:"; geraete >> $LOG
+    n=0; while [ ! -b /dev/sda ] && [ $n -lt 10 ]; do sleep 1; n=$((n+1)); done
+    if [ -b /dev/sda ]; then
+        log "Lesetest durch den Hub: 200 MB direkt von /dev/sda ..."
+        erg=$(timeout 60 dd if=/dev/sda of=/dev/null bs=1M count=200 iflag=direct 2>&1 | tail -1)
+        log "  dd: $erg"
+        log "  danach: REG08=$(rd 0x08) REG09=$(rd 0x09) Strom $(strom) mA (positiv = laedt)"
+    else
+        log "Lesetest: kein /dev/sda - kein Stick am Hub erkannt"
+    fi
+    for t in 10 20 30 40 50 60; do
+        sleep 10
+        log "${t}s: REG08=$(rd 0x08) REG09=$(rd 0x09) Strom $(strom) mA (positiv = laedt)"
+        geraete >> $LOG
+    done
+    exit 0
+fi
 kein_eingang || { log "ABBRUCH: fremder Strom an der Buchse (REG08=$(rd 0x08)) - keine 5 V eingeschaltet"; exit 1; }
 
 echo host > $R; sleep 1
