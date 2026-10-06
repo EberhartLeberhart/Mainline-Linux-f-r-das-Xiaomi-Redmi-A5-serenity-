@@ -1,7 +1,8 @@
 #!/bin/bash
 # redmi-taste.sh - Einschalttaste: mindestens 3 Sekunden halten = Herunterfahren.
-# Kurzer Druck tut nichts (logind ist per /etc/systemd/logind.conf.d/redmi-taste.conf auf
-# HandlePowerKey=ignore gestellt, sonst wuerde schon ein kurzer Druck ausschalten).
+# Kurzer Druck = Display-Licht kurz an (redmi-licht.sh kurz, nur wirksam bei START=aus).
+# logind ist per /etc/systemd/logind.conf.d/redmi-taste.conf auf HandlePowerKey=ignore
+# gestellt, sonst wuerde schon ein kurzer Druck ausschalten.
 # Laeuft als redmi-taste.service. Braucht nur Bordmittel (od), kein Python.
 HALTEN=3
 k() { echo "REDMI: $*" > /dev/kmsg; }
@@ -21,6 +22,10 @@ stdbuf -oL od -An -v -tu2 -w24 "$dev" | while read -r _ _ _ _ _ _ _ _ typ code w
     case "$wert" in
     1)  ( sleep $HALTEN; k "Taste ${HALTEN} s gehalten - fahre herunter"; systemctl poweroff ) &
         pid=$! ;;
-    0)  [ -n "$pid" ] && kill $pid 2>/dev/null; pid="" ;;
+    0)  # losgelassen vor Ablauf der 3 s = kurzer Druck -> Licht kurz an (06.10.)
+        if [ -n "$pid" ] && kill $pid 2>/dev/null; then
+            [ -x /usr/local/sbin/redmi-licht.sh ] && /usr/local/sbin/redmi-licht.sh kurz >/dev/null 2>&1 &
+        fi
+        pid="" ;;
     esac
 done

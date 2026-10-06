@@ -1,0 +1,10 @@
+[Unit]
+Description=Redmi A5: Display-Licht beim Start (START in /etc/redmi/licht.conf)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/redmi-licht.sh start
+
+[Install]
+WantedBy=multi-user.target

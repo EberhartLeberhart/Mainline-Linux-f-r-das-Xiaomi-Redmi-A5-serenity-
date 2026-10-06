@@ -123,7 +123,10 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | Bereich | Status | Beleg / Notiz |
 |---|---|---|
 | Bildschirm (Bootloader-Framebuffer) | ✅ | läuft über **simpledrm** (720×1640) → Grundlage für eine Oberfläche |
-| Echter Display-Treiber (DRM) | ❌ | nur simpledrm |
+| **Helligkeit** | ✅ | 06.10.: Panel regelt selbst – Xiaomi-DT `oled-backlight`: DCS **0x51**, 12 Bit (0–4095, Standard 500). DSI-Baustein `0x31100000` läuft vom Bootloader weiter (Register = Panelwerte, PHY eingerastet, Anordnung wie Mainline `sprd_dsi.c`) → Befehl per `busybox devmem` (GEN_PLD 0x70, GEN_HDR 0x6C) ✅ sichtbar. **Gemessen ohne Kabel: voll 490 mA, 500 → 119 mA, aus → 72 mA** (−40 %). Werkzeug `redmi-licht.sh` + Dienst (Server: Licht aus, Einschalttaste kurz = 30 s an) ✅ auf dem Handy belegt. Die PWM des Prozessors wirkt bei diesem Panel nicht (erklärt den früheren Fehlschlag) |
+| Panel-Daten | ✅ gelesen | 06.10. aus Xiaomis dtbo (`Panel_C3Z_42_02_0a_vid`, 8 Panels im Overlay): 720×1640, 4 Spuren, Video, RGB888, ~1,2 Gbit/s/Spur, Pixeltakt 199,2 MHz, 60/90/120 Hz (nur vfp anders), Reset-Folge, Init-, Sleep-In/Out-, CABC-Befehle. DPU `0x31000000` (qogirl6): Ebene 0 = `0x9CF2A000` ARGB8888 = simpledrm-Bereich (Gegenprobe ✅), IOMMU vermutlich aus |
+| Touch | ❌ | 06.10.: Novatek TDDI über **SPI** (`c3z,NVT-ts-spi`, 9,6 MHz), Reset GPIO 145, IRQ GPIO 144; Display-Spannung SM5109 an I2C 0x3e. Xiaomi-Treiber `novatek_nt36528a_spi_ts.ko` (vendor_ramdisk / vendor_dlkm) basiert auf Novateks GPL-Treiber `nt36xxx` → **portieren**. Chip ohne Flash: Firmware wird bei jedem Start geladen (`nvt_download_firmware_hw_crc`) → **Firmware nötig**: liegt in der eigenen Android-Partition `odm_a:/firmware/novatek_ts_{csot,truly}_fw.bin` (je 128 KB; nicht frei, wird **nicht** veröffentlicht – Werkzeug `lp_auspacken.py` holt sie aus der eigenen super-Partition). Zuordnung vermutlich C3Z_42 → CSOT (Treiber-Standard) ❓. Kernel braucht noch `CONFIG_SPI_SPRD` (Bus `spi3` = `spi@20150000`) |
+| Echter Display-Treiber (DRM) | ❌ | nur simpledrm; Mainline sprd_dpu/sprd_dsi (sharkl3) als Ausgangspunkt – DSI-Register passen |
 | Helligkeit | 🟡 | 04.10.: PWM-Treiber läuft, Kanal 2 erzeugt nachweislich 25 kHz (Takte an, `actual: enabled`), **Licht reagiert aber nicht** – weder 0 % noch 100 %. Xiaomi/Android nutzen genau diesen Kanal. Vermutung ❓: Display-Chip NT36528 muss erst selbst initialisiert werden (DSI) → mit dem Display-Treiber |
 | Touchscreen | ❌ | Novatek NT36528A über **SPI** (laut Android-Modulen) |
 | Kernel-Logo (Ziege) | ✅ | 02.10.: Ziege mittig statt Pinguine, auch beim Kaltstart; hing früher nur wegen der Größe |
@@ -146,7 +149,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 2. Audio: Domain `/audio-dsp` → DMA → Codec
 3. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
 4. USB-Schalter `geraet|hub` als Dienst, mit Rückfall auf `geraet`, wenn im Hub-Betrieb kein Netz kommt (Zugang dann über USB-LAN-Adapter am Hub)
-5. Helligkeit: kommt mit dem Display-Treiber (siehe Anzeige)
+5. Display: Panel schlafen legen (Sleep-In aus dem DT), dann Touch (SPI, Novatek)
 6. Marlin3 (WLAN …) – Voraussetzung für USB-Host im Server-Betrieb
 
 ## Ideen für später (niedrige Priorität)
