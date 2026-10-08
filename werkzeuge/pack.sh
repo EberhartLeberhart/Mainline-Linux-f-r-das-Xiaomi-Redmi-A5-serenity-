@@ -15,7 +15,7 @@ echo ">>> Image:  $(date -r "$IMG" '+%F %H:%M')  $want"
 echo ">>> Git:    $head  $(git -C $K log -1 --format=%s)"
 case "$want" in *g${head}*) ;; *) echo "FEHLER: Image passt nicht zum Git-Stand - neu bauen!"; exit 1;; esac
 
-python3 $HOME/mkbootimg-aosp/mkbootimg.py --header_version 4 --kernel "$IMG" --cmdline '' -o boot_mainline.img
+python3 $HOME/mkbootimg-aosp/mkbootimg.py --header_version 4 --kernel "$IMG" --cmdline "${CMDLINE:-}" -o boot_mainline.img
 
 got=$(strings boot_mainline.img | grep -m1 -o "Linux version [^ ]*")
 [ "$got" = "$want" ] || { echo "FEHLER: im boot_mainline.img steckt '$got'"; exit 1; }

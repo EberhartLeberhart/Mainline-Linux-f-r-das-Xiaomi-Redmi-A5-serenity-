@@ -1,0 +1,49 @@
+From a1b678ac5cbbeb0dafc152ba9eba6d9ef96e80a4 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Thu, 8 Oct 2026 18:09:15 +0200
+Subject: [PATCH 17/17] usb: musb: host: AUTOSET/DMAMODE fuer Unisoc-DMA beim
+ Senden setzen
+
+Ohne AUTOSET bleibt jedes volle USB-Paket (512 Byte) im FIFO liegen:
+kurze Pakete gehen, alles ab zwei USB-Paketen haengt (Tx status -2,
+NETDEV WATCHDOG). Vorbild: Xiaomi/Unisoc-Kernel (arctic-w-oss),
+musb_host.c musb_tx_dma_program.
+
+Beleg Redmi A5, RTL8153 am Hub: Ping 56/1000/1472 Byte je 12/12,
+0 Sendefehler (vorher ab 1000 Byte 0/12).
+---
+ drivers/usb/musb/musb_host.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/usb/musb/musb_host.c b/drivers/usb/musb/musb_host.c
+index 68972fe78..bae389488 100644
+--- a/drivers/usb/musb/musb_host.c
++++ b/drivers/usb/musb/musb_host.c
+@@ -662,6 +662,24 @@ static bool musb_tx_dma_program(struct dma_controller *dma,
+ 		musb_writew(epio, MUSB_TXCSR, csr | MUSB_TXCSR_H_WZC_BITS);
+ 		return false;
+ 	}
++
++	/*
++	 * Unisoc-DMA im Host-Betrieb: AUTOSET + DMAMODE + DMAENAB muessen hier gesetzt
++	 * werden (wie im Xiaomi/Unisoc-Kernel). Ohne AUTOSET bleibt jedes volle USB-Paket
++	 * (512 Byte) im FIFO liegen: kurze Pakete gehen, ab zwei USB-Paketen haengt es
++	 * (Redmi A5, RTL8153 am Hub: Ping 56 Byte ok, ab 1000 Byte Tx status -2).
++	 */
++	if (musb_dma_sprd(hw_ep->musb)) {
++		void __iomem *epio = hw_ep->regs;
++		u16 csr = musb_readw(epio, MUSB_TXCSR);
++
++		if ((!(csr & MUSB_TXCSR_TXPKTRDY) && !(csr & MUSB_TXCSR_AUTOSET)) ||
++		    !(csr & MUSB_TXCSR_DMAENAB)) {
++			csr |= MUSB_TXCSR_MODE | MUSB_TXCSR_AUTOSET |
++			       MUSB_TXCSR_DMAENAB | MUSB_TXCSR_DMAMODE;
++			musb_writew(epio, MUSB_TXCSR, csr);
++		}
++	}
+ 	return true;
+ }
+ 
+-- 
+2.43.0
+

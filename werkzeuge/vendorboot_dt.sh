@@ -53,6 +53,14 @@ echo ">>> Unterschiede im Device-Tree:"; diff $W/a.dts $W/b.dts | sed 's/^/    /
 # 4) verpacken und vendor_boot mit denselben Parametern neu bauen
 python3 "$WRAP" $W/neu.dtb $W/neu_table.dtb >/dev/null
 ARGS=$(sed "s|--dtb [^ ]*|--dtb $W/neu_table.dtb|" $W/args.txt)
+# Optional: Zusatz fuer die Kernel-Befehlszeile (08.10.: der Bootloader nimmt NUR die vendor_cmdline,
+# die --cmdline im boot.img wird ignoriert). Beispiel: CMDLINE_ZUSATZ="musb_hdrc.use_dma=0"
+if [ -n "${CMDLINE_ZUSATZ:-}" ]; then
+    grep -q -- "--vendor_cmdline '" $W/args.txt || { echo "FEHLER: --vendor_cmdline nicht in den Parametern gefunden"; exit 1; }
+    ARGS=$(echo "$ARGS" | sed "s|--vendor_cmdline '\([^']*\)'|--vendor_cmdline '\1 $CMDLINE_ZUSATZ'|")
+    echo ">>> vendor_cmdline ergaenzt um: $CMDLINE_ZUSATZ"
+    echo "$ARGS" | grep -o -- "--vendor_cmdline '[^']*'" | sed 's/^/    /'
+fi
 eval python3 $MKB/mkbootimg.py $ARGS --vendor_boot vendor_boot_$NAME.img
 cp $W/neu.dtb serenity_$NAME.dtb
 

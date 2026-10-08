@@ -18,6 +18,7 @@
 #        bleiben IMMER aus, der Ladechip laedt aus dem Hub. Ohne fremden Strom -> Abbruch.
 set -u
 HUB=${HUB:-0}
+HUB_DAUER=${HUB_DAUER:-60}   # Sekunden im Hub-Betrieb (z.B. 300 fuer den LAN-Test)
 LOG=/root/otgtest.log
 R=/sys/class/usb_role/64900000.usb-role-switch/role
 BUS=2; ADR=0x1a
@@ -98,10 +99,14 @@ if [ "$HUB" = 1 ]; then
     else
         log "Lesetest: kein /dev/sda - kein Stick am Hub erkannt"
     fi
-    for t in 10 20 30 40 50 60; do
-        sleep 10
+    t=0
+    while [ $t -lt $HUB_DAUER ]; do
+        sleep 10; t=$((t+10))
         log "${t}s: REG08=$(rd 0x08) REG09=$(rd 0x09) Strom $(strom) mA (positiv = laedt)"
         geraete >> $LOG
+        ip -br addr | grep -v -E "^(lo|sit0)" | sed 's/^/    Netz: /' >> $LOG
+        ip neigh | grep -v -E "^fe80|FAILED" | sed 's/^/    Nachbar: /' >> $LOG
+        ping -c1 -W1 192.168.1.1 >/dev/null 2>&1 && echo "    Router 192.168.1.1: erreichbar" >> $LOG || echo "    Router 192.168.1.1: NICHT erreichbar" >> $LOG
     done
     exit 0
 fi

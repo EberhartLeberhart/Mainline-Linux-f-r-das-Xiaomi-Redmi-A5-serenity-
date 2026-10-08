@@ -1,0 +1,11 @@
+[Unit]
+Description=Redmi A5: USB-Rolle automatisch (PC -> Geraet, Hub mit Netzteil -> Host)
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/local/sbin/redmi-usb.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

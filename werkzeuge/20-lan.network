@@ -1,0 +1,14 @@
+# /etc/systemd/network/20-lan.network - Redmi A5: USB-LAN-Adapter (z.B. Hama/RTL8153 am Hub)
+# Jede kabelgebundene Netzwerkkarte ausser usb0 holt sich per DHCP eine Adresse vom Router.
+# Der Rechnername (redmi-a5) wird mitgeschickt -> im Router unter diesem Namen zu finden.
+[Match]
+Type=ether
+Name=en* eth*
+
+[Network]
+DHCP=yes
+IPv6AcceptRA=yes
+
+[DHCPv4]
+SendHostname=yes
+RouteMetric=100

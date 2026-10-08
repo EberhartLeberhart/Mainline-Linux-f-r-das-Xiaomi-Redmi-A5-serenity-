@@ -1,7 +1,7 @@
 From b4b31aa64e883bbb0987c1a95db0c8629f7dac07 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Sun, 27 Sep 2026 18:23:59 +0200
-Subject: [PATCH 02/16] Redmi A5: sauberer Boot ohne Debug - Cache-Flush am
+Subject: [PATCH 02/17] Redmi A5: sauberer Boot ohne Debug - Cache-Flush am
  Einstieg, ACPI aus, TRNG aus, ADI-Neustart
 
 ---

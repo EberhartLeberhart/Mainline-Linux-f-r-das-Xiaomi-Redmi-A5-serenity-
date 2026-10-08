@@ -2,7 +2,7 @@
 
 Basis: https://codeberg.org/ums9230-mainline/linux.git
 Basis-Commit: 4a5b97b821b846f9a25a99a4fdcb3040fd910965
-Stand: dc21572ec redmi_a5: USB-LAN (RTL8153/r8152, usbnet, cdc_ether) fest eingebaut fuer Hub-Betrieb
+Stand: a1b678ac5 usb: musb: host: AUTOSET/DMAMODE fuer Unisoc-DMA beim Senden setzen
 
 Bauen:
 ```
