@@ -13,6 +13,7 @@
 set -u
 STUFE=${1:-0}
 KO=${KO:-/root/wcn_starttest.ko}
+LAUSCHER=${LAUSCHER:-/root/wcn_lauscher.ko}   # hoert auf Mailbox-Kanal 8 mit (nur Stufe 3, wenn vorhanden)
 LOG=/root/wcntest_$(date +%Y-%m-%d_%H%M)_stufe${STUFE}.log
 
 log(){ echo "$*" | tee -a "$LOG"; }
@@ -34,6 +35,9 @@ log "-- Mailbox-Interrupts vorher:"; mbox | tee -a "$LOG"
 echo "REDMI: wcntest Stufe $STUFE startet" > /dev/kmsg
 
 N0=$(dmesg | wc -l)
+if [ "$STUFE" = 3 ] && [ -f "$LAUSCHER" ] && ! lsmod | grep -q "^wcn_lauscher"; then
+	insmod "$LAUSCHER" kanal=8 && log "-- Lauscher auf Mailbox-Kanal 8 geladen" || log "-- Lauscher laedt NICHT (weiter ohne)"
+fi
 insmod "$KO" stufe="$STUFE"
 RC=$?
 log "-- insmod Rueckgabe $RC"
@@ -42,6 +46,9 @@ log "-- insmod Rueckgabe $RC"
 [ "$STUFE" = 3 ] && sleep 5
 log "-- dmesg:"; dmesg | tail -n +$((N0 + 1)) | tee -a "$LOG"
 log "-- Mailbox-Interrupts nachher:"; mbox | tee -a "$LOG"
+if [ -r /sys/devices/platform/wcn-lauscher/nachrichten ]; then
+	log "-- Lauscher:"; tee -a "$LOG" < /sys/devices/platform/wcn-lauscher/nachrichten
+fi
 if [ -r /sys/devices/platform/wcntest/zustand ]; then
 	log "-- Zustand:"; tee -a "$LOG" < /sys/devices/platform/wcntest/zustand
 fi
