@@ -180,6 +180,9 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
   (OPEN/SBUF_INIT/DONE), Log-Rahmen Nr 2 und 3 wie beim ersten Start.
   Nebenbefund: Nach dem Abschalten meldet die PMU das WCN-System als „aus“ (`0x538` = 7) – der „an+wach“-Zustand nach dem
   Einschalten des Handys stammt also vom Bootloader.
+- **Stromverbrauch des WCN (23:00, `redmi-wcnstrom.sh`, ohne Kabel, Panel schläft, je 20 s Mittel)** ✅:
+  WCN aus −49 / −52 / −52 mA, WCN an und Kern schläft −50 / −52 mA. **Kein messbarer Unterschied** (< ~2 mA, im Rauschen):
+  Der schlafende WCN-Kern samt Reglern kostet praktisch nichts. Aktiver Betrieb (WLAN/BT) ist noch nicht gemessen.
 - **Nächster Schritt:** sipc (smsg/sbuf) aus `drivers/soc/sprd/modem/sipc/` portieren und an Mailbox-Kanal 8 hängen
   (Mainline `#mbox-cells = <1>`), dann die Nachrichten des WCN-Kerns lesen. Danach `sprdbt_tty` bzw. WLAN `sc2355`.
 
