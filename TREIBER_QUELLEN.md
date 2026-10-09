@@ -139,6 +139,22 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
   - `cali_flag` bleibt `0xEFEFFEFE` und `init_status` `0xF0F0F0FF` – derselbe Zustand, der nach Android im Speicher stand.
     Xiaomi meldet also offenbar kein `0x13579BDF` zurück (`fertig_melden` bleibt aus).
   - Kalibrierung: `dfs` = `0x70`/`0x11000000`, `rfi` = 1 vom Kern gesetzt. eFuse-Felder waren `0x0000ffff`/0 (nicht von uns gesetzt) ❓.
+- **Lauscher auf Mailbox-Kanal 8 (21:59, Beleg `wcntest_2026-10-09_2159_stufe3.log`)** ✅: `kernel/wcn-test/wcn_lauscher.c` meldet sich
+  über einen zur Laufzeit angelegten DT-Knoten (`mboxes = <&mailbox 8>`) als Empfänger an. Der WCN-Kern schickt kurz vor `0xF0F0F0FF`
+  drei sipc-**OPEN**-Nachrichten (Flag `0xBEEE`), Ziel ist sipc-Kern 3 (`SIPC_WCN_DST`):
+
+  | smsg-Kanal | Bedeutung (Realme `sprdwcn/sipc/wcn_sipc.c`) | Art |
+  |---|---|---|
+  | 4 | AT-Befehle, Bluetooth, FM (gemeinsam; bufid AT 5, BT tx 11/rx 10, FM tx 14/rx 13) | sbuf |
+  | 5 | Firmware-Log des WCN-Kerns | sbuf |
+  | 7 | WLAN-Befehle | sblock |
+
+  Der Kern wartet auf das OPEN der Linux-Seite und danach auf die Puffer im gemeinsamen Speicher (sbuf/sblock).
+- **WCN-Speicher übersteht einen Warmstart** (belegt 21:56): Nach `reboot` standen Firmware, `0xF0F0F0FF` und „DSLP“ noch im RAM.
+  Die Werte „nach Android“ in der Vorprüfung waren also Reste. Der Treiber prüft „schon gelaufen“ deshalb nur noch über vddwcn.
+- **Lauschangriff auf den Speicher:** Der Lauscher gibt den reservierten WCN-Speicher nur lesend aus
+  (`/sys/devices/platform/wcn-lauscher/wcn_ram_btwf` = `0x87000000–0x8747ffff`, `wcn_ram_hoch` = `0x87600000–0x877fffff`; die Lücke
+  mit normalem Linux-RAM bleibt draußen). Ziel: Log-Text und Puffer des Kerns finden, bevor sipc steht ❓.
 - **Nächster Schritt:** sipc (smsg/sbuf) aus `drivers/soc/sprd/modem/sipc/` portieren und an Mailbox-Kanal 8 hängen
   (Mainline `#mbox-cells = <1>`), dann die Nachrichten des WCN-Kerns lesen. Danach `sprdbt_tty` bzw. WLAN `sc2355`.
 

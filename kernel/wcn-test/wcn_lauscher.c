@@ -19,6 +19,13 @@
  *
  * Reihenfolge: ZUERST dieses Modul laden, DANN wcn_starttest stufe=3.
  * Ausgabe: dmesg (Praefix "wcnlausch:") und /sys/devices/platform/wcn-lauscher/nachrichten
+ *
+ * "Lauschangriff" auf den Speicher (nur lesen): Zwei Dateien geben den reservierten
+ * WCN-Speicher so aus, wie der WCN-Kern ihn sieht:
+ *   wcn_ram_btwf  0x87000000-0x8747ffff (4,5 MB, Firmware, Daten, Puffer des BT/WLAN-Kerns)
+ *   wcn_ram_hoch  0x87600000-0x877fffff (2 MB, GNSS-Bereich und Sync bei 0x877fdc00)
+ * Die Luecke 0x87480000-0x874fffff ist normaler Linux-RAM und wird bewusst NICHT ausgegeben.
+ * Auswerten am PC z. B.: strings -n 6 wcn_ram_btwf | less
  */
 
 #include <linux/device.h>
@@ -30,6 +37,8 @@
 #include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/io.h>
+#include <linux/sysfs.h>
 
 #define TAG "wcnlausch: "
 
@@ -65,6 +74,40 @@ static struct mbox_client cl;
 static struct mbox_chan *chan;
 static bool phandle_gesetzt;
 static struct device_node *mbox_np;
+
+/* reservierter WCN-Speicher (no-map, belegt 09.10.), nur lesend */
+struct bereich {
+	phys_addr_t phys;
+	size_t len;
+	void *va;
+};
+static struct bereich ram_btwf = { 0x87000000, 0x480000 };
+static struct bereich ram_hoch = { 0x87600000, 0x200000 };
+
+static ssize_t ram_lesen(struct bereich *b, char *buf, loff_t pos, size_t n)
+{
+	if (!b->va || pos >= b->len)
+		return 0;
+	n = min_t(size_t, n, b->len - pos);
+	memcpy_fromio(buf, (void __iomem *)(b->va + pos), n);
+	return n;
+}
+
+static ssize_t wcn_ram_btwf_read(struct file *f, struct kobject *k, const struct bin_attribute *a,
+				 char *buf, loff_t pos, size_t n)
+{
+	return ram_lesen(&ram_btwf, buf, pos, n);
+}
+
+static ssize_t wcn_ram_hoch_read(struct file *f, struct kobject *k, const struct bin_attribute *a,
+				 char *buf, loff_t pos, size_t n)
+{
+	return ram_lesen(&ram_hoch, buf, pos, n);
+}
+
+static const BIN_ATTR_RO(wcn_ram_btwf, 0x480000);
+static const BIN_ATTR_RO(wcn_ram_hoch, 0x200000);
+static bool bin_btwf, bin_hoch;
 
 static const char *typ_text(u8 t)
 {
@@ -197,6 +240,16 @@ static void aufraeumen(void)
 	if (chan)
 		mbox_free_channel(chan);
 	chan = NULL;
+	if (pdev && bin_btwf)
+		sysfs_remove_bin_file(&pdev->dev.kobj, &bin_attr_wcn_ram_btwf);
+	if (pdev && bin_hoch)
+		sysfs_remove_bin_file(&pdev->dev.kobj, &bin_attr_wcn_ram_hoch);
+	bin_btwf = bin_hoch = false;
+	if (ram_btwf.va)
+		memunmap(ram_btwf.va);
+	if (ram_hoch.va)
+		memunmap(ram_hoch.va);
+	ram_btwf.va = ram_hoch.va = NULL;
 	if (pdev) {
 		device_remove_file(&pdev->dev, &dev_attr_nachrichten);
 		platform_device_unregister(pdev);
@@ -256,6 +309,16 @@ static int __init lauscher_init(void)
 	ret = device_create_file(&pdev->dev, &dev_attr_nachrichten);
 	if (ret)
 		pr_warn(TAG "Datei nachrichten: %d\n", ret);
+
+	/* WC wie Android (nocache); klappt nur bei no-map - sonst lieber gar nicht */
+	ram_btwf.va = memremap(ram_btwf.phys, ram_btwf.len, MEMREMAP_WC);
+	ram_hoch.va = memremap(ram_hoch.phys, ram_hoch.len, MEMREMAP_WC);
+	if (ram_btwf.va && !sysfs_create_bin_file(&pdev->dev.kobj, &bin_attr_wcn_ram_btwf))
+		bin_btwf = true;
+	if (ram_hoch.va && !sysfs_create_bin_file(&pdev->dev.kobj, &bin_attr_wcn_ram_hoch))
+		bin_hoch = true;
+	pr_info(TAG "WCN-Speicher lesbar: wcn_ram_btwf %s, wcn_ram_hoch %s\n",
+		bin_btwf ? "ja" : "NEIN", bin_hoch ? "ja" : "NEIN");
 	pr_info(TAG "hoere auf Mailbox-Kanal %d - jetzt wcn_starttest stufe=3 laden\n", kanal);
 	return 0;
 
