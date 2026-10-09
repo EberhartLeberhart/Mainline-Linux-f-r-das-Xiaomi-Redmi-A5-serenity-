@@ -160,13 +160,19 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
   Kein eigener Log-Ring im RAM; die `[T:…]`-Texte sind Reste von Formatierpuffern. Firmware-Texte bestätigen sipc auf
   der Gegenseite (`sipc.c`, `smsg.c`, `sbuf.c`, `sblock.c`, `VLOG_main: cannot creat sbufl`).
 - **sipc-Speicher des WCN (Realme `ums9230-wcn.dtsi`, core@3):** `mboxes = <&mailbox 8 0>`,
-  `sprd,smem-info = <0x87240000 0x00240000 0x140000>` – genau im unberührten Bereich. Für Xiaomi noch gegen das dtbo prüfen ❓.
+  `sprd,smem-info = <0x87240000 0x00240000 0x140000>` – genau im unberührten Bereich. **Xiaomi-dtbo identisch** ✅
+  (09.10., `overlay_0.dts` aus `dtbo_b`: core@3 `label = "sipc-wcn"`, `mboxes = <… 8 0>`, `smem-info = <0x87240000 0x240000 0x140000>`,
+  `wcn_bt` Kanal 4 tx_bufid 11 / rx_bufid 10). GNSS core@4 ebenfalls wie Realme: Mailbox 9,
+  `smem-info = <0x8749b000 0x11b000 0x32000>` – **liegt in der Lücke `0x87480000–0x874fffff`, die unter Mainline normaler RAM ist**;
+  vor einem GNSS-Versuch muss `0x8749b000–0x874ccfff` reserviert werden.
 - **sipc-lite, erster Handshake (22:27, Beleg `wcntest_2026-10-09_2227_stufe3.log`)** ✅: Lauscher mit `antworten=1`.
   WCN OPEN 5 → **wir OPEN 5** → WCN CMD SBUF_INIT → **wir DONE (`0x240000`)** → WCN EVENT WRPTR. Die Mailbox
   quittiert unser Senden (Inbox-IRQ GIC 114 zählt 2). Der Kern schreibt in unseren Ring (2880 Bytes in den ersten ~50 ms).
 - **Log-Format:** binäre Rahmen `7E7E7E7E | u16 Länge | u16 ? | 5A5A | u16 Typ | u32 Nr | u16 Nutzlänge | u16 ?`.
   Erster Typ `0x0281`: Registerspur der RF-Kalibrierung (Paare `Adresse<<16 | Wert`, z. B. `d19a`/`d0a2` in 4er-Schritten).
   Der Kern meldet WRPTR nur, wenn der Ring vorher leer war → Lauscher sieht zusätzlich alle 500 ms nach.
+- **Zweiter Lauf mit Entschlüssler (22:31)** ✅: beide Rahmen kommen an (Typ `0x0281`, Nr 2 und 3; Nr 1 fehlt – vermutlich vor unserem
+  DONE geschrieben). **Nach 60 s nichts Neues:** Der Kern schreibt nur beim Start (Kalibrierung) und schläft danach.
 - **Nächster Schritt:** sipc (smsg/sbuf) aus `drivers/soc/sprd/modem/sipc/` portieren und an Mailbox-Kanal 8 hängen
   (Mainline `#mbox-cells = <1>`), dann die Nachrichten des WCN-Kerns lesen. Danach `sprdbt_tty` bzw. WLAN `sc2355`.
 

@@ -167,7 +167,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 | Bereich | Status | Notiz |
 |---|---|---|
-| WLAN / Bluetooth / FM / GPS (Marlin3) | 🟡 | **09.10. abends: WCN-Kern läuft** ✅ – Testtreiber `kernel/wcn-test` (Stufe 3): Firmware `wcnmodem.bin` (aus `odm_a/firmware`, **nicht signiert**, läuft ohne trusty und ohne Speichersperre) nach `0x87000000`, Einschaltfolge nach Realme `wcn_poweron_device()` → Kern meldet `0xF0F0F0FF` nach **~540 ms**, schickt 3 Mailbox-Nachrichten auf **Kanal 8** (BT-sipc), geht danach in den Tiefschlaf (`DSLP`). Beleg `wcntest_2026-10-09_2146_stufe3.log`. Offen: sipc-Port (Kanal 8 hat keinen Empfänger), eFuse-Werte, Abschalten. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
+| WLAN / Bluetooth / FM / GPS (Marlin3) | 🟡 | **09.10. abends: WCN-Kern läuft** ✅ – Testtreiber `kernel/wcn-test` (Stufe 3): Firmware `wcnmodem.bin` (aus `odm_a/firmware`, **nicht signiert**, läuft ohne trusty und ohne Speichersperre) nach `0x87000000`, Einschaltfolge nach Realme `wcn_poweron_device()` → Kern meldet `0xF0F0F0FF` nach **~540 ms**, schickt 3 Mailbox-Nachrichten auf **Kanal 8** (BT-sipc), geht danach in den Tiefschlaf (`DSLP`). Beleg `wcntest_2026-10-09_2146_stufe3.log`. **sipc auf Kanal 5 (Firmware-Log) läuft in beide Richtungen** ✅ (22:27/22:31: OPEN, SBUF_INIT/DONE, Log-Rahmen gelesen; sipc-Speicher `0x87240000` = Xiaomi-dtbo). Offen: Kanal 4 (AT/BT), Kanal 7 (WLAN), eFuse-Werte, Abschalten. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
 | FM-Senden | ❓ | Behauptung aus altem Chat, **nicht belegt** |
 | Mobilfunk | ❌ | Ziel: Ersatz-Internet |
 | GPU (Mali-G57) | ❌ | braucht Power-Domains; vorher Temperaturgrenze für `gpu-thermal` |
@@ -182,7 +182,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 4. Akku: Ausschalten mit Kabel bei gekapptem Strom prüfen; später eigener Ladechip-Treiber statt i2cset
 5. Display: Abschalten/Wiedereinschalten im DRM-Treiber reparieren (Diagnose: DCS 0x0A muss 0x9C liefern), dann Schlaf über den Treiber (DPU/DSI aus) und Touch als Panel-Follower; Strom neu messen
 6. Touch: Feinschliff (Wächter-Erkennung im Treiber, Ausrichtung/Mehrfinger prüfen), Treiber-Korrekturen an George Chan melden
-7. **sipc aus der Realme-Quelle portieren** (Mailbox läuft, WCN-Kern läuft und ruft schon auf Kanal 8 – siehe TREIBER_QUELLEN.md); danach prüfen, ob auch der Audio-Kern antwortet
+7. **sipc weiter ausbauen:** Kanal 5 (Log) läuft; als Nächstes Kanal 4 (AT-Befehle, dann Bluetooth), WCN sauber abschalten; danach prüfen, ob auch der Audio-Kern antwortet
 8. Danach WLAN (wcn_bsp + sc2355-sipc) oder Ton (VBC/Codec; Verstärker FS1588 offen)
 9. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
 
