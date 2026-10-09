@@ -53,4 +53,17 @@ fi
   /soc/i2c@200f0000 status okay \
   `# 04.10.: i2c-sprd braucht einen Alias als Busnummer, sonst WARNING in i2c_add_numbered_adapter und kein Bus` \
   /aliases i2c2 /soc/i2c@200f0000 \
+  `# 09.10.: SPI-Bus 3 fuer den Touch (Xiaomi: spi3 = spi@20150000, Alias spi3). Knoten+Takte waren schon da, nur disabled` \
+  /soc/spi@20150000 status okay \
+  /soc/spi@20150000 "#address-cells" u:1 \
+  /soc/spi@20150000 "#size-cells" u:0 \
+  /aliases spi3 /soc/spi@20150000 \
+  `# 09.10.: Touch NT36528 (Kennung 0a 00 00 28 65 03 per spidev gelesen) an CS 0. Treiber nt36xxx_spi (George Chan, +NT36528):` \
+  `#   max. 5 MHz im Treiber -> 4 MHz; IRQ an ap_gpio 144 wie Xiaomi. KEIN reset-gpios: der Treiber haelt die Leitung sonst dauerhaft LOW` \
+  /soc/spi@20150000/touchscreen@0 compatible "novatek,nt36528-spi" \
+  /soc/spi@20150000/touchscreen@0 reg u:0 \
+  /soc/spi@20150000/touchscreen@0 spi-max-frequency u:4000000 \
+  /soc/spi@20150000/touchscreen@0 irq-gpios "u:$GP_PH 144 0" \
+  /soc/spi@20150000/touchscreen@0 touchscreen-size-x u:720 \
+  /soc/spi@20150000/touchscreen@0 touchscreen-size-y u:1640 \
   "${AKKU_ARGS[@]}"

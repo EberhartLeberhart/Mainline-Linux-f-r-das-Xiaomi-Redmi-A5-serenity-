@@ -1,0 +1,48 @@
+From 7ee1c248f6cb945435ab68eefadd6d525c996334 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Fri, 9 Oct 2026 17:53:18 +0200
+Subject: [PATCH 21/22] DIAG nt36xxx: Pufferinhalt/verworfene Punkte/fwinfo
+ ausgeben (voruebergehend)
+
+---
+ drivers/input/touchscreen/nt36xxx_core.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/input/touchscreen/nt36xxx_core.c b/drivers/input/touchscreen/nt36xxx_core.c
+index 438982244..04b4dc7cc 100644
+--- a/drivers/input/touchscreen/nt36xxx_core.c
++++ b/drivers/input/touchscreen/nt36xxx_core.c
+@@ -549,6 +549,9 @@ static void nt36xxx_report(struct nt36xxx_ts *ts)
+ 		goto xfer_error;
+ 	}
+ 
++	/* DIAGNOSE Redmi A5 (voruebergehend): Pufferanfang zeigen */
++	dev_info_ratelimited(ts->dev, "DIAG punkt: %*ph | %*ph\n", 13, point, 4, &point[61]);
++
+ 	/* wdt recovery and esd check */
+ 	for (i = 0; i < 7; i++) {
+ 		if ((point[i] != 0xFD) && (point[i] != 0xFE) && (point[i] != 0x77)) {
+@@ -577,8 +580,11 @@ static void nt36xxx_report(struct nt36xxx_ts *ts)
+ 				 (point[ppos + 3] & 0xf);
+ 
+ 			if ((obj->x > ts->prop.max_x) ||
+-			    (obj->y > ts->prop.max_y))
++			    (obj->y > ts->prop.max_y)) {
++				dev_info_ratelimited(ts->dev, "DIAG verworfen: id %d x %u y %u (max %u/%u)\n",
++					input_id, obj->x, obj->y, ts->prop.max_x, ts->prop.max_y);
+ 				continue;
++			}
+ 
+ 			obj->tm = point[ppos + 4];
+ 			if (obj->tm == 0)
+@@ -1097,6 +1103,7 @@ static int _nt36xxx_boot_download_firmware(struct nt36xxx_ts *ts) {
+ 	}
+ 
+ 	dev_info(ts->dev, "Touch IC fw loaded ok");
++	dev_info(ts->dev, "DIAG fwinfo: %*ph (prop max %u/%u)\n", 16, val, ts->prop.max_x, ts->prop.max_y);
+ 
+ 	ts->status |= NT36XXX_STATUS_DOWNLOAD_COMPLETE;
+ 
+-- 
+2.43.0
+

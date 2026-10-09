@@ -22,6 +22,13 @@ START=an; HELL=500; KURZ=30
 D=0x31100000
 STAND=/run/redmi-licht.stand
 SCHLAF=/run/redmi-licht.schlaeft
+# Touch (NT36528, TDDI): Display und Touch sind EIN Chip. Sleep-In bringt die Touch-Firmware zum Absturz
+# (Beleg 09.10.: Puffer nur noch "fd" = Waechter-Alarm, ~200 Interrupts/s, keine Beruehrungen mehr).
+# Deshalb: vor dem Schlafen Treiber abmelden, nach dem Wecken neu anmelden -> Firmware wird frisch geladen.
+TS_DEV=spi3.0
+TS_DRV=/sys/bus/spi/drivers/nt36675-spi
+touch_ab(){ [ -e $TS_DRV/$TS_DEV ] && echo $TS_DEV > $TS_DRV/unbind 2>/dev/null; return 0; }
+touch_an(){ [ -d $TS_DRV ] && [ ! -e $TS_DRV/$TS_DEV ] && echo $TS_DEV > $TS_DRV/bind 2>/dev/null; return 0; }
 KPID=/run/redmi-licht.kurz
 k(){ echo "REDMI: Licht $*" > /dev/kmsg 2>/dev/null; }
 rd(){ busybox devmem $((D + $1)); }
@@ -52,12 +59,13 @@ schlaf(){
     [ -f $SCHLAF ] && return 0
     dsi_ok || return 1
     setze 0 || return 1
+    touch_ab
     dcs 0x28 && sleep 0.05 && dcs 0x10 && touch $SCHLAF
 }
 wach(){
     [ -f $SCHLAF ] || return 0
     dsi_ok || return 1
-    dcs 0x11 && sleep 0.15 && dcs 0x29 && rm -f $SCHLAF
+    dcs 0x11 && sleep 0.15 && dcs 0x29 && rm -f $SCHLAF && touch_an
 }
 kurz_stop(){ [ -f $KPID ] && kill "$(cat $KPID)" 2>/dev/null; rm -f $KPID; }
 
@@ -74,7 +82,7 @@ case "${1:-status}" in
     start)  # beim Hochfahren (redmi-licht.service)
             if [ "$START" = aus ]; then sleep 10; rm -f $SCHLAF; schlaf && k "Start: Licht aus, Panel schlaeft (START=aus, Einschalttaste kurz = ${KURZ} s an)"
             else k "Start: Licht bleibt an"; fi ;;
-    status) echo "Panel: $([ -f $SCHLAF ] && echo schlaeft || echo wach)  Stand: $(cat $STAND 2>/dev/null || echo unbekannt)  START=$START HELL=$HELL KURZ=$KURZ  DSI: $(dsi_ok && echo bereit || echo NICHT bereit)" ;;
+    status) echo "Panel: $([ -f $SCHLAF ] && echo schlaeft || echo wach)  Touch: $([ -e $TS_DRV/$TS_DEV ] && echo an || echo ab)  Stand: $(cat $STAND 2>/dev/null || echo unbekannt)  START=$START HELL=$HELL KURZ=$KURZ  DSI: $(dsi_ok && echo bereit || echo NICHT bereit)" ;;
     *)      if [ "$1" -ge 0 ] 2>/dev/null; then kurz_stop; wach; setze "$1" && k "auf $1"
             else sed -n 2,4p "$0"; exit 1; fi ;;
 esac

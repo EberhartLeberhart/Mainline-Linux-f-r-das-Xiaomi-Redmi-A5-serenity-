@@ -1,0 +1,53 @@
+From d8c80a28b29cc7f9643befe750428388396e4439 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Fri, 9 Oct 2026 17:41:15 +0200
+Subject: [PATCH 20/22] Input: nt36xxx: Runtime-PM-Reste im Firmware-Download
+ entfernt (immer -EACCES)
+
+---
+ drivers/input/touchscreen/nt36xxx_core.c | 22 +++++-----------------
+ 1 file changed, 5 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/input/touchscreen/nt36xxx_core.c b/drivers/input/touchscreen/nt36xxx_core.c
+index 9e42dd25f..438982244 100644
+--- a/drivers/input/touchscreen/nt36xxx_core.c
++++ b/drivers/input/touchscreen/nt36xxx_core.c
+@@ -1121,19 +1121,11 @@ static void nt36xxx_download_firmware(struct work_struct *work) {
+ 		dev_info(ts->dev, "%s suspend1 is issued 0x%x", __func__, ret);
+ 	}
+ 
+-	if (!drm_is_panel_follower(ts->dev))
+-	{
+-	        /* this might not function properly due to panel-follower take-over */
+-        	if (pm_runtime_enabled(ts->dev))
+-                	pm_runtime_disable(ts->dev);
+-
+-		/* so the pm resume might have code to enable regulators. */
+-		ret = pm_runtime_resume_and_get(ts->dev);
+-		if (ret) {
+-			dev_err(ts->dev, "%s resume fail 0x%x", __func__, ret);
+-			goto exit;
+-		}
+-	}
++	/*
++	 * Kein Runtime-PM mehr (Commit "get rid of pm_runtime"): pm_runtime_disable() gefolgt von
++	 * pm_runtime_resume_and_get() liefert immer -EACCES, der Download brach dann jedes Mal ab
++	 * ("resume fail 0xfffffff3", Redmi A5 09.10.2026). Regler sind seit probe() an.
++	 */
+ 
+ 	disable_irq_nosync(ts->irq);
+ 
+@@ -1169,10 +1161,6 @@ static void nt36xxx_download_firmware(struct work_struct *work) {
+ 	mutex_unlock(&ts->lock);
+ 	enable_irq(ts->irq);
+ 
+-	if (!drm_is_panel_follower(ts->dev)) {
+-	        pm_runtime_put(ts->dev);
+-		pm_runtime_enable(ts->dev);
+-	}
+ exit:
+ 	if (!(ts->status & NT36XXX_STATUS_DOWNLOAD_COMPLETE)) {
+ 		schedule_delayed_work(&ts->work, 4000);
+-- 
+2.43.0
+

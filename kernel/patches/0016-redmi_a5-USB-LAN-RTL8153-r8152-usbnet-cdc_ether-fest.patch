@@ -1,7 +1,7 @@
 From dc21572ec7120130e3da60b3468c2c8b9f11f1ca Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Tue, 6 Oct 2026 20:03:12 +0200
-Subject: [PATCH 16/17] redmi_a5: USB-LAN (RTL8153/r8152, usbnet, cdc_ether)
+Subject: [PATCH 16/22] redmi_a5: USB-LAN (RTL8153/r8152, usbnet, cdc_ether)
  fest eingebaut fuer Hub-Betrieb
 
 ---
