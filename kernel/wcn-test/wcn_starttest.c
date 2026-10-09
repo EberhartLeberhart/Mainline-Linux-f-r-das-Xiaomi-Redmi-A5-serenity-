@@ -521,7 +521,7 @@ static void unshutdown(void)
 	u32 v = rd(B_AON, 0x360);
 
 	pr_info(TAG "btwf_gnss_force_unshutdown: AON 0x360=0x%08x\n", v);
-	wr(B_AON, 0x360, v | (0x6 << 21), "Bit 22:21 setzen");
+	wr(B_AON, 0x360, v | (0x6 << 21), "Bit 23:22 setzen (0x6<<21)");
 	pr_info(TAG "  AON 0x360 jetzt 0x%08x\n", rd(B_AON, 0x360));
 }
 
@@ -603,7 +603,7 @@ static void gnss_aus(void)
 static void btwf_shutdown_weg(void)
 {
 	pr_info(TAG "btwf_clear_force_shutdown:\n");
-	rmw(B_AON, 0x360, 0, 0x6 << 21, "Bit 22:21 loeschen");
+	rmw(B_AON, 0x360, 0, 0x6 << 21, "Bit 23:22 loeschen (0x6<<21)");
 }
 
 /* btwf_sys_poweron() */

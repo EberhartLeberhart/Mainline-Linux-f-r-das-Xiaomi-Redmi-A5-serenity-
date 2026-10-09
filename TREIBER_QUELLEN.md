@@ -122,6 +122,25 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
     Folge: Der Treiber prüft „schon gelaufen“ jetzt über vddwcn bzw. `init_status`, nicht mehr über die PMU.
   - Speicher `0x87000000` und Sync-Bereich enthalten nur `0xffff0000` (nichts von Android übrig, auch die eFuse-Felder nicht).
   - Mailbox-Zähler unverändert 0. `gpio-sprd` hat kein `get_direction` (WARN in gpiolib) → Treiber liest nur noch den Wert.
+- **Stufe 1 (21:27)** ✅: Regler-Schreibschutz aufgehoben, dcxo1v8 3000 → 1800 mV, vddwcn 900 → 1200 mV, vddwifipa an (3300 mV),
+  merlion chip-en = rst = 1, PUB `0x60008018` = 0x70. Hinweis: `gpio-sprd` schaltet eine Leitung erst beim Anfordern frei,
+  die GPIO-Werte aus Stufe 0 (vor dem Anfordern) sind nicht verlässlich.
+- **Stufe 2 (21:31)** ✅: WCN-Register erstmals gelesen, **ohne Absturz** (mit Strom und Takt). WCN-AON-APB `0x098` = `0x04041000`,
+  WCN-AON-AHB `0x00c` = `0x3` (CPU im Reset). Die Quelle schreibt bei AON `0x360` `0x6<<21` = Bits **23:22** (nicht 22:21);
+  Bit 23 liest sich danach wieder als 0.
+- **Stufe 3 (21:46): WCN-KERN LÄUFT** ✅ (Beleg `wcntest_2026-10-09_2146_stufe3.log`):
+  - Firmware 1 273 416 Bytes nach `0x87000000` (Stapel `0x001e1788`, Einsprung `0x00003559`), CPU losgelassen (`0x5188000c` = 0x2).
+  - `init_status` zählt hoch: `0x5A5A5A5A` → `0xF0F0F0F1` (160 ms) → `…A2` → `…A3` → `…A6` → **`0xF0F0F0FF` nach ~540 ms**.
+  - **Damit belegt: unsignierte Firmware startet ohne trusty, keine Speichersperre.**
+  - Der Kern schickt **3 Nachrichten auf Mailbox-Kanal 8** (BT-sipc, core@3), IRQ GIC 115 zählt 2 – Mainline verwirft sie
+    („message's been dropped at ch[8]“), weil noch niemand zuhört. Das ist der Einstieg für den sipc-Port.
+  - Danach schläft das WCN-System ein (PMU `0x860` = 0x6 statt 0x6…, AON `0x364` = 0x1), `cp2_sleep` = `0x504c5344` („DSLP“).
+    Der Schutz im Treiber hat Zugriffe auf `0x51…` danach richtig verweigert.
+  - `cali_flag` bleibt `0xEFEFFEFE` und `init_status` `0xF0F0F0FF` – derselbe Zustand, der nach Android im Speicher stand.
+    Xiaomi meldet also offenbar kein `0x13579BDF` zurück (`fertig_melden` bleibt aus).
+  - Kalibrierung: `dfs` = `0x70`/`0x11000000`, `rfi` = 1 vom Kern gesetzt. eFuse-Felder waren `0x0000ffff`/0 (nicht von uns gesetzt) ❓.
+- **Nächster Schritt:** sipc (smsg/sbuf) aus `drivers/soc/sprd/modem/sipc/` portieren und an Mailbox-Kanal 8 hängen
+  (Mainline `#mbox-cells = <1>`), dann die Nachrichten des WCN-Kerns lesen. Danach `sprdbt_tty` bzw. WLAN `sc2355`.
 
 ## Offene Hürden
 
