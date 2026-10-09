@@ -766,19 +766,22 @@ static int ablauf(void)
 	/*
 	 * Nicht die PMU fragen: Die meldet das WCN-System schon nach dem Start als an+wach,
 	 * obwohl alle Regler aus sind (belegt 09.10., Stufe 0). Android prueft hier nur seinen
-	 * Softwarezustand. Ein frueherer Lauf dieses Treibers erkennt man an vddwcn (an) oder
-	 * an einem Kern, der sich schon gemeldet hat.
+	 * Softwarezustand. Ein frueherer Lauf seit dem Start ist an vddwcn (an) zu erkennen.
+	 * NICHT an init_status: Der WCN-Speicher uebersteht einen Warmstart (belegt 09.10.,
+	 * 0xF0F0F0FF vom Lauf davor); Stufe 3 setzt ihn ohnehin zuerst auf 0x5A5A5A5A.
 	 */
 	if (stufe >= 1 && !trotzdem) {
 		u32 pd = 1, init = mem_rd(mem_sync, S_INIT_STATUS);
 
 		if (pmic_rd(LDO_VDDWCN_PD, &pd))
 			return -EIO;
-		if (!(pd & 1) || init == MAGIC_READY || init == MAGIC_SUCCESS) {
-			pr_err(TAG "Schon ein Lauf seit dem Start (vddwcn %s, init_status 0x%08x) - erst neu starten (oder trotzdem=1)\n",
-			       pd & 1 ? "aus" : "an", init);
+		if (!(pd & 1)) {
+			pr_err(TAG "Schon ein Lauf seit dem Start (vddwcn an) - erst neu starten (oder trotzdem=1)\n");
 			return -EBUSY;
 		}
+		if (init == MAGIC_READY || init == MAGIC_SUCCESS)
+			pr_info(TAG "init_status 0x%08x ist ein Rest vom letzten Lauf (Speicher uebersteht den Warmstart)\n",
+				init);
 	}
 	if (stufe >= 1 && wcn_sys_an())
 		pr_info(TAG "Hinweis: PMU meldet WCN-System schon an+wach, obwohl die Regler aus sind - Android-Ablauf laeuft trotzdem\n");

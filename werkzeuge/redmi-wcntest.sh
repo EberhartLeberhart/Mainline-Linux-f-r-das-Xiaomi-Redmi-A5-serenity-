@@ -6,6 +6,7 @@
 #   redmi-wcntest.sh 1     + Strom (Regler, merlion-GPIOs, PUB-Umlenkung)
 #   redmi-wcntest.sh 2     + WCN-System einschalten und aufwecken
 #   redmi-wcntest.sh 3     + Firmware nach 0x87000000, BTWF-CPU loslassen, auf 0xF0F0F0FF warten
+#   Weitere Parameter gehen ans Modul, z. B. redmi-wcntest.sh 3 fertig_melden=1
 #
 # Regel 6: eine Stufe pro Start. Nach Stufe 1..3 vor dem naechsten Versuch neu starten
 # (der Treiber verweigert sonst mit "WCN-System ist schon an").
@@ -38,7 +39,7 @@ N0=$(dmesg | wc -l)
 if [ "$STUFE" = 3 ] && [ -f "$LAUSCHER" ] && ! lsmod | grep -q "^wcn_lauscher"; then
 	insmod "$LAUSCHER" kanal=8 && log "-- Lauscher auf Mailbox-Kanal 8 geladen" || log "-- Lauscher laedt NICHT (weiter ohne)"
 fi
-insmod "$KO" stufe="$STUFE"
+shift; insmod "$KO" stufe="$STUFE" "$@"   # weitere Parameter durchreichen, z. B. trotzdem=1
 RC=$?
 log "-- insmod Rueckgabe $RC"
 
