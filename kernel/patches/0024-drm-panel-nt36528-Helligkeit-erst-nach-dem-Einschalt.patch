@@ -1,0 +1,97 @@
+From 99c0890089ba1ba988229fd1b602eae4340405af Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Fri, 9 Oct 2026 18:56:49 +0200
+Subject: [PATCH 24/24] drm/panel: nt36528: Helligkeit erst nach dem
+ Einschalten senden (Absturz durch systemd-backlight)
+
+---
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 27 +++++++++++++++----
+ 1 file changed, 22 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+index a875fd953..026cfb85a 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36528.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -30,6 +30,7 @@ struct nt36528_panel {
+ 	struct drm_panel panel;
+ 	struct mipi_dsi_device *dsi;
+ 	struct reset_control *reset;	/* optional */
++	bool an;			/* Panel eingeschaltet -> DSI-Befehle erlaubt */
+ };
+ 
+ static inline struct nt36528_panel *to_nt36528_panel(struct drm_panel *panel)
+@@ -96,6 +97,12 @@ static int nt36528_prepare(struct drm_panel *panel)
+ 			reset_control_assert(ctx->reset);
+ 		return ret;
+ 	}
++	ctx->an = true;
++
++	/* gemerkte Helligkeit nachschicken (Aenderungen vor dem Einschalten wurden nur gespeichert) */
++	if (ctx->panel.backlight)
++		mipi_dsi_dcs_set_display_brightness_large(ctx->dsi,
++				backlight_get_brightness(ctx->panel.backlight));
+ 
+ 	return 0;
+ }
+@@ -105,6 +112,7 @@ static int nt36528_unprepare(struct drm_panel *panel)
+ 	struct nt36528_panel *ctx = to_nt36528_panel(panel);
+ 	int ret;
+ 
++	ctx->an = false;
+ 	ret = nt36528_off(ctx);
+ 	if (ret < 0)
+ 		dev_err(&ctx->dsi->dev, "Panel ausschalten fehlgeschlagen: %d\n", ret);
+@@ -150,11 +158,19 @@ static const struct drm_panel_funcs nt36528_panel_funcs = {
+ /* Helligkeit: Xiaomi oled-backlight, brightness-levels = [39 00 00 03 51 00 00], 12 Bit */
+ static int nt36528_bl_update_status(struct backlight_device *bl)
+ {
+-	struct mipi_dsi_device *dsi = bl_get_data(bl);
++	struct nt36528_panel *ctx = bl_get_data(bl);
+ 	u16 hell = backlight_get_brightness(bl);
+ 	int ret;
+ 
+-	ret = mipi_dsi_dcs_set_display_brightness_large(dsi, hell);
++	/*
++	 * Nur senden, wenn das Panel an ist: vorher ist der DSI-Host noch nicht eingerichtet
++	 * (Beleg 09.10.: systemd-backlight beim Start -> NULL-Zeiger in sprd_dsi_host_transfer).
++	 * Der Wert bleibt in bl->props gespeichert und wird in prepare() nachgeschickt.
++	 */
++	if (!ctx->an)
++		return 0;
++
++	ret = mipi_dsi_dcs_set_display_brightness_large(ctx->dsi, hell);
+ 	return ret < 0 ? ret : 0;
+ }
+ 
+@@ -163,8 +179,9 @@ static const struct backlight_ops nt36528_bl_ops = {
+ 	.update_status = nt36528_bl_update_status,
+ };
+ 
+-static struct backlight_device *nt36528_bl_register(struct mipi_dsi_device *dsi)
++static struct backlight_device *nt36528_bl_register(struct nt36528_panel *ctx)
+ {
++	struct mipi_dsi_device *dsi = ctx->dsi;
+ 	const struct backlight_properties props = {
+ 		.type = BACKLIGHT_RAW,
+ 		.brightness = NT36528_HELL_START,
+@@ -172,7 +189,7 @@ static struct backlight_device *nt36528_bl_register(struct mipi_dsi_device *dsi)
+ 	};
+ 
+ 	return devm_backlight_device_register(&dsi->dev, dev_name(&dsi->dev), &dsi->dev,
+-					      dsi, &nt36528_bl_ops, &props);
++					      ctx, &nt36528_bl_ops, &props);
+ }
+ 
+ static int nt36528_probe(struct mipi_dsi_device *dsi)
+@@ -202,7 +219,7 @@ static int nt36528_probe(struct mipi_dsi_device *dsi)
+ 	drm_panel_init(&ctx->panel, dev, &nt36528_panel_funcs, DRM_MODE_CONNECTOR_DSI);
+ 	ctx->panel.prepare_prev_first = true;
+ 
+-	ctx->panel.backlight = nt36528_bl_register(dsi);
++	ctx->panel.backlight = nt36528_bl_register(ctx);
+ 	if (IS_ERR(ctx->panel.backlight))
+ 		return dev_err_probe(dev, PTR_ERR(ctx->panel.backlight),
+ 				     "Helligkeitsregler nicht angelegt\n");
+-- 
+2.43.0
+

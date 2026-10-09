@@ -1,7 +1,7 @@
 From a1b678ac5cbbeb0dafc152ba9eba6d9ef96e80a4 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Thu, 8 Oct 2026 18:09:15 +0200
-Subject: [PATCH 17/22] usb: musb: host: AUTOSET/DMAMODE fuer Unisoc-DMA beim
+Subject: [PATCH 17/24] usb: musb: host: AUTOSET/DMAMODE fuer Unisoc-DMA beim
  Senden setzen
 
 Ohne AUTOSET bleibt jedes volle USB-Paket (512 Byte) im FIFO liegen:

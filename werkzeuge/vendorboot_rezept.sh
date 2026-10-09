@@ -10,6 +10,35 @@ GP=/soc/gpio@641b0000      # GPIO-Baustein des Chips, hatte keine phandle
 GP_PH=105                  # frei gewaehlt (hoechste vorhandene phandle war 104)
 FG=/soc/spi@64200000/pmic@0/fuel-gauge@c00   # Akkuanzeige im PMIC
 BAT_PH=106                 # phandle fuer den neuen Akku-Knoten
+# 09.10.: Display (DRM). Phandles aus dem Basis-Geraetebaum lesen statt raten; fehlt einer, neu vergeben.
+BASIS_DTB=~/redmi-unlock-work/serenity_v12.dtb
+FB_PH=$(fdtget "$BASIS_DTB" /reserved-memory/framebuffer-region@0 phandle 2>/dev/null || echo 109)
+DPU_PH=$(fdtget "$BASIS_DTB" /soc/dpu@31000000 phandle 2>/dev/null || echo 110)
+DSIOUT_PH=107; PANELIN_PH=108
+DISP_AN=${DISPLAY_DRM:-1}   # DISPLAY_DRM=0 baut den Stand ohne Display-Treiber (simpledrm wie bisher)
+DISP_ARGS=()
+if [ "$DISP_AN" = 1 ]; then DISP_ARGS=(
+  `# DPU an, Bootloader-Bildspeicher (0x9cf2a000, 720*1640*4) bleibt beim Uebergang ueber die IOMMU erreichbar (wie Reeder)` \
+  /reserved-memory/framebuffer-region@0 phandle u:$FB_PH \
+  /reserved-memory/framebuffer-region@0 iommu-addresses "u:$DPU_PH 0x9cf2a000 0x481200" \
+  /soc/dpu@31000000 phandle u:$DPU_PH \
+  /soc/dpu@31000000 memory-region u:$FB_PH \
+  /soc/dpu@31000000 status okay \
+  `# Zusammenfuehrung DPU+DSI zu einer Anzeige (sprd_drm, "sprd,display-subsystem") - fehlte beim 1. Test: kein card1` \
+  /display-subsystem status okay \
+  `# simpledrm aus: sonst bleibt die Konsole auf dem alten Bootloader-Speicher (fb0), waehrend die DPU fb1 zeigt (Beleg 09.10.)` \
+  /chosen/framebuffer@0 status disabled \
+  `# DSI an, Panel NT36528 (C3Z_42) an Kanal 0, ohne Reset-Leitung (Touch sitzt im selben Chip)` \
+  /soc/dsi@31100000 status okay \
+  /soc/dsi@31100000 "#address-cells" u:1 \
+  /soc/dsi@31100000 "#size-cells" u:0 \
+  /soc/dsi@31100000/panel@0 compatible "novatek,nt36528-c3z42" \
+  /soc/dsi@31100000/panel@0 reg u:0 \
+  /soc/dsi@31100000/panel@0/port/endpoint phandle u:$PANELIN_PH \
+  /soc/dsi@31100000/panel@0/port/endpoint remote-endpoint u:$DSIOUT_PH \
+  /soc/dsi@31100000/ports/port@1/endpoint phandle u:$DSIOUT_PH \
+  /soc/dsi@31100000/ports/port@1/endpoint remote-endpoint u:$PANELIN_PH )
+fi
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -66,4 +95,5 @@ fi
   /soc/spi@20150000/touchscreen@0 irq-gpios "u:$GP_PH 144 0" \
   /soc/spi@20150000/touchscreen@0 touchscreen-size-x u:720 \
   /soc/spi@20150000/touchscreen@0 touchscreen-size-y u:1640 \
+  "${DISP_ARGS[@]}" \
   "${AKKU_ARGS[@]}"

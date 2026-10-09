@@ -1,7 +1,7 @@
 From 4954e8f13a320ab359a5c1ccf9435b9d822cc9f5 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Fri, 9 Oct 2026 17:03:22 +0200
-Subject: [PATCH 19/22] Input: nt36xxx SPI-Touchtreiber (George Chan,
+Subject: [PATCH 19/24] Input: nt36xxx SPI-Touchtreiber (George Chan,
  99degree/linux nt36xxx bc0b3286a557) + NT36528 (Redmi A5)
 
 ---

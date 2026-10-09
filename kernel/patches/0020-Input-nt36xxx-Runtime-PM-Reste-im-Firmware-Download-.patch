@@ -1,7 +1,7 @@
 From d8c80a28b29cc7f9643befe750428388396e4439 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Fri, 9 Oct 2026 17:41:15 +0200
-Subject: [PATCH 20/22] Input: nt36xxx: Runtime-PM-Reste im Firmware-Download
+Subject: [PATCH 20/24] Input: nt36xxx: Runtime-PM-Reste im Firmware-Download
  entfernt (immer -EACCES)
 
 ---

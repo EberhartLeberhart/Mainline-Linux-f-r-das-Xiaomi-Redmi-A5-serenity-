@@ -1,7 +1,7 @@
 From bf4d1e14c4cf1212901cb1fcda5d6c757c3bd5de Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Fri, 9 Oct 2026 18:12:11 +0200
-Subject: [PATCH 22/22] Revert "DIAG nt36xxx: Pufferinhalt/verworfene
+Subject: [PATCH 22/24] Revert "DIAG nt36xxx: Pufferinhalt/verworfene
  Punkte/fwinfo ausgeben (voruebergehend)"
 
 This reverts commit 7ee1c248f6cb945435ab68eefadd6d525c996334.

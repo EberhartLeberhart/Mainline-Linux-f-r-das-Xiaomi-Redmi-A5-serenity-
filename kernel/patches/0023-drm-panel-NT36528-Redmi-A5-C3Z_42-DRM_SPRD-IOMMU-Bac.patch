@@ -1,0 +1,316 @@
+From 49e1d6698f24af55fab65a7048c9abf9f1aededb Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Fri, 9 Oct 2026 18:48:11 +0200
+Subject: [PATCH 23/24] drm/panel: NT36528 (Redmi A5, C3Z_42) +
+ DRM_SPRD/IOMMU/Backlight in redmi_a5_defconfig
+
+---
+ arch/arm64/configs/redmi_a5_defconfig         |   3 +
+ drivers/gpu/drm/panel/Kconfig                 |   9 +
+ drivers/gpu/drm/panel/Makefile                |   1 +
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 250 ++++++++++++++++++
+ 4 files changed, 263 insertions(+)
+ create mode 100644 drivers/gpu/drm/panel/panel-novatek-nt36528.c
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index f34a6f123..476457836 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1035,3 +1035,6 @@ CONFIG_CORESIGHT_CTI=m
+ CONFIG_MEMTEST=y
+ CONFIG_SPI_SPRD=y
+ CONFIG_TOUCHSCREEN_NT36XXX_SPI=y
++CONFIG_DRM_SPRD=y
++CONFIG_SPRD_IOMMU=y
++CONFIG_DRM_PANEL_NOVATEK_NT36528=y
+diff --git a/drivers/gpu/drm/panel/Kconfig b/drivers/gpu/drm/panel/Kconfig
+index bf22fdfb9..dc9ebbce0 100644
+--- a/drivers/gpu/drm/panel/Kconfig
++++ b/drivers/gpu/drm/panel/Kconfig
+@@ -592,6 +592,15 @@ config DRM_PANEL_NOVATEK_NT36523
+ 	  around the Novatek NT36523 display controller, such as some
+ 	  Boe panels used in Xiaomi Mi Pad 5 and 5 Pro tablets.
+ 
++config DRM_PANEL_NOVATEK_NT36528
++	tristate "Novatek NT36528 720x1640 video mode DSI panel (Xiaomi Redmi A5)"
++	depends on OF
++	depends on DRM_MIPI_DSI
++	depends on BACKLIGHT_CLASS_DEVICE
++	help
++	  Say Y here if you want to enable support for the Novatek NT36528
++	  based 720x1640 video mode DSI panel found in the Xiaomi Redmi A5.
++
+ config DRM_PANEL_NOVATEK_NT36672A
+ 	tristate "Novatek NT36672A DSI panel"
+ 	depends on OF
+diff --git a/drivers/gpu/drm/panel/Makefile b/drivers/gpu/drm/panel/Makefile
+index 1d869982b..77e28bd81 100644
+--- a/drivers/gpu/drm/panel/Makefile
++++ b/drivers/gpu/drm/panel/Makefile
+@@ -58,6 +58,7 @@ obj-$(CONFIG_DRM_PANEL_NOVATEK_NT35510) += panel-novatek-nt35510.o
+ obj-$(CONFIG_DRM_PANEL_NOVATEK_NT35560) += panel-novatek-nt35560.o
+ obj-$(CONFIG_DRM_PANEL_NOVATEK_NT35950) += panel-novatek-nt35950.o
+ obj-$(CONFIG_DRM_PANEL_NOVATEK_NT36523) += panel-novatek-nt36523.o
++obj-$(CONFIG_DRM_PANEL_NOVATEK_NT36528) += panel-novatek-nt36528.o
+ obj-$(CONFIG_DRM_PANEL_NOVATEK_NT36672A) += panel-novatek-nt36672a.o
+ obj-$(CONFIG_DRM_PANEL_NOVATEK_NT36672E) += panel-novatek-nt36672e.o
+ obj-$(CONFIG_DRM_PANEL_NOVATEK_NT37700F) += panel-novatek-nt37700f.o
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+new file mode 100644
+index 000000000..a875fd953
+--- /dev/null
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -0,0 +1,250 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * NT36528 (TDDI) 720x1640 Video-Mode-DSI-Panel, Xiaomi Redmi A5 "serenity" (Panel C3Z_42_02_0a).
++ *
++ * Aufbau nach panel-chipone-icnl9916-720x1600.c (Otto Pflueger). Werte aus dem Xiaomi-Geraetebaum
++ * (Panel_C3Z_42_02_0a_vid): 4 Spuren, RGB888, Video Burst, 1195,2 Mbit/s je Spur, LP 20 MHz,
++ * Pixeltakt 199,2 MHz; Helligkeit per DCS 0x51 mit 12 Bit (max 0xfff, Standard 500).
++ * Xiaomi schickt KEINE Init-Befehle - das Panel bringt seine Einstellungen selbst mit (OTP).
++ * Einschalten = Sleep-Out (0x11) + 120 ms + Display-On (0x29), Ausschalten = 0x28 + 0x10.
++ *
++ * Reset bewusst optional: Display und Touch sind ein Chip, ein Panel-Reset setzt auch den Touch
++ * zurueck. Ohne Reset-Leitung im DT wird das vom Bootloader eingerichtete Panel uebernommen.
++ */
++
++#include <linux/backlight.h>
++#include <linux/delay.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/reset.h>
++
++#include <drm/drm_mipi_dsi.h>
++#include <drm/drm_modes.h>
++#include <drm/drm_panel.h>
++#include <drm/drm_probe_helper.h>
++
++#define NT36528_HELL_MAX	4095
++#define NT36528_HELL_START	500
++
++struct nt36528_panel {
++	struct drm_panel panel;
++	struct mipi_dsi_device *dsi;
++	struct reset_control *reset;	/* optional */
++};
++
++static inline struct nt36528_panel *to_nt36528_panel(struct drm_panel *panel)
++{
++	return container_of(panel, struct nt36528_panel, panel);
++}
++
++/* Xiaomi reset-on-sequence: hoch 10 ms, tief 5, hoch 5, tief 5, hoch 20 */
++static void nt36528_reset(struct nt36528_panel *ctx)
++{
++	if (!ctx->reset)
++		return;
++	reset_control_deassert(ctx->reset);
++	usleep_range(10000, 11000);
++	reset_control_assert(ctx->reset);
++	usleep_range(5000, 6000);
++	reset_control_deassert(ctx->reset);
++	usleep_range(5000, 6000);
++	reset_control_assert(ctx->reset);
++	usleep_range(5000, 6000);
++	reset_control_deassert(ctx->reset);
++	msleep(20);
++}
++
++static int nt36528_on(struct nt36528_panel *ctx)
++{
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
++
++	/* sleep-out-command: [13 78 00 01 11] [13 14 00 01 29] */
++	mipi_dsi_dcs_exit_sleep_mode_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 120);
++	mipi_dsi_dcs_set_display_on_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 20);
++
++	return dsi_ctx.accum_err;
++}
++
++static int nt36528_off(struct nt36528_panel *ctx)
++{
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
++
++	/* sleep-in-command: [23 14 00 03 53 00 00] [13 14 00 01 28] [13 78 00 01 10] */
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x53, 0x00, 0x00);
++	mipi_dsi_msleep(&dsi_ctx, 20);
++	mipi_dsi_dcs_set_display_off_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 20);
++	mipi_dsi_dcs_enter_sleep_mode_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 120);
++
++	return dsi_ctx.accum_err;
++}
++
++static int nt36528_prepare(struct drm_panel *panel)
++{
++	struct nt36528_panel *ctx = to_nt36528_panel(panel);
++	int ret;
++
++	nt36528_reset(ctx);
++
++	ret = nt36528_on(ctx);
++	if (ret < 0) {
++		dev_err(&ctx->dsi->dev, "Panel einschalten fehlgeschlagen: %d\n", ret);
++		if (ctx->reset)
++			reset_control_assert(ctx->reset);
++		return ret;
++	}
++
++	return 0;
++}
++
++static int nt36528_unprepare(struct drm_panel *panel)
++{
++	struct nt36528_panel *ctx = to_nt36528_panel(panel);
++	int ret;
++
++	ret = nt36528_off(ctx);
++	if (ret < 0)
++		dev_err(&ctx->dsi->dev, "Panel ausschalten fehlgeschlagen: %d\n", ret);
++
++	if (ctx->reset)
++		reset_control_assert(ctx->reset);
++
++	return 0;
++}
++
++/*
++ * Xiaomi timing0 (native-mode, 60 Hz): 199,2 MHz, h 720+24+4+80 = 828, v 1640+2336+2+32 = 4010.
++ * timing1 (90 Hz) und timing2 (120 Hz) unterscheiden sich nur in vfront-porch (999 / 331).
++ */
++static const struct drm_display_mode nt36528_modes[] = {
++	{
++		.clock = 199200,
++		.hdisplay = 720,
++		.hsync_start = 720 + 24,
++		.hsync_end = 720 + 24 + 4,
++		.htotal = 720 + 24 + 4 + 80,
++		.vdisplay = 1640,
++		.vsync_start = 1640 + 2336,
++		.vsync_end = 1640 + 2336 + 2,
++		.vtotal = 1640 + 2336 + 2 + 32,
++		.width_mm = 70,
++		.height_mm = 160,
++		.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++	},
++};
++
++static int nt36528_get_modes(struct drm_panel *panel, struct drm_connector *connector)
++{
++	return drm_connector_helper_get_modes_fixed(connector, &nt36528_modes[0]);
++}
++
++static const struct drm_panel_funcs nt36528_panel_funcs = {
++	.prepare = nt36528_prepare,
++	.unprepare = nt36528_unprepare,
++	.get_modes = nt36528_get_modes,
++};
++
++/* Helligkeit: Xiaomi oled-backlight, brightness-levels = [39 00 00 03 51 00 00], 12 Bit */
++static int nt36528_bl_update_status(struct backlight_device *bl)
++{
++	struct mipi_dsi_device *dsi = bl_get_data(bl);
++	u16 hell = backlight_get_brightness(bl);
++	int ret;
++
++	ret = mipi_dsi_dcs_set_display_brightness_large(dsi, hell);
++	return ret < 0 ? ret : 0;
++}
++
++static const struct backlight_ops nt36528_bl_ops = {
++	.options = BL_CORE_SUSPENDRESUME,
++	.update_status = nt36528_bl_update_status,
++};
++
++static struct backlight_device *nt36528_bl_register(struct mipi_dsi_device *dsi)
++{
++	const struct backlight_properties props = {
++		.type = BACKLIGHT_RAW,
++		.brightness = NT36528_HELL_START,
++		.max_brightness = NT36528_HELL_MAX,
++	};
++
++	return devm_backlight_device_register(&dsi->dev, dev_name(&dsi->dev), &dsi->dev,
++					      dsi, &nt36528_bl_ops, &props);
++}
++
++static int nt36528_probe(struct mipi_dsi_device *dsi)
++{
++	struct device *dev = &dsi->dev;
++	struct nt36528_panel *ctx;
++	int ret;
++
++	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
++	if (!ctx)
++		return -ENOMEM;
++
++	ctx->reset = devm_reset_control_get_optional_shared(dev, NULL);
++	if (IS_ERR(ctx->reset))
++		return dev_err_probe(dev, PTR_ERR(ctx->reset), "Reset-Leitung nicht verfuegbar\n");
++
++	ctx->dsi = dsi;
++	mipi_dsi_set_drvdata(dsi, ctx);
++
++	dsi->lanes = 4;
++	dsi->format = MIPI_DSI_FMT_RGB888;
++	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
++			  MIPI_DSI_MODE_VIDEO_HSE;
++	dsi->hs_rate = 1195200000;	/* sprd,phy-bit-clock 0x123cc0 kHz */
++	dsi->lp_rate = 20000000;	/* sprd,phy-escape-clock 0x4e20 kHz */
++
++	drm_panel_init(&ctx->panel, dev, &nt36528_panel_funcs, DRM_MODE_CONNECTOR_DSI);
++	ctx->panel.prepare_prev_first = true;
++
++	ctx->panel.backlight = nt36528_bl_register(dsi);
++	if (IS_ERR(ctx->panel.backlight))
++		return dev_err_probe(dev, PTR_ERR(ctx->panel.backlight),
++				     "Helligkeitsregler nicht angelegt\n");
++
++	drm_panel_add(&ctx->panel);
++
++	ret = mipi_dsi_attach(dsi);
++	if (ret < 0) {
++		drm_panel_remove(&ctx->panel);
++		return dev_err_probe(dev, ret, "Anbindung an den DSI-Host fehlgeschlagen\n");
++	}
++
++	return 0;
++}
++
++static void nt36528_remove(struct mipi_dsi_device *dsi)
++{
++	struct nt36528_panel *ctx = mipi_dsi_get_drvdata(dsi);
++	int ret;
++
++	ret = mipi_dsi_detach(dsi);
++	if (ret < 0)
++		dev_err(&dsi->dev, "Trennen vom DSI-Host fehlgeschlagen: %d\n", ret);
++
++	drm_panel_remove(&ctx->panel);
++}
++
++static const struct of_device_id nt36528_of_match[] = {
++	{ .compatible = "novatek,nt36528-c3z42" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, nt36528_of_match);
++
++static struct mipi_dsi_driver nt36528_driver = {
++	.probe = nt36528_probe,
++	.remove = nt36528_remove,
++	.driver = {
++		.name = "panel-novatek-nt36528",
++		.of_match_table = nt36528_of_match,
++	},
++};
++module_mipi_dsi_driver(nt36528_driver);
++
++MODULE_DESCRIPTION("DRM-Treiber fuer das NT36528-Panel (720x1640, Video-Mode-DSI) im Xiaomi Redmi A5");
++MODULE_LICENSE("GPL");
+-- 
+2.43.0
+

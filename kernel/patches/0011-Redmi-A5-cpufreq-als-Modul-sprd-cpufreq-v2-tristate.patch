@@ -1,7 +1,7 @@
 From 5b29f471ea45b026f18edcfb1a41ebf005db9202 Mon Sep 17 00:00:00 2001
 From: EberhartLeberhart <eberhartleberhart585@gmail.com>
 Date: Sun, 4 Oct 2026 14:47:16 +0200
-Subject: [PATCH 11/22] Redmi A5: cpufreq als Modul (sprd-cpufreq-v2 tristate)
+Subject: [PATCH 11/24] Redmi A5: cpufreq als Modul (sprd-cpufreq-v2 tristate)
 
 Fest eingebaut haengt der Kernel beim Start: Taktwechsel plus PSCI-Tiefschlaf
 (cpu-pd-big) friert das System ein. Als Modul wird der Treiber erst geladen,
