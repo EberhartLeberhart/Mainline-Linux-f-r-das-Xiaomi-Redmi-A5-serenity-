@@ -98,6 +98,22 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
     löste einen „synchronous external abort" aus (Prozess beendet, Kernel lief weiter, Neustart nötig).
 - **Nächster Versuch:** WCN-Kern ohne sipc starten (Firmware aus `wcnmodem` nach `0x87000000`, Einschaltfolge nach
   `wcn_integrate_boot.c`) und prüfen, ob er sich über die Mailbox meldet (Interrupt-Zähler). Klärt nebenbei die trusty-Frage.
+- **Testtreiber geschrieben (09.10. abends):** `kernel/wcn-test/wcn_starttest.c` (Out-of-tree-Modul, baut ohne Warnung gegen
+  Linux 7.1-rc1 arm64 mit `redmi_a5_defconfig`; am Handy **noch nicht getestet** ❓), Aufruf über `werkzeuge/redmi-wcntest.sh <Stufe>`.
+  Stufen, eine pro Start: 0 nur lesen · 1 Strom · 2 WCN-System an · 3 Firmware + CPU-Start, warten auf `0xF0F0F0FF`.
+  Ablauf 1:1 nach Realme `wcn_proc_native_start()` → `wcn_poweron_device()`, von einem zweiten Durchgang gegen die Quelle geprüft
+  (Adressen, Werte, Reihenfolge, Sync-Offsets, Magics). Erkenntnisse beim Lesen der Quelle:
+  - Die 10-Schritte-Liste `sprd,ctrl-reg` wird auf qogirl6 **nicht** zum Start benutzt (`wcn_cpu_bootup()` nur bei anderen Chips);
+    beim Probe läuft nur Schritt 0 (PUB `0x9018` ← 0x70). Der Start ist fest im Code verdrahtet.
+  - **Erklärung für den „synchronous external abort“:** WCN-Register (`0x51…`) sind nur zugänglich, solange das WCN-System an
+    (PMU `0x538` Bit 28:24 = 0) und wach (PMU `0x860` Bit 31:28 = 6) ist – sonst Bus-Fehler. Der Treiber prüft das vor jedem Zugriff.
+  - Regler: `dcxo1v8` (VDDSIM2) steht auf **3,0 V** (0xb4) und muss vor dem Einschalten auf **1,8 V** (0x3c); `vddwcn` von 0,9 V auf
+    **1,2 V** (0x14); `vddwifipa` bleibt (3,0 V nur bei Chip „AA“). Der Regler-Schreibschutz (`0x1bd0` ← `0x6e7f`) muss aufgehoben
+    werden, weil Mainline keinen SC2730-Reglertreiber hat. Übernimmt der PMIC die Spannung nicht, bleibt der Regler aus.
+  - Nicht übernommen: eFuse-Werte für WLAN (`0x877FEB70`, aus nvmem `wcn_efuse_blk0`) – werden nur angezeigt ❓;
+    `0x13579BDF`-Rückmeldung nur mit `fertig_melden=1` (auf dem Redmi stand nach Android `0xF0F0F0FF`, Xiaomi macht es wohl nicht).
+  - Offen ❓: ob `0x87000000` im Mainline-Gerätebaum `no-map` ist (Treiber meldet „ungecacht“ bzw. „gecacht“); ob der Mainline-
+    Power-Domain-Treiber (wcn) sich mit dem direkten Einschalten über PMU `0x3a8` verträgt.
 
 ## Offene Hürden
 
