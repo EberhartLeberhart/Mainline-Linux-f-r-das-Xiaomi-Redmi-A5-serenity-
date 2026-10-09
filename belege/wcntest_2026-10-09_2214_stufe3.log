@@ -1,0 +1,179 @@
+== wcntest Stufe 3, Fri Oct  9 22:14:03 CEST 2026, Kernel 7.1.0-rc1-g99c0890089ba #78 SMP PREEMPT Fri Oct  9 18:57:15 CEST 2026
+boot_id f8ba75e1-56d7-494f-8886-ab1a601e15e4, Laufzeit 355.93 s
+Firmware: 1273416 Bytes, sha256 81c6c66099aec596
+-- Mailbox-Interrupts vorher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 0 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- Lauscher auf Mailbox-Kanal 8 geladen
+-- insmod Rueckgabe 0
+-- dmesg:
+[  356.033461] wcn_lauscher: loading out-of-tree module taints kernel.
+[  356.036275] wcnlausch: Mailbox /soc/mailbox@641c0000, phandle 0x10, #mbox-cells vorhanden
+[  356.038319] wcnlausch: WCN-Speicher lesbar: wcn_ram_btwf ja, wcn_ram_hoch ja
+[  356.039135] wcnlausch: hoere auf Mailbox-Kanal 8 - jetzt wcn_starttest stufe=3 laden
+[  356.053464] wcntest: Start, Stufe 3 (0=lesen 1=Strom 2=WCN-System 3=Firmware+CPU)
+[  356.054871] wcntest: WCN-Speicher ungecacht (WC, no-map) abgebildet
+[  356.056137] wcntest: GPIO-Controller 641b0000.gpio, Basis 704
+[  356.057071] wcntest: ---- Zustand vorher ----
+[  356.057819] wcntest: Stufe 3, Ergebnis: noch nicht gelaufen
+[  356.058554] wcntest: AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+[  356.060021] wcntest: PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+[  356.061455] wcntest: PUB 0x8018=0x00000000 (WCN-Umlenkung, Android 0x70)
+[  356.062180] wcntest: WCN-System an+wach: ja
+[  356.062897] wcntest: dcxo1v8 (VDDSIM2): aus, 3000 mV
+[  356.063606] wcntest: vddwcn: aus, 900 mV
+[  356.064434] wcntest: vddwifipa: aus, 3300 mV
+[  356.065122] wcntest: GPIO 118: Wert 0
+[  356.065783] wcntest: GPIO 117: Wert 1
+[  356.066421] wcntest: GPIO 173: Wert 1
+[  356.067041] wcntest: Sync: init_status 0x877fdc00=0xf0f0f0ff  cali_flag 0x877feb7c=0xefeffefe
+[  356.068295] wcntest:       cp2_sleep=0x504c5344 sleep_flag=0x0520abcd dfs=0x00000070/0x11000000 rfi=0x00000001
+[  356.069516] wcntest: 0x87000000: 0x001e1788 0x00003559 (Stapel, Einsprung)
+[  356.070159] wcntest: init_status 0xf0f0f0ff ist ein Rest vom letzten Lauf (Speicher uebersteht den Warmstart)
+[  356.071396] wcntest: Hinweis: PMU meldet WCN-System schon an+wach, obwohl die Regler aus sind - Android-Ablauf laeuft trotzdem
+[  356.072740] wcntest: Sync vorher: init_status=0xf0f0f0ff cali_flag=0xefeffefe
+[  356.085246] wcntest: Firmware wcnmodem.bin: 1273416 Bytes nach 0x87000000, Stapel 0x001e1788, Einsprung 0x00003559
+[  356.086691] wcntest: eFuse im Sync (nicht veraendert): wifi 0x0000ffff 0x0000ffff 0x00000000, temper magic 0x00000000 val 0x00000000
+[  356.087940] wcntest: Sync: init_status=0x5a5a5a5a cali_flag=0xefeffefe dfs=0x00000000 rfi war 0x00000001
+[  356.089158] wcntest: PUB-Umlenkung: 0x60008018 vorher 0x00000000
+[  356.089764] wcntest:   PUB+0x1018 <- 0x00000070  (WCN-Adress-Umlenkung, wie wcn_probe)
+[  356.091503] wcntest: PUB-Umlenkung: 0x60008018 nachher 0x00000070
+[  356.092145] wcntest: Strom (wcn_power_clock_support):
+[  356.092768] wcntest:   PMIC 0x1bd0 <- 0x6e7f (Regler-Schreibschutz aufheben, wie sc2730_regulator_unlock)
+[  356.093969] wcntest:   dcxo1v8 vorher: PD 0x1994=0x1 (aus), VOL 0x1998=0xb4 (3000 mV)
+[  356.094747] wcntest:   dcxo1v8 nachher: an, 1800 mV
+[  356.095517] wcntest:   vddwcn vorher: PD 0x191c=0x1 (aus), VOL 0x1920=0x0 (900 mV)
+[  356.096349] wcntest:   vddwcn nachher: an, 1200 mV
+[  356.099249] wcntest:   merlion: chip-en=1 rst=1
+[  356.130285] wcntest:   vddwifipa vorher: PD 0x19d0=0x1 (aus), VOL 0x19d4=0xd2 (3300 mV)
+[  356.131181] wcntest:   vddwifipa nachher: an, 3300 mV
+[  356.131890] wcntest: btwf_gnss_force_unshutdown: AON 0x360=0xc0739c07
+[  356.132562] wcntest:   AON+0x0360 <- 0xc0f39c07  (Bit 23:22 setzen (0x6<<21))
+[  356.133235] wcntest:   AON 0x360 jetzt 0xc0739c07
+[  356.133889] wcntest: wcn_sys_power_up: PMU 0x3a8=0x00209006
+[  356.134534] wcntest:   PMU+0x23a8 <- 0x00ffff00  (Verzoegerungszaehler loeschen)
+[  356.135189] wcntest:   PMU+0x13a8 <- 0x00020400  (Verzoegerungszaehler 0x0204)
+[  356.135864] wcntest:   PMU 0x3a8=0x00020406 (Delay cnt)
+[  356.136518] wcntest:   PMU+0x23a8 <- 0x01000000  (auto shutdown aus)
+[  356.137177] wcntest:   PMU+0x23a8 <- 0x02000000  (force shutdown aus)
+[  356.137840] wcntest:   PMU 0x3a8=0x00020406
+[  356.138502] wcntest:   WCN-System an (PMU 0x538): ja (Versuch 0, PMU+0x0538=0x00000000)
+[  356.139189] wcntest:   PMU 0x818=0x00000004
+[  356.139875] wcntest:   PMU+0x2818 <- 0x00000080  (force deep sleep aus)
+[  356.140556] wcntest:   WCN-System wach (PMU 0x860): ja (Versuch 0, PMU+0x0860=0x60000006)
+[  356.151693] wcntest:   BTWF wach (AON 0x364 Bit 10:7): ja (Versuch 0, AON+0x0364=0x00000331)
+[  356.153200] wcntest:   BTWF an (AON 0x360 Bit 29:25): ja (Versuch 0, AON+0x0360=0xc0739c07)
+[  356.154539] wcntest:   GNSS wach (AON 0x364 Bit 6:3): ja (Versuch 0, AON+0x0364=0x00000331)
+[  356.155901] wcntest:   GNSS an (AON 0x360 Bit 9:5): ja (Versuch 0, AON+0x0360=0xc0739c07)
+[  356.157257] wcntest: pll1_pll2_stable_time:
+[  356.157938] wcntest:   WCN-AON-APB+0x03c8 war 0x00587072
+[  356.158613] wcntest:   WCN-AON-APB+0x03c8 <- 0x015df072  (btwf pll2)
+[  356.159289] wcntest:   WCN-AON-APB+0x03c8 ist 0x015df072
+[  356.159954] wcntest:   WCN-AON-APB+0x03c4 war 0x00587072
+[  356.160597] wcntest:   WCN-AON-APB+0x03c4 <- 0x015df072  (btwf pll1)
+[  356.161234] wcntest:   WCN-AON-APB+0x03c4 ist 0x015df072
+[  356.161858] wcntest:   WCN-AON-APB+0x03cc war 0x00a9b072
+[  356.162475] wcntest:   WCN-AON-APB+0x03cc <- 0x01edb072  (gnss pll)
+[  356.163090] wcntest:   WCN-AON-APB+0x03cc ist 0x01edb072
+[  356.163701] wcntest:   WCN-AON-APB+0x019c war 0x20200228
+[  356.164287] wcntest:   WCN-AON-APB+0x019c <- 0x20370228  (btwf pll1)
+[  356.164867] wcntest:   WCN-AON-APB+0x019c ist 0x20370228
+[  356.165437] wcntest:   WCN-AON-APB+0x0168 war 0x00200000
+[  356.165997] wcntest:   WCN-AON-APB+0x0168 <- 0x00270000  (btwf pll2)
+[  356.166563] wcntest:   WCN-AON-APB+0x0168 ist 0x00270000
+[  356.167109] wcntest: wcn_sys_allow_deep_sleep:
+[  356.167669] wcntest:   WCN-AON-APB+0x0090 war 0x00000004
+[  356.168216] wcntest:   WCN-AON-APB+0x0090 <- 0x40000004  (sfware_core_lv_en)
+[  356.168757] wcntest:   WCN-AON-APB+0x0090 ist 0x40000004
+[  356.169291] wcntest:   WCN-AON-AHB 0x0c4 war 0x00000000
+[  356.169816] wcntest:   WCN-AON-AHB+0x00c4 <- 0xffffffff  (WCN_AON_IP_STOP)
+[  356.170344] wcntest: gnss_sys_force_deep_to_shutdown:
+[  356.170873] wcntest:   WCN-AON-APB+0x00c8 war 0x04041000
+[  356.171400] wcntest:   WCN-AON-APB+0x00c8 <- 0x04041008  (gnss force deep)
+[  356.171946] wcntest:   WCN-AON-APB+0x00c8 ist 0x04041008
+[  356.172474] wcntest:   WCN-AON-APB+0x00c8 war 0x04041008
+[  356.172990] wcntest:   WCN-AON-APB+0x00c8 <- 0x04041008  (gnss auto shutdown)
+[  356.173512] wcntest:   WCN-AON-APB+0x00c8 ist 0x04041008
+[  356.174015] wcntest: btwf_clear_force_shutdown:
+[  356.174513] wcntest:   AON+0x0360 war 0xc0739ce7
+[  356.175004] wcntest:   AON+0x0360 <- 0xc0339ce7  (Bit 23:22 loeschen (0x6<<21))
+[  356.175496] wcntest:   AON+0x0360 ist 0xc0739ce7
+[  356.175985] wcntest: btwf_sys_poweron:
+[  356.176444] wcntest:   WCN-AON-AHB+0x000c war 0x00000003
+[  356.176896] wcntest:   WCN-AON-AHB+0x000c <- 0x00000057  (CPU/SYS/Cache/Busmonitor in Reset)
+[  356.177758] wcntest:   WCN-AON-AHB+0x000c ist 0x00000057
+[  356.178192] wcntest:   WCN-AON-APB+0x0098 war 0x04041000
+[  356.178611] wcntest:   WCN-AON-APB+0x0098 <- 0x04041000  (btwf force deep aus)
+[  356.179028] wcntest:   WCN-AON-APB+0x0098 ist 0x04041000
+[  356.179436] wcntest:   WCN-AON-APB+0x0098 war 0x04041000
+[  356.179854] wcntest:   WCN-AON-APB+0x0098 <- 0x04040000  (btwf auto shutdown aus)
+[  356.180271] wcntest:   WCN-AON-APB+0x0098 ist 0x04040000
+[  356.180692] wcntest:   WCN-AON-APB+0x0098 war 0x04040000
+[  356.181098] wcntest:   WCN-AON-APB+0x0098 <- 0x04040000  (btwf_ss_arm_sys_power_down aus)
+[  356.181905] wcntest:   WCN-AON-APB+0x0098 ist 0x04040000
+[  356.182335] wcntest:   AON 0x354 war 0x00000000
+[  356.182757] wcntest:   AON+0x0354 <- 0x00000000  (wie Android)
+[  356.183193] wcntest:   BTWF wach (AON 0x364 Bit 10:7): ja (Versuch 0, AON+0x0364=0x00000301)
+[  356.184080] wcntest:   BTWF an (AON 0x360 Bit 29:25): ja (Versuch 0, AON+0x0360=0xc0739ce7)
+[  356.185006] wcntest:   WCN-BTWF-AHB+0x0410 war 0x02000000
+[  356.185495] wcntest:   WCN-BTWF-AHB+0x0410 <- 0x03000000  (Boot aus DDR)
+[  356.185989] wcntest:   WCN-BTWF-AHB+0x0410 ist 0x03000000
+[  356.186479] wcntest:   WCN-AON-AHB 0x04c war 0xffff0000
+[  356.186962] wcntest:   WCN-AON-AHB+0x004c <- 0x007fdc00  (Sync-Adresse fuer den WCN-Kern)
+[  356.187948] wcntest:   WCN-AON-AHB 0x04c ist 0x007fdc00
+[  356.188458] wcntest:   WCN-AON-AHB+0x000c war 0x00000057
+[  356.188966] wcntest:   WCN-AON-AHB+0x000c <- 0x00000002  (CPU LOSLASSEN)
+[  356.189473] wcntest:   WCN-AON-AHB+0x000c ist 0x00000002
+[  356.189970] wcntest:   init_status=0x5a5a5a5a (0 ms)
+[  356.379700] wcntest:   init_status=0xf0f0f0f1 (160 ms)
+[  356.547679] wcntest:   init_status=0xf0f0f0a2 (300 ms)
+[  356.571693] wcntest:   init_status=0xf0f0f0a3 (320 ms)
+[  356.787681] wcntest:   init_status=0xf0f0f0a6 (500 ms)
+[  356.815440] wcnlausch: #0 356.811797 s: roh beee0104 00000000 -> smsg Kanal 4, Typ 1 OPEN, Flag 0xbeee (OPEN-Magic), Wert 0x00000000
+[  356.817682] wcnlausch: #1 356.814046 s: roh beee0105 00000000 -> smsg Kanal 5, Typ 1 OPEN, Flag 0xbeee (OPEN-Magic), Wert 0x00000000
+[  356.820018] wcnlausch: #2 356.816382 s: roh beee0107 00000000 -> smsg Kanal 7, Typ 1 OPEN, Flag 0xbeee (OPEN-Magic), Wert 0x00000000
+[  356.835941] wcntest:   init_status=0xf0f0f0ff (540 ms)
+[  356.837197] wcntest: WCN-KERN LAEUFT: init_status=0xF0F0F0FF nach ca. 540 ms
+[  356.838619] wcntest: ---- Zustand nachher ----
+[  356.839964] wcntest: Stufe 3, Ergebnis: WCN-Kern laeuft (0xF0F0F0FF)
+[  356.841209] wcntest: AON 0x354=0x00000000 0x360=0xc07380e7 0x364=0x00000301 0x34c=0x00010000
+[  356.843713] wcntest: PMU 0x3a8=0x00020406 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+[  356.846296] wcntest: PUB 0x8018=0x00000070 (WCN-Umlenkung, Android 0x70)
+[  356.847675] wcntest: WCN-System an+wach: ja
+[  356.849026] wcntest: WCN-AON-APB 0x098=0x04040000  WCN-AON-AHB 0x00c=0x00000002 0x04c=0x007fdc00 0x0c4=0x00003ffc
+[  356.851756] wcntest: dcxo1v8 (VDDSIM2): an, 1800 mV
+[  356.853116] wcntest: vddwcn: an, 1200 mV
+[  356.854464] wcntest: vddwifipa: an, 3300 mV
+[  356.855843] wcntest: GPIO 118: Wert 1
+[  356.857174] wcntest: GPIO 117: Wert 1
+[  356.858461] wcntest: GPIO 173: Wert 1
+[  356.859736] wcntest: Sync: init_status 0x877fdc00=0xf0f0f0ff  cali_flag 0x877feb7c=0xefeffefe
+[  356.862202] wcntest:       cp2_sleep=0x00000080 sleep_flag=0x0abcd250 dfs=0x00000070/0x11000000 rfi=0x00000001
+[  356.864789] wcntest: 0x87000000: 0x001e1788 0x00003559 (Stapel, Einsprung)
+[  356.866128] wcntest: Ende Stufe 3: WCN-Kern laeuft (0xF0F0F0FF) (0). Mailbox-Zaehler: grep mailbox /proc/interrupts
+-- Mailbox-Interrupts nachher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 2 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- Lauscher:
+Kanal 8, 3 Nachrichten empfangen
+#0 356.811797 s: roh beee0104 00000000 -> smsg Kanal 4, Typ 1 OPEN, Flag 0xbeee (OPEN-Magic), Wert 0x00000000
+#1 356.814046 s: roh beee0105 00000000 -> smsg Kanal 5, Typ 1 OPEN, Flag 0xbeee (OPEN-Magic), Wert 0x00000000
+#2 356.816382 s: roh beee0107 00000000 -> smsg Kanal 7, Typ 1 OPEN, Flag 0xbeee (OPEN-Magic), Wert 0x00000000
+-- Zustand:
+Stufe 3, Ergebnis: WCN-Kern laeuft (0xF0F0F0FF)
+AON 0x354=0x00000000 0x360=0xc0739ce7 0x364=0x00000001 0x34c=0x00010000
+PMU 0x3a8=0x00020406 0x538=0x00000000 0x818=0x00000004 0x860=0x00000006
+PUB 0x8018=0x00000070 (WCN-Umlenkung, Android 0x70)
+WCN-System an+wach: nein
+dcxo1v8 (VDDSIM2): an, 1800 mV
+vddwcn: an, 1200 mV
+vddwifipa: an, 3300 mV
+GPIO 118: Wert 1
+GPIO 117: Wert 1
+GPIO 173: Wert 1
+Sync: init_status 0x877fdc00=0xf0f0f0ff  cali_flag 0x877feb7c=0xefeffefe
+      cp2_sleep=0x504c5344 sleep_flag=0x0520abcd dfs=0x00000070/0x11000000 rfi=0x00000001
+0x87000000: 0x001e1788 0x00003559 (Stapel, Einsprung)
+== Protokoll: /root/wcntest_2026-10-09_2214_stufe3.log

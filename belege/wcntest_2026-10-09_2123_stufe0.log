@@ -1,0 +1,162 @@
+== wcntest Stufe 0, Fri Oct  9 21:23:50 CEST 2026, Kernel 7.1.0-rc1-g99c0890089ba #78 SMP PREEMPT Fri Oct  9 18:57:15 CEST 2026
+boot_id 9eee3d5c-8fb6-40c0-a50b-704df1a896b9, Laufzeit 2033.34 s
+-- Mailbox-Interrupts vorher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 0 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- insmod Rueckgabe 0
+-- dmesg:
+[ 2033.383665] wcn_starttest: loading out-of-tree module taints kernel.
+[ 2033.387586] wcntest: Start, Stufe 0 (0=lesen 1=Strom 2=WCN-System 3=Firmware+CPU)
+[ 2033.388026] wcntest: WCN-Speicher ungecacht (WC, no-map) abgebildet
+[ 2033.388202] wcntest: GPIO-Controller 641b0000.gpio, Basis 704
+[ 2033.388617] ------------[ cut here ]------------
+[ 2033.388757] WARNING: drivers/gpio/gpiolib.c:429 at gpiochip_get_direction+0x30/0x3c, CPU#7: insmod/8269
+[ 2033.389064] Modules linked in: wcn_starttest(O+) sprd_cpufreq_v2
+[ 2033.389240] CPU: 7 UID: 0 PID: 8269 Comm: insmod Tainted: G           O        7.1.0-rc1-g99c0890089ba #78 PREEMPT 
+[ 2033.389587] Tainted: [O]=OOT_MODULE
+[ 2033.389768] Hardware name: Xiaomi Redmi A5 (DT)
+[ 2033.389954] pstate: 60400005 (nZCv daif +PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[ 2033.390154] pc : gpiochip_get_direction+0x30/0x3c
+[ 2033.390357] lr : gpiod_get_direction+0x94/0x18c
+[ 2033.390564] sp : ffff80008b3538c0
+[ 2033.390770] x29: ffff80008b3538d0 x28: 0000000000000006 x27: ffff800079bd9000
+[ 2033.390995] x26: ffff000081f6606f x25: 0000000000000004 x24: 0000000000000000
+[ 2033.391222] x23: 0000000000001000 x22: ffff000081a9a438 x21: ffff000081a9a000
+[ 2033.391455] x20: 0000000000000000 x19: ffff000081695620 x18: 00000000ffffffff
+[ 2033.391692] x17: 00000000ffffffff x16: ffff80008b3534d8 x15: ffff80008b353770
+[ 2033.391935] x14: ffff000081f67000 x13: ffff000081f66146 x12: ffff000081c0c800
+[ 2033.392181] x11: ffff000081c0cc78 x10: 0000000000000020 x9 : 0000000000000ce4
+[ 2033.392432] x8 : 000000000a566d20 x7 : 0000000000000004 x6 : 000000000a566d20
+[ 2033.392691] x5 : 0000000000000001 x4 : ffff800079bdb495 x3 : 0000000000000000
+[ 2033.392951] x2 : 0000000000000000 x1 : 0000000000000076 x0 : ffff00008165e080
+[ 2033.393223] Call trace:
+[ 2033.393489]  gpiochip_get_direction+0x30/0x3c (P)
+[ 2033.393770]  gpio_zustand+0x4c/0x100 [wcn_starttest]
+[ 2033.394056]  zustand_schreiben.constprop.0+0x308/0x7d0 [wcn_starttest]
+[ 2033.394347]  zustand_ins_log+0x4c/0xd0 [wcn_starttest]
+[ 2033.394640]  wcntest_init+0x274/0x2000 [wcn_starttest]
+[ 2033.394949]  do_one_initcall+0x80/0x1c8
+[ 2033.395250]  do_init_module+0x58/0x248
+[ 2033.395538]  load_module+0x1d78/0x1dd0
+[ 2033.395833]  init_module_from_file+0xdc/0xf4
+[ 2033.396135]  __arm64_sys_finit_module+0x144/0x32c
+[ 2033.396441]  invoke_syscall+0x54/0x10c
+[ 2033.396748]  el0_svc_common.constprop.0+0x40/0xe0
+[ 2033.397064]  do_el0_svc+0x1c/0x28
+[ 2033.397368]  el0_svc+0x38/0x138
+[ 2033.397669]  el0t_64_sync_handler+0xa0/0xe4
+[ 2033.397964]  el0t_64_sync+0x198/0x19c
+[ 2033.398260] ---[ end trace 0000000000000000 ]---
+[ 2033.398591] ------------[ cut here ]------------
+[ 2033.398882] WARNING: drivers/gpio/gpiolib.c:429 at gpiochip_get_direction+0x30/0x3c, CPU#7: insmod/8269
+[ 2033.399453] Modules linked in: wcn_starttest(O+) sprd_cpufreq_v2
+[ 2033.399740] CPU: 7 UID: 0 PID: 8269 Comm: insmod Tainted: G        W  O        7.1.0-rc1-g99c0890089ba #78 PREEMPT 
+[ 2033.400296] Tainted: [W]=WARN, [O]=OOT_MODULE
+[ 2033.400577] Hardware name: Xiaomi Redmi A5 (DT)
+[ 2033.400856] pstate: 60400005 (nZCv daif +PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[ 2033.401141] pc : gpiochip_get_direction+0x30/0x3c
+[ 2033.401423] lr : gpiod_get_direction+0x94/0x18c
+[ 2033.401706] sp : ffff80008b3538c0
+[ 2033.401983] x29: ffff80008b3538d0 x28: 0000000000000006 x27: ffff800079bd9000
+[ 2033.402273] x26: ffff000081f6606f x25: 0000000000000004 x24: 0000000000000000
+[ 2033.402563] x23: 0000000000001000 x22: ffff000081a9a438 x21: ffff000081a9a000
+[ 2033.402855] x20: 0000000000000000 x19: ffff0000816955f0 x18: 00000000ffffffff
+[ 2033.403145] x17: 00000000ffffffff x16: ffff80008b3534d8 x15: ffff80008b353730
+[ 2033.403436] x14: 0000000000000000 x13: ffff000081f66160 x12: ffff000081c0c800
+[ 2033.403726] x11: ffff000081c0cc78 x10: 000000000000000a x9 : 0000000000000076
+[ 2033.404015] x8 : 000000000000000a x7 : 0000000000000001 x6 : 000000000000000a
+[ 2033.404305] x5 : 0000000000000003 x4 : ffff800079bdb075 x3 : 0000000000000000
+[ 2033.404593] x2 : 0000000000000000 x1 : 0000000000000075 x0 : ffff00008165e080
+[ 2033.404882] Call trace:
+[ 2033.405159]  gpiochip_get_direction+0x30/0x3c (P)
+[ 2033.405441]  gpio_zustand+0x4c/0x100 [wcn_starttest]
+[ 2033.405725]  zustand_schreiben.constprop.0+0x320/0x7d0 [wcn_starttest]
+[ 2033.406010]  zustand_ins_log+0x4c/0xd0 [wcn_starttest]
+[ 2033.406294]  wcntest_init+0x274/0x2000 [wcn_starttest]
+[ 2033.406576]  do_one_initcall+0x80/0x1c8
+[ 2033.406856]  do_init_module+0x58/0x248
+[ 2033.407136]  load_module+0x1d78/0x1dd0
+[ 2033.407415]  init_module_from_file+0xdc/0xf4
+[ 2033.407695]  __arm64_sys_finit_module+0x144/0x32c
+[ 2033.407975]  invoke_syscall+0x54/0x10c
+[ 2033.408255]  el0_svc_common.constprop.0+0x40/0xe0
+[ 2033.408540]  do_el0_svc+0x1c/0x28
+[ 2033.408819]  el0_svc+0x38/0x138
+[ 2033.409096]  el0t_64_sync_handler+0xa0/0xe4
+[ 2033.409383]  el0t_64_sync+0x198/0x19c
+[ 2033.409665] ---[ end trace 0000000000000000 ]---
+[ 2033.409987] ------------[ cut here ]------------
+[ 2033.410316] WARNING: drivers/gpio/gpiolib.c:429 at gpiochip_get_direction+0x30/0x3c, CPU#7: insmod/8269
+[ 2033.410798] Modules linked in: wcn_starttest(O+) sprd_cpufreq_v2
+[ 2033.411041] CPU: 7 UID: 0 PID: 8269 Comm: insmod Tainted: G        W  O        7.1.0-rc1-g99c0890089ba #78 PREEMPT 
+[ 2033.411526] Tainted: [W]=WARN, [O]=OOT_MODULE
+[ 2033.411764] Hardware name: Xiaomi Redmi A5 (DT)
+[ 2033.412007] pstate: 60400005 (nZCv daif +PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[ 2033.412248] pc : gpiochip_get_direction+0x30/0x3c
+[ 2033.412490] lr : gpiod_get_direction+0x94/0x18c
+[ 2033.412733] sp : ffff80008b3538c0
+[ 2033.412968] x29: ffff80008b3538d0 x28: 0000000000000006 x27: ffff800079bd9000
+[ 2033.413219] x26: ffff000081f6606f x25: 0000000000000004 x24: 0000000000000000
+[ 2033.413468] x23: 0000000000001000 x22: ffff000081a9a438 x21: ffff000081a9a000
+[ 2033.413718] x20: 0000000000000000 x19: ffff000081696070 x18: 00000000ffffffff
+[ 2033.413962] x17: 00000000ffffffff x16: ffff80008b3534d8 x15: ffff80008b353730
+[ 2033.414220] x14: 0000000000000000 x13: ffff000081f66174 x12: ffff000081c0c800
+[ 2033.414463] x11: ffff000081c0cc78 x10: 000000000000000a x9 : 0000000000000075
+[ 2033.414714] x8 : 000000000000000a x7 : 0000000000000001 x6 : 000000000000000a
+[ 2033.414961] x5 : 0000000000000005 x4 : ffff800079bdb075 x3 : 0000000000000000
+[ 2033.415209] x2 : 0000000000000000 x1 : 00000000000000ad x0 : ffff00008165e080
+[ 2033.415462] Call trace:
+[ 2033.415696]  gpiochip_get_direction+0x30/0x3c (P)
+[ 2033.415941]  gpio_zustand+0x4c/0x100 [wcn_starttest]
+[ 2033.416182]  zustand_schreiben.constprop.0+0x338/0x7d0 [wcn_starttest]
+[ 2033.416423]  zustand_ins_log+0x4c/0xd0 [wcn_starttest]
+[ 2033.416658]  wcntest_init+0x274/0x2000 [wcn_starttest]
+[ 2033.416894]  do_one_initcall+0x80/0x1c8
+[ 2033.417126]  do_init_module+0x58/0x248
+[ 2033.417359]  load_module+0x1d78/0x1dd0
+[ 2033.417592]  init_module_from_file+0xdc/0xf4
+[ 2033.417826]  __arm64_sys_finit_module+0x144/0x32c
+[ 2033.418061]  invoke_syscall+0x54/0x10c
+[ 2033.418296]  el0_svc_common.constprop.0+0x40/0xe0
+[ 2033.418532]  do_el0_svc+0x1c/0x28
+[ 2033.418766]  el0_svc+0x38/0x138
+[ 2033.418998]  el0t_64_sync_handler+0xa0/0xe4
+[ 2033.419232]  el0t_64_sync+0x198/0x19c
+[ 2033.419465] ---[ end trace 0000000000000000 ]---
+[ 2033.419767] wcntest: ---- Zustand vorher ----
+[ 2033.420005] wcntest: Stufe 0, Ergebnis: noch nicht gelaufen
+[ 2033.420235] wcntest: AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+[ 2033.420693] wcntest: PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+[ 2033.421150] wcntest: PUB 0x8018=0x00000000 (WCN-Umlenkung, Android 0x70)
+[ 2033.421387] wcntest: WCN-System an+wach: ja
+[ 2033.421623] wcntest: dcxo1v8 (VDDSIM2): aus, 3000 mV
+[ 2033.421856] wcntest: vddwcn: aus, 900 mV
+[ 2033.422085] wcntest: vddwifipa: aus, 3300 mV
+[ 2033.422313] wcntest: GPIO 118: ?, Wert 0
+[ 2033.422540] wcntest: GPIO 117: ?, Wert 0
+[ 2033.422762] wcntest: GPIO 173: ?, Wert 1
+[ 2033.422980] wcntest: Sync: init_status 0x877fdc00=0x00000000  cali_flag 0x877feb7c=0x00000000
+[ 2033.423422] wcntest:       cp2_sleep=0x0000ffff sleep_flag=0x00000000 dfs=0xffff0000/0xffff0000 rfi=0x00000000
+[ 2033.423881] wcntest: 0x87000000: 0xffff0000 0xffff0000 (Stapel, Einsprung)
+[ 2033.424122] wcntest: Ende Stufe 0: Stufe ohne Fehler durchlaufen (0). Mailbox-Zaehler: grep mailbox /proc/interrupts
+-- Mailbox-Interrupts nachher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 0 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- Zustand:
+Stufe 0, Ergebnis: Stufe ohne Fehler durchlaufen
+AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+PUB 0x8018=0x00000000 (WCN-Umlenkung, Android 0x70)
+WCN-System an+wach: ja
+dcxo1v8 (VDDSIM2): aus, 3000 mV
+vddwcn: aus, 900 mV
+vddwifipa: aus, 3300 mV
+GPIO 118: ?, Wert 0
+GPIO 117: ?, Wert 0
+GPIO 173: ?, Wert 1
+Sync: init_status 0x877fdc00=0x00000000  cali_flag 0x877feb7c=0x00000000
+      cp2_sleep=0x0000ffff sleep_flag=0x00000000 dfs=0xffff0000/0xffff0000 rfi=0x00000000
+0x87000000: 0xffff0000 0xffff0000 (Stapel, Einsprung)
+== Protokoll: /root/wcntest_2026-10-09_2123_stufe0.log

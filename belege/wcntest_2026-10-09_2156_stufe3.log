@@ -1,0 +1,70 @@
+== wcntest Stufe 3, Fri Oct  9 21:56:06 CEST 2026, Kernel 7.1.0-rc1-g99c0890089ba #78 SMP PREEMPT Fri Oct  9 18:57:15 CEST 2026
+boot_id e0fc3466-e638-4e13-a101-a277b7f5bb5e, Laufzeit 45.39 s
+Firmware: 1273416 Bytes, sha256 81c6c66099aec596
+-- Mailbox-Interrupts vorher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 0 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- Lauscher auf Mailbox-Kanal 8 geladen
+-- insmod Rueckgabe 0
+-- dmesg:
+[   45.486720] wcn_lauscher: loading out-of-tree module taints kernel.
+[   45.489155] wcnlausch: Mailbox /soc/mailbox@641c0000, phandle 0x10, #mbox-cells vorhanden
+[   45.491405] wcnlausch: hoere auf Mailbox-Kanal 8 - jetzt wcn_starttest stufe=3 laden
+[   45.507140] wcntest: Start, Stufe 3 (0=lesen 1=Strom 2=WCN-System 3=Firmware+CPU)
+[   45.508535] wcntest: WCN-Speicher ungecacht (WC, no-map) abgebildet
+[   45.509493] wcntest: GPIO-Controller 641b0000.gpio, Basis 704
+[   45.510561] wcntest: ---- Zustand vorher ----
+[   45.511459] wcntest: Stufe 3, Ergebnis: noch nicht gelaufen
+[   45.512659] wcntest: AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+[   45.514225] wcntest: PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+[   45.515779] wcntest: PUB 0x8018=0x00000000 (WCN-Umlenkung, Android 0x70)
+[   45.516586] wcntest: WCN-System an+wach: ja
+[   45.517358] wcntest: dcxo1v8 (VDDSIM2): aus, 3000 mV
+[   45.518119] wcntest: vddwcn: aus, 900 mV
+[   45.518864] wcntest: vddwifipa: aus, 3300 mV
+[   45.519596] wcntest: GPIO 118: Wert 0
+[   45.520354] wcntest: GPIO 117: Wert 1
+[   45.521072] wcntest: GPIO 173: Wert 1
+[   45.521766] wcntest: Sync: init_status 0x877fdc00=0xf0f0f0ff  cali_flag 0x877feb7c=0xefeffefe
+[   45.523134] wcntest:       cp2_sleep=0x504c5344 sleep_flag=0x0520abcd dfs=0x00000070/0x11000000 rfi=0x00000001
+[   45.524542] wcntest: 0x87000000: 0x001e1788 0x00003559 (Stapel, Einsprung)
+[   45.525192] wcntest: Schon ein Lauf seit dem Start (vddwcn aus, init_status 0xf0f0f0ff) - erst neu starten (oder trotzdem=1)
+[   45.526527] wcntest: ---- Zustand nachher ----
+[   45.527128] wcntest: Stufe 3, Ergebnis: FEHLER (siehe dmesg)
+[   45.527721] wcntest: AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+[   45.528912] wcntest: PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+[   45.530092] wcntest: PUB 0x8018=0x00000000 (WCN-Umlenkung, Android 0x70)
+[   45.530696] wcntest: WCN-System an+wach: ja
+[   45.531281] wcntest: dcxo1v8 (VDDSIM2): aus, 3000 mV
+[   45.531857] wcntest: vddwcn: aus, 900 mV
+[   45.532467] wcntest: vddwifipa: aus, 3300 mV
+[   45.533023] wcntest: GPIO 118: Wert 0
+[   45.533562] wcntest: GPIO 117: Wert 1
+[   45.534091] wcntest: GPIO 173: Wert 1
+[   45.534607] wcntest: Sync: init_status 0x877fdc00=0xf0f0f0ff  cali_flag 0x877feb7c=0xefeffefe
+[   45.535624] wcntest:       cp2_sleep=0x504c5344 sleep_flag=0x0520abcd dfs=0x00000070/0x11000000 rfi=0x00000001
+[   45.536664] wcntest: 0x87000000: 0x001e1788 0x00003559 (Stapel, Einsprung)
+[   45.537200] wcntest: Ende Stufe 3: FEHLER (siehe dmesg) (-16). Mailbox-Zaehler: grep mailbox /proc/interrupts
+-- Mailbox-Interrupts nachher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 0 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- Lauscher:
+Kanal 8, 0 Nachrichten empfangen
+-- Zustand:
+Stufe 3, Ergebnis: FEHLER (siehe dmesg)
+AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+PUB 0x8018=0x00000000 (WCN-Umlenkung, Android 0x70)
+WCN-System an+wach: ja
+dcxo1v8 (VDDSIM2): aus, 3000 mV
+vddwcn: aus, 900 mV
+vddwifipa: aus, 3300 mV
+GPIO 118: Wert 0
+GPIO 117: Wert 1
+GPIO 173: Wert 1
+Sync: init_status 0x877fdc00=0xf0f0f0ff  cali_flag 0x877feb7c=0xefeffefe
+      cp2_sleep=0x504c5344 sleep_flag=0x0520abcd dfs=0x00000070/0x11000000 rfi=0x00000001
+0x87000000: 0x001e1788 0x00003559 (Stapel, Einsprung)
+== Protokoll: /root/wcntest_2026-10-09_2156_stufe3.log

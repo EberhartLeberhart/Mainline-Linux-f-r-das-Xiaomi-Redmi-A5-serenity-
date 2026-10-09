@@ -1,0 +1,75 @@
+== wcntest Stufe 1, Fri Oct  9 21:27:16 CEST 2026, Kernel 7.1.0-rc1-g99c0890089ba #78 SMP PREEMPT Fri Oct  9 18:57:15 CEST 2026
+boot_id 9eee3d5c-8fb6-40c0-a50b-704df1a896b9, Laufzeit 2239.63 s
+-- Mailbox-Interrupts vorher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 0 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- insmod Rueckgabe 0
+-- dmesg:
+[ 2239.673655] wcntest: Start, Stufe 1 (0=lesen 1=Strom 2=WCN-System 3=Firmware+CPU)
+[ 2239.674575] wcntest: WCN-Speicher ungecacht (WC, no-map) abgebildet
+[ 2239.675095] wcntest: GPIO-Controller 641b0000.gpio, Basis 704
+[ 2239.675740] wcntest: ---- Zustand vorher ----
+[ 2239.676222] wcntest: Stufe 1, Ergebnis: noch nicht gelaufen
+[ 2239.676738] wcntest: AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+[ 2239.677699] wcntest: PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+[ 2239.678720] wcntest: PUB 0x8018=0x00000000 (WCN-Umlenkung, Android 0x70)
+[ 2239.679251] wcntest: WCN-System an+wach: ja
+[ 2239.679773] wcntest: dcxo1v8 (VDDSIM2): aus, 3000 mV
+[ 2239.680474] wcntest: vddwcn: aus, 900 mV
+[ 2239.680940] wcntest: vddwifipa: aus, 3300 mV
+[ 2239.681401] wcntest: GPIO 118: Wert 0
+[ 2239.681849] wcntest: GPIO 117: Wert 1
+[ 2239.682294] wcntest: GPIO 173: Wert 1
+[ 2239.682732] wcntest: Sync: init_status 0x877fdc00=0x00000000  cali_flag 0x877feb7c=0x00000000
+[ 2239.683640] wcntest:       cp2_sleep=0x0000ffff sleep_flag=0x00000000 dfs=0xffff0000/0xffff0000 rfi=0x00000000
+[ 2239.684609] wcntest: 0x87000000: 0xffff0000 0xffff0000 (Stapel, Einsprung)
+[ 2239.685142] wcntest: Hinweis: PMU meldet WCN-System schon an+wach, obwohl die Regler aus sind - Android-Ablauf laeuft trotzdem
+[ 2239.686156] wcntest: PUB-Umlenkung: 0x60008018 vorher 0x00000000
+[ 2239.686682] wcntest:   PUB+0x1018 <- 0x00000070  (WCN-Adress-Umlenkung, wie wcn_probe)
+[ 2239.688292] wcntest: PUB-Umlenkung: 0x60008018 nachher 0x00000070
+[ 2239.688842] wcntest: Strom (wcn_power_clock_support):
+[ 2239.689405] wcntest:   PMIC 0x1bd0 <- 0x6e7f (Regler-Schreibschutz aufheben, wie sc2730_regulator_unlock)
+[ 2239.690522] wcntest:   dcxo1v8 vorher: PD 0x1994=0x1 (aus), VOL 0x1998=0xb4 (3000 mV)
+[ 2239.691274] wcntest:   dcxo1v8 nachher: an, 1800 mV
+[ 2239.691910] wcntest:   vddwcn vorher: PD 0x191c=0x1 (aus), VOL 0x1920=0x0 (900 mV)
+[ 2239.692727] wcntest:   vddwcn nachher: an, 1200 mV
+[ 2239.695509] wcntest:   merlion: chip-en=1 rst=1
+[ 2239.726342] wcntest:   vddwifipa vorher: PD 0x19d0=0x1 (aus), VOL 0x19d4=0xd2 (3300 mV)
+[ 2239.727110] wcntest:   vddwifipa nachher: an, 3300 mV
+[ 2239.727922] wcntest: ---- Zustand nachher ----
+[ 2239.728640] wcntest: Stufe 1, Ergebnis: Stufe ohne Fehler durchlaufen
+[ 2239.729332] wcntest: AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+[ 2239.730683] wcntest: PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+[ 2239.732067] wcntest: PUB 0x8018=0x00000070 (WCN-Umlenkung, Android 0x70)
+[ 2239.732803] wcntest: WCN-System an+wach: ja
+[ 2239.733521] wcntest: dcxo1v8 (VDDSIM2): an, 1800 mV
+[ 2239.734227] wcntest: vddwcn: an, 1200 mV
+[ 2239.734916] wcntest: vddwifipa: an, 3300 mV
+[ 2239.735591] wcntest: GPIO 118: Wert 1
+[ 2239.736248] wcntest: GPIO 117: Wert 1
+[ 2239.736908] wcntest: GPIO 173: Wert 1
+[ 2239.737540] wcntest: Sync: init_status 0x877fdc00=0x00000000  cali_flag 0x877feb7c=0x00000000
+[ 2239.738821] wcntest:       cp2_sleep=0x0000ffff sleep_flag=0x00000000 dfs=0xffff0000/0xffff0000 rfi=0x00000000
+[ 2239.740157] wcntest: 0x87000000: 0xffff0000 0xffff0000 (Stapel, Einsprung)
+[ 2239.740880] wcntest: Ende Stufe 1: Stufe ohne Fehler durchlaufen (0). Mailbox-Zaehler: grep mailbox /proc/interrupts
+-- Mailbox-Interrupts nachher:
+ 25: 0 0 0 0 0 0 0 0 GICv3 114 Level 641c0000.mailbox
+ 26: 0 0 0 0 0 0 0 0 GICv3 115 Level 641c0000.mailbox
+ 27: 0 0 0 0 0 0 0 0 GICv3 116 Level 641c0000.mailbox
+-- Zustand:
+Stufe 1, Ergebnis: Stufe ohne Fehler durchlaufen
+AON 0x354=0x00000000 0x360=0xc0739c07 0x364=0x00000331 0x34c=0x00010000
+PMU 0x3a8=0x00209006 0x538=0x00000000 0x818=0x00000004 0x860=0x60000006
+PUB 0x8018=0x00000070 (WCN-Umlenkung, Android 0x70)
+WCN-System an+wach: ja
+dcxo1v8 (VDDSIM2): an, 1800 mV
+vddwcn: an, 1200 mV
+vddwifipa: an, 3300 mV
+GPIO 118: Wert 1
+GPIO 117: Wert 1
+GPIO 173: Wert 1
+Sync: init_status 0x877fdc00=0x00000000  cali_flag 0x877feb7c=0x00000000
+      cp2_sleep=0x0000ffff sleep_flag=0x00000000 dfs=0xffff0000/0xffff0000 rfi=0x00000000
+0x87000000: 0xffff0000 0xffff0000 (Stapel, Einsprung)
+== Protokoll: /root/wcntest_2026-10-09_2127_stufe1.log
