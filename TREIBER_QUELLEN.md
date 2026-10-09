@@ -82,6 +82,20 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
   Damit entfällt die trusty-Prüfung; ob eine Speicher-Sperre („UNLOCK_DDR") trotzdem greift: ❓ (zeigt der Startversuch).
   Android lädt die Module in `odm/etc/init/wcn.rc` (`on cali-fs`): wcn_bsp → wlan_combo → gnss → sprdbt_tty → fm.
   Audio-DSP-Firmware liegt in der Partition **`l_agdsp_a/b`**.
+- **Vorprüfung WCN-Start (09.10., nur gelesen):**
+  - Speicher: `0x87000000–0x8747ffff` und `0x87600000–0x877fffff` reserviert (inkl. `btwf-sync@877fdc00`) ✅;
+    **Lücke `0x87480000–0x874fffff` ist normaler RAM** (Teil des WLAN-Puffers `0x87380000–0x875fffff`) → vor dem WLAN-Treiber reservieren.
+  - Regler (PMIC SC2730, regmap `spi4.0`, Werte aus Realme `sc2730-regulator.c`, Basis 0x1800): VDDWCN PD `0x191c`=1, VOL `0x1920`=0;
+    VDDSIM2 (dcxo1v8) PD `0x1994`=1, VOL `0x1998`=0xb4; VDDWIFIPA PD `0x19d0`=1, VOL `0x19d4`=0xd2 → **alle drei aus** (Bit 0 = 1).
+    Mainline hat keinen SC2730-Reglertreiber; der Testtreiber muss sie selbst schalten.
+  - `0x640203A8` (PMU WCN) = `0x00209006`: Bits 24/25 (auto/force shutdown) schon 0; `0x64000360` (AON) = `0xC0739C07`:
+    Bits 21/22 (unshutdown) schon gesetzt; `0x60008018` (PUB, WCN-Adress-Umlenkung) = 0, Android schreibt 0x70 über den
+    SET-Spiegel `0x60009018`. Chip-ID `0x640000E0/E4` = qogirl6, `0x640000FC` = 3 (kein „AA"-Sonderfall).
+  - Startsignal des WCN-Kerns: nur Speicherwert `0x877FDC00` = `0xF0F0F0FF` (vorher `0x5A5A5A5A` schreiben), kein Interrupt nötig.
+    Kalibrierdaten beim ersten Start alle 0, nur Merker `0x877FEB7C` = `0xEFEFFEFE`.
+  - Externer Begleitchip „merlion": GPIO 118 (chip-en) = 1, dann GPIO 117 (reset) 0 → 1.
+  - **Vorsicht:** Register der WCN-Seite (`0x51…`) und fremde regmap-Listen nicht blind lesen – Lesen aller debugfs-regmaps
+    löste einen „synchronous external abort" aus (Prozess beendet, Kernel lief weiter, Neustart nötig).
 - **Nächster Versuch:** WCN-Kern ohne sipc starten (Firmware aus `wcnmodem` nach `0x87000000`, Einschaltfolge nach
   `wcn_integrate_boot.c`) und prüfen, ob er sich über die Mailbox meldet (Interrupt-Zähler). Klärt nebenbei die trusty-Frage.
 
