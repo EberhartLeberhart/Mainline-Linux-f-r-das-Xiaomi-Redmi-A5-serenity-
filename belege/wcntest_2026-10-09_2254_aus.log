@@ -1,0 +1,65 @@
+== wcntest aus, Fri Oct  9 22:54:55 CEST 2026, boot_id 9482c7af-91d1-451f-9592-20b74738d5fa
+-- Abschalten Rueckgabe 0
+-- dmesg:
+[   45.153131] wcntest: ==== Abschalten (stop_integrate_wcn_module) ====
+[   45.153718] wcntest:   DFS 0x00000070 -> 0x00000060 (btwf_pwr_state)
+[   45.154291] wcntest:   BTWF im Tiefschlaf (AON 0x364 Bit 10:7 = 0): ja (Versuch 0, AON+0x0364=0x00000001)
+[   45.155395] wcntest: wcn_sys_forbid_deep_sleep:
+[   45.155973] wcntest:   AON+0x0350 war 0x00000000
+[   45.156523] wcntest:   AON+0x0350 <- 0x00000000  (btwf_clear_force_deepsleep_aontop)
+[   45.157079] wcntest:   AON+0x0350 ist 0x00000000
+[   45.157621] wcntest:   AON 0x34c war 0x00010000
+[   45.158147] wcntest:   AON+0x234c <- 0x00010000  (BTWF zwangsweise aufwecken)
+[   45.171927] wcntest:   BTWF wach (AON 0x364 Bit 10:7): ja (Versuch 0, AON+0x0364=0x00000301)
+[   45.172997] wcntest:   BTWF an (AON 0x360 Bit 29:25): ja (Versuch 0, AON+0x0360=0xc0739ce7)
+[   45.174051] wcntest:   WCN-System wach (PMU 0x860): ja (Versuch 0, PMU+0x0860=0x60000006)
+[   45.175139] wcntest:   WCN-System an (PMU 0x538): ja (Versuch 0, PMU+0x0538=0x00000000)
+[   45.175720] wcntest:   WCN-AON-AHB 0x0c4 war 0x00003ffc
+[   45.176318] wcntest:   WCN-AON-AHB+0x00c4 <- 0x00000000  (wcn_ip_allow_sleep(false))
+[   45.176904] wcntest:   AON+0x134c <- 0x00010000  (btwf_sys_clear_force_exit_deep_sleep)
+[   45.177496] wcntest: btwf_sys_shutdown:
+[   45.178069] wcntest:   WCN-AON-APB+0x0098 war 0x04040002
+[   45.178642] wcntest:   WCN-AON-APB+0x0098 <- 0x04041002  (btwf auto shutdown an)
+[   45.179213] wcntest:   WCN-AON-APB+0x0098 ist 0x04041002
+[   45.179772] wcntest:   BTWF im Tiefschlaf (AON 0x364 Bit 10:7 = 0): ja (Versuch 0, AON+0x0364=0x00000001)
+[   45.180895] wcntest:   BTWF aus (AON 0x360 Bit 29:25 = 7): ja (Versuch 0, AON+0x0360=0xce739ce7)
+[   45.181999] wcntest:   WCN-AON-AHB+0x000c war 0x00000002
+[   45.182558] wcntest:   WCN-AON-AHB+0x000c <- 0x00000057  (CPU/SYS/Cache/Busmonitor in Reset)
+[   45.183642] wcntest:   WCN-AON-AHB+0x000c ist 0x00000057
+[   45.184198] wcntest:   WCN-AON-APB+0x0320 war 0x000000ca
+[   45.184729] wcntest:   WCN-AON-APB+0x0320 <- 0x000000ea  (A-DIE Spannungsanpassung an)
+[   45.185257] wcntest:   WCN-AON-APB+0x0320 ist 0x000000ea
+[   45.185769] wcntest: wcn_sys_power_down:
+[   45.186270] wcntest:   PMU+0x13a8 <- 0x01000000  (WCN auto shutdown an)
+[   45.186784] wcntest:   WCN-AON-AHB+0x00c4 <- 0xffffffff  (wcn_ip_allow_sleep(true))
+[   45.187298] wcntest:   WCN-System aus (PMU 0x538 = 7): ja (Versuch 0, PMU+0x0538=0x07000000)
+[   45.188283] wcntest: Strom aus (wcn_sys_power_clock_unsupport):
+[   45.188814] wcntest:   vddwifipa: aus
+[   45.215852] wcntest:   merlion: chip-en=0 rst=0
+[   45.216532] wcntest:   vddwcn: aus
+[   45.217046] wcntest:   dcxo1v8: aus
+[   45.217644] wcntest:   DFS 0x00000060 -> 0x00000000 (wcn_dfs_poweroff_shutdown_clear)
+[   45.218293] wcntest:   AON+0x0350 war 0x00000000
+[   45.218932] wcntest:   AON+0x0350 <- 0x00000000  (btwf_clear_force_deepsleep_aontop)
+[   45.219591] wcntest:   AON+0x0350 ist 0x00000000
+[   45.220258] wcntest:   AON+0x0350 war 0x00000000
+[   45.220894] wcntest:   AON+0x0350 <- 0x00000000  (btwf_clear_force_shutdown_aontop)
+[   45.221546] wcntest:   AON+0x0350 ist 0x00000000
+[   45.222172] wcntest: ==== WCN aus. Neuer Start ohne Neustart: rmmod wcn_starttest; redmi-wcntest.sh 3 ====
+-- Zustand:
+Stufe 3, Ergebnis: WCN wieder ausgeschaltet
+AON 0x354=0x00000000 0x360=0x00000000 0x364=0x00000000 0x34c=0x00010000
+PMU 0x3a8=0x01020406 0x538=0x07000000 0x818=0x00000004 0x860=0x00000006
+PUB 0x8018=0x00000070 (WCN-Umlenkung, Android 0x70)
+WCN-System an+wach: nein
+dcxo1v8 (VDDSIM2): aus, 1800 mV
+vddwcn: aus, 1200 mV
+vddwifipa: aus, 3300 mV
+GPIO 118: Wert 0
+GPIO 117: Wert 0
+GPIO 173: Wert 1
+Sync: init_status 0x877fdc00=0xf0f0f0ff  cali_flag 0x877feb7c=0xefeffefe
+      cp2_sleep=0x504c5344 sleep_flag=0x0520abcd dfs=0x00000000/0x11000000 rfi=0x00000000
+0x87000000: 0x001e1788 0x00003559 (Stapel, Einsprung)
+-- wcn_starttest entladen
+== Protokoll: /root/wcntest_2026-10-09_2254_aus.log
