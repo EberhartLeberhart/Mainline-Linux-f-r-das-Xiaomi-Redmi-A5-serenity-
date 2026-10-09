@@ -173,6 +173,13 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
   Der Kern meldet WRPTR nur, wenn der Ring vorher leer war → Lauscher sieht zusätzlich alle 500 ms nach.
 - **Zweiter Lauf mit Entschlüssler (22:31)** ✅: beide Rahmen kommen an (Typ `0x0281`, Nr 2 und 3; Nr 1 fehlt – vermutlich vor unserem
   DONE geschrieben). **Nach 60 s nichts Neues:** Der Kern schreibt nur beim Start (Kalibrierung) und schläft danach.
+- **Sauberes Abschalten (22:54, Beleg `wcntest_2026-10-09_2254_aus.log`)** ✅: `redmi-wcntest.sh aus` nach Realme
+  `stop_integrate_wcn_module()`. BTWF lässt sich aus dem Tiefschlaf zwangsweise wecken (AON `0x234c` Bit 16), danach
+  `btwf_sys_shutdown` (AON `0x360` Bit 29:25 = 7), WCN-System aus (PMU `0x538` = `0x07000000`), Regler und merlion aus.
+  **Danach Neustart des Kerns ohne Handy-Neustart** ✅: wieder `0xF0F0F0FF` nach ~540 ms, sipc-Kanal 5 neu geöffnet
+  (OPEN/SBUF_INIT/DONE), Log-Rahmen Nr 2 und 3 wie beim ersten Start.
+  Nebenbefund: Nach dem Abschalten meldet die PMU das WCN-System als „aus“ (`0x538` = 7) – der „an+wach“-Zustand nach dem
+  Einschalten des Handys stammt also vom Bootloader.
 - **Nächster Schritt:** sipc (smsg/sbuf) aus `drivers/soc/sprd/modem/sipc/` portieren und an Mailbox-Kanal 8 hängen
   (Mainline `#mbox-cells = <1>`), dann die Nachrichten des WCN-Kerns lesen. Danach `sprdbt_tty` bzw. WLAN `sc2355`.
 
