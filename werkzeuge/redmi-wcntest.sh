@@ -15,6 +15,7 @@ set -u
 STUFE=${1:-0}
 KO=${KO:-/root/wcn_starttest.ko}
 LAUSCHER=${LAUSCHER:-/root/wcn_lauscher.ko}   # hoert auf Mailbox-Kanal 8 mit (nur Stufe 3, wenn vorhanden)
+LAUSCHER_PARAM=${LAUSCHER_PARAM:-"kanal=8 antworten=1"}   # antworten=1: sipc-lite fuer Kanal 5 (Firmware-Log); "kanal=8" = nur zuhoeren
 LOG=/root/wcntest_$(date +%Y-%m-%d_%H%M)_stufe${STUFE}.log
 
 log(){ echo "$*" | tee -a "$LOG"; }
@@ -37,7 +38,7 @@ echo "REDMI: wcntest Stufe $STUFE startet" > /dev/kmsg
 
 N0=$(dmesg | wc -l)
 if [ "$STUFE" = 3 ] && [ -f "$LAUSCHER" ] && ! lsmod | grep -q "^wcn_lauscher"; then
-	insmod "$LAUSCHER" kanal=8 && log "-- Lauscher auf Mailbox-Kanal 8 geladen" || log "-- Lauscher laedt NICHT (weiter ohne)"
+	insmod "$LAUSCHER" $LAUSCHER_PARAM && log "-- Lauscher geladen ($LAUSCHER_PARAM)" || log "-- Lauscher laedt NICHT (weiter ohne)"
 fi
 shift; insmod "$KO" stufe="$STUFE" "$@"   # weitere Parameter durchreichen, z. B. trotzdem=1
 RC=$?
@@ -49,6 +50,11 @@ log "-- dmesg:"; dmesg | tail -n +$((N0 + 1)) | tee -a "$LOG"
 log "-- Mailbox-Interrupts nachher:"; mbox | tee -a "$LOG"
 if [ -r /sys/devices/platform/wcn-lauscher/nachrichten ]; then
 	log "-- Lauscher:"; tee -a "$LOG" < /sys/devices/platform/wcn-lauscher/nachrichten
+fi
+if [ -r /sys/devices/platform/wcn-lauscher/wcn_log ]; then
+	cp /sys/devices/platform/wcn-lauscher/wcn_log "${LOG%.log}_wcnlog.bin" 2>/dev/null
+	log "-- Firmware-Log (Kanal 5): $(stat -c %s "${LOG%.log}_wcnlog.bin" 2>/dev/null || echo 0) Bytes in ${LOG%.log}_wcnlog.bin, Ende:"
+	tr -c '[:print:]\n' '.' < "${LOG%.log}_wcnlog.bin" | tail -30 | tee -a "$LOG"
 fi
 if [ -r /sys/devices/platform/wcntest/zustand ]; then
 	log "-- Zustand:"; tee -a "$LOG" < /sys/devices/platform/wcntest/zustand

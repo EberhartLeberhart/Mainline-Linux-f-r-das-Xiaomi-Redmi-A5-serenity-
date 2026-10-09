@@ -26,6 +26,19 @@
  *   wcn_ram_hoch  0x87600000-0x877fffff (2 MB, GNSS-Bereich und Sync bei 0x877fdc00)
  * Die Luecke 0x87480000-0x874fffff ist normaler Linux-RAM und wird bewusst NICHT ausgegeben.
  * Auswerten am PC z. B.: strings -n 6 wcn_ram_btwf | less
+ *
+ * sipc-lite (Parameter antworten=1): Das Modul antwortet auf Kanal 5 (Firmware-Log) wie der
+ * Realme-sbuf-Wirt (drivers/soc/sprd/modem/sipc/sbuf.c, AP = Wirt, WCN-Kern = Gast):
+ *   1. WCN: OPEN (Kanal 5, 0xBEEE)   -> wir: OPEN (Kanal 5, 0xBEEE)        smsg_open_ack()
+ *   2. WCN: CMD SBUF_INIT (Flag 1)   -> wir: DONE SBUF_INIT (Flag 2), Wert = Adresse des
+ *      sbuf-Kopfs aus Sicht des WCN-Kerns
+ *   3. WCN: EVENT WRPTR (Flag 1)     -> wir lesen den Empfangsring (rxbuf_rdptr .. rxbuf_wrptr);
+ *      war er voll, melden wir EVENT RDPTR (Flag 2)
+ * Gemeinsamer Speicher (Realme ums9230-wcn.dtsi, core@3): sprd,smem-info =
+ *   <0x87240000 0x00240000 0x140000>  (AP-Adresse, Adresse fuer den WCN-Kern, Groesse)
+ * Puffer fuer Kanal 5 wie Realme wcn_sipc.c (SIPC_LOG_RX): 1 Ring, tx 0x8000, rx 0x30000.
+ * Das Log steht danach in /sys/devices/platform/wcn-lauscher/wcn_log (und gekuerzt im dmesg).
+ * Andere Kanaele (4 = AT/BT/FM, 7 = WLAN) bleiben unbeantwortet.
  */
 
 #include <linux/device.h>
@@ -39,12 +52,51 @@
 #include <linux/spinlock.h>
 #include <linux/io.h>
 #include <linux/sysfs.h>
+#include <linux/vmalloc.h>
+#include <linux/workqueue.h>
+#include <linux/kfifo.h>
 
 #define TAG "wcnlausch: "
 
 static int kanal = 8;
 module_param(kanal, int, 0444);
 MODULE_PARM_DESC(kanal, "Mailbox-Kanal (Kern-ID), WCN = 8");
+
+static bool antworten;
+module_param(antworten, bool, 0444);
+MODULE_PARM_DESC(antworten, "sipc-lite: Kanal 5 (Firmware-Log) oeffnen und den sbuf bereitstellen");
+
+/* smsg-Typen und Flags (Realme include/linux/sipc.h, sipc/sbuf.h) */
+#define T_OPEN		1
+#define T_CLOSE		2
+#define T_EVENT		4
+#define T_CMD		5
+#define T_DONE		6
+#define CMD_SBUF_INIT	0x0001
+#define DONE_SBUF_INIT	0x0002
+#define EV_WRPTR	0x0001
+#define EV_RDPTR	0x0002
+
+#define LOG_KANAL	5
+#define SMEM_AP		0x87240000	/* sprd,smem-info core@3 */
+#define SMEM_CP		0x00240000
+#define SMEM_LEN	0x140000
+#define SB_TX		0x8000		/* Linux -> WCN */
+#define SB_RX		0x30000		/* WCN -> Linux (das Log) */
+#define SB_HDR		36		/* sbuf_smem_header: ringnr + 1 * sbuf_ring_header (8 x u32) */
+/* Offsets im sbuf-Kopf */
+#define H_RINGNR	0
+#define H_TX_ADDR	4
+#define H_TX_SIZE	8
+#define H_TX_RD		12
+#define H_TX_WR		16
+#define H_RX_ADDR	20
+#define H_RX_SIZE	24
+#define H_RX_RD		28
+#define H_RX_WR		32
+
+#define WLOG_MAX	(1024 * 1024)
+#define DMESG_ZEILEN	400
 
 static const char * const typ_name[] = {
 	"NONE", "OPEN", "CLOSE", "DATA", "EVENT", "CMD", "DONE",
@@ -60,6 +112,7 @@ static const char * const typ_name[] = {
 struct eintrag {
 	u64 zeit_ns;
 	u32 lo, hi;
+	bool raus;	/* von uns gesendet */
 };
 
 static struct eintrag ring[RING];
@@ -126,18 +179,18 @@ static int zeile(char *buf, size_t n, const struct eintrag *e, unsigned int nr)
 		zusatz = " (CLOSE-Magic)";
 
 	return scnprintf(buf, n,
-		"#%u %llu.%06llu s: roh %08x %08x -> smsg Kanal %u, Typ %u %s, Flag 0x%04x%s, Wert 0x%08x\n",
+		"#%u %llu.%06llu s %s: roh %08x %08x -> smsg Kanal %u, Typ %u %s, Flag 0x%04x%s, Wert 0x%08x\n",
 		nr, e->zeit_ns / NSEC_PER_SEC, (e->zeit_ns % NSEC_PER_SEC) / 1000,
+		e->raus ? "GESENDET " : "empfangen",
 		e->lo, e->hi, ch, typ, typ_text(typ), flag, zusatz, e->hi);
 }
 
-static void empfangen(struct mbox_client *c, void *msg)
+static void merken(u32 lo, u32 hi, bool raus)
 {
-	u32 *m = msg;
-	struct eintrag e = { ktime_get_boottime_ns(), m[0], m[1] };
+	struct eintrag e = { ktime_get_boottime_ns(), lo, hi, raus };
 	unsigned long flags;
 	unsigned int nr;
-	char text[192];
+	char text[200];
 
 	spin_lock_irqsave(&ring_lock, flags);
 	nr = anzahl++;
@@ -147,6 +200,214 @@ static void empfangen(struct mbox_client *c, void *msg)
 	zeile(text, sizeof(text), &e, nr);
 	pr_info(TAG "%s", text);
 }
+
+/* ---- sipc-lite ------------------------------------------------------- */
+
+struct smsg_roh {
+	u32 lo, hi;
+};
+
+static DEFINE_KFIFO(eingang, struct smsg_roh, 64);
+static DEFINE_SPINLOCK(eingang_lock);
+static struct work_struct arbeit;
+static bool arbeit_bereit;
+static void *smem;		/* SMEM_AP, ungecacht */
+static bool sb_bereit;
+static char *wlog;		/* gesammeltes Firmware-Log */
+static size_t wlog_len;
+static unsigned int dmesg_zeilen;
+static unsigned int ereignisse;
+
+static void senden(u8 ch, u8 typ, u16 flag, u32 wert, const char *was)
+{
+	u32 m[2] = { ch | typ << 8 | (u32)flag << 16, wert };
+	int ret;
+
+	merken(m[0], m[1], true);
+	ret = mbox_send_message(chan, m);	/* blockierend, tx_tout */
+	if (ret < 0)
+		pr_warn(TAG "  %s: Senden meldet %d (Quittung der Mailbox fehlt?)\n", was, ret);
+	else
+		pr_info(TAG "  %s gesendet\n", was);
+}
+
+static u32 sm_rd(u32 off)
+{
+	return READ_ONCE(*(u32 *)(smem + off));
+}
+
+static void sm_wr(u32 off, u32 v)
+{
+	WRITE_ONCE(*(u32 *)(smem + off), v);
+}
+
+/* sbuf_host_init() fuer 1 Ring */
+static void sbuf_vorbereiten(void)
+{
+	memset(smem, 0, SB_HDR + SB_TX + SB_RX);
+	sm_wr(H_RINGNR, 1);
+	sm_wr(H_TX_ADDR, SMEM_CP + SB_HDR);
+	sm_wr(H_TX_SIZE, SB_TX);
+	sm_wr(H_TX_RD, 0);
+	sm_wr(H_TX_WR, 0);
+	sm_wr(H_RX_ADDR, SMEM_CP + SB_HDR + SB_TX);
+	sm_wr(H_RX_SIZE, SB_RX);
+	sm_wr(H_RX_RD, 0);
+	sm_wr(H_RX_WR, 0);
+	wmb();
+	pr_info(TAG "sbuf fuer Kanal 5 bei 0x%x (WCN-Sicht 0x%x): tx 0x%x @0x%x, rx 0x%x @0x%x\n",
+		SMEM_AP, SMEM_CP, SB_TX, sm_rd(H_TX_ADDR), SB_RX, sm_rd(H_RX_ADDR));
+}
+
+static void dmesg_ausgeben(const char *p, size_t n)
+{
+	char zeile[161];
+	size_t i, z = 0;
+
+	for (i = 0; i < n && dmesg_zeilen < DMESG_ZEILEN; i++) {
+		char c = p[i];
+
+		if (c == '\n' || c == '\r' || z == sizeof(zeile) - 1) {
+			if (z) {
+				zeile[z] = 0;
+				pr_info("wcnlog: %s\n", zeile);
+				dmesg_zeilen++;
+			}
+			z = 0;
+			if (c == '\n' || c == '\r')
+				continue;
+		}
+		zeile[z++] = (c >= 0x20 && c < 0x7f) ? c : '.';
+	}
+	if (z && dmesg_zeilen < DMESG_ZEILEN) {
+		zeile[z] = 0;
+		pr_info("wcnlog: %s\n", zeile);
+		dmesg_zeilen++;
+	}
+	if (dmesg_zeilen == DMESG_ZEILEN) {
+		pr_info(TAG "weitere Log-Zeilen nur noch in wcn_log\n");
+		dmesg_zeilen++;
+	}
+}
+
+/* sbuf_read() fuer den Empfangsring */
+static void log_lesen(void)
+{
+	u32 rd, wr, alt, pos, n;
+	bool war_voll;
+
+	if (!sb_bereit)
+		return;
+	rmb();
+	rd = sm_rd(H_RX_RD);
+	wr = sm_rd(H_RX_WR);
+	alt = rd;
+	war_voll = (wr - rd) >= SB_RX;
+	if (wr - rd > SB_RX) {
+		pr_warn(TAG "Ring uebergelaufen (rd %u, wr %u)\n", rd, wr);
+		rd = wr - SB_RX;
+	}
+	while (rd != wr) {
+		pos = rd % SB_RX;
+		n = min(wr - rd, SB_RX - pos);
+		dmesg_ausgeben(smem + SB_HDR + SB_TX + pos, n);
+		if (wlog && wlog_len < WLOG_MAX) {
+			u32 k = min_t(size_t, n, WLOG_MAX - wlog_len);
+
+			memcpy(wlog + wlog_len, smem + SB_HDR + SB_TX + pos, k);
+			wlog_len += k;
+		}
+		rd += n;
+	}
+	sm_wr(H_RX_RD, rd);
+	wmb();
+	if (rd != alt)
+		pr_info(TAG "Log: %u Bytes gelesen (gesamt %zu)\n", rd - alt, wlog_len);
+	if (war_voll)
+		senden(LOG_KANAL, T_EVENT, EV_RDPTR, 0, "EVENT RDPTR (Ring war voll)");
+}
+
+static void bearbeiten(u32 lo, u32 hi)
+{
+	u8 ch = lo & 0xff, typ = (lo >> 8) & 0xff;
+	u16 flag = lo >> 16;
+
+	if (ch != LOG_KANAL)
+		return;		/* andere Kanaele: nur mitlesen */
+
+	switch (typ) {
+	case T_OPEN:
+		if (flag == SMSG_OPEN_MAGIC) {
+			if (sb_bereit) {	/* Neustart des Kerns: alte Daten verwerfen */
+				sm_wr(H_RX_RD, sm_rd(H_RX_WR));
+				sb_bereit = false;
+			}
+			senden(LOG_KANAL, T_OPEN, SMSG_OPEN_MAGIC, 0, "OPEN Kanal 5");
+		}
+		break;
+	case T_CLOSE:
+		sb_bereit = false;
+		senden(LOG_KANAL, T_CLOSE, SMSG_CLOSE_MAGIC, 0, "CLOSE-Antwort Kanal 5");
+		break;
+	case T_CMD:
+		if (flag == CMD_SBUF_INIT && !sb_bereit) {
+			sb_bereit = true;
+			senden(LOG_KANAL, T_DONE, DONE_SBUF_INIT, SMEM_CP, "DONE SBUF_INIT (sbuf bei WCN 0x240000)");
+			log_lesen();
+		}
+		break;
+	case T_EVENT:
+		if (flag == EV_WRPTR) {
+			ereignisse++;
+			log_lesen();
+		}
+		break;
+	}
+}
+
+static void arbeit_fn(struct work_struct *w)
+{
+	struct smsg_roh m;
+	unsigned long flags;
+	unsigned int n;
+
+	for (;;) {
+		spin_lock_irqsave(&eingang_lock, flags);
+		n = kfifo_get(&eingang, &m);
+		spin_unlock_irqrestore(&eingang_lock, flags);
+		if (!n)
+			break;
+		bearbeiten(m.lo, m.hi);
+	}
+}
+
+static void empfangen(struct mbox_client *c, void *msg)
+{
+	u32 *m = msg;
+	struct smsg_roh r = { m[0], m[1] };
+	unsigned long flags;
+
+	merken(m[0], m[1], false);
+	if (!antworten || !arbeit_bereit)
+		return;
+	spin_lock_irqsave(&eingang_lock, flags);
+	if (!kfifo_put(&eingang, r))
+		pr_warn_ratelimited(TAG "Eingang voll, Nachricht verloren\n");
+	spin_unlock_irqrestore(&eingang_lock, flags);
+	schedule_work(&arbeit);
+}
+
+static ssize_t wcn_log_read(struct file *f, struct kobject *k, const struct bin_attribute *a,
+			    char *buf, loff_t pos, size_t n)
+{
+	if (!wlog || pos >= wlog_len)
+		return 0;
+	n = min_t(size_t, n, wlog_len - pos);
+	memcpy(buf, wlog + pos, n);
+	return n;
+}
+static const BIN_ATTR_RO(wcn_log, WLOG_MAX);
+static bool bin_log;
 
 static ssize_t nachrichten_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -163,8 +424,13 @@ static ssize_t nachrichten_show(struct device *dev, struct device_attribute *att
 	memcpy(kopie, ring, sizeof(ring));
 	spin_unlock_irqrestore(&ring_lock, flags);
 
-	p = scnprintf(buf, PAGE_SIZE, "Kanal %d, %u Nachrichten empfangen%s\n", kanal, n,
+	p = scnprintf(buf, PAGE_SIZE, "Kanal %d, %u Nachrichten%s\n", kanal, n,
 		      n > RING ? " (nur die letzten 64 gezeigt)" : "");
+	if (antworten && smem)
+		p += scnprintf(buf + p, PAGE_SIZE - p,
+			       "sipc-lite Kanal 5: sbuf %s, rx rd %u wr %u, tx rd %u wr %u, %u Ereignisse, %zu Bytes Log\n",
+			       sb_bereit ? "BEREIT" : "nicht bereit", sm_rd(H_RX_RD), sm_rd(H_RX_WR),
+			       sm_rd(H_TX_RD), sm_rd(H_TX_WR), ereignisse, wlog_len);
 	start = n > RING ? n - RING : 0;
 	for (i = start; i < n && p < PAGE_SIZE - 200; i++)
 		p += zeile(buf + p, PAGE_SIZE - p, &kopie[i % RING], i);
@@ -237,9 +503,18 @@ fehler:
 
 static void aufraeumen(void)
 {
+	arbeit_bereit = false;
 	if (chan)
 		mbox_free_channel(chan);
 	chan = NULL;
+	cancel_work_sync(&arbeit);
+	if (pdev && bin_log)
+		sysfs_remove_bin_file(&pdev->dev.kobj, &bin_attr_wcn_log);
+	bin_log = false;
+	vfree(wlog);
+	wlog = NULL;
+	smem = NULL;
+	sb_bereit = false;
 	if (pdev && bin_btwf)
 		sysfs_remove_bin_file(&pdev->dev.kobj, &bin_attr_wcn_ram_btwf);
 	if (pdev && bin_hoch)
@@ -273,6 +548,7 @@ static int __init lauscher_init(void)
 	u32 ph;
 	int ret;
 
+	INIT_WORK(&arbeit, arbeit_fn);
 	if (kanal < 0 || kanal > 15) {
 		pr_err(TAG "kanal muss 0..15 sein\n");
 		return -EINVAL;
@@ -294,10 +570,31 @@ static int __init lauscher_init(void)
 	}
 	device_set_node(&pdev->dev, of_fwnode_handle(knoten));
 
+	/* WC wie Android (nocache); klappt nur bei no-map - sonst lieber gar nicht */
+	ram_btwf.va = memremap(ram_btwf.phys, ram_btwf.len, MEMREMAP_WC);
+	ram_hoch.va = memremap(ram_hoch.phys, ram_hoch.len, MEMREMAP_WC);
+
+	if (antworten) {
+		if (!ram_btwf.va) {
+			pr_err(TAG "antworten=1 braucht den ungecachten WCN-Speicher - Abbruch\n");
+			ret = -ENOMEM;
+			goto fehler;
+		}
+		smem = ram_btwf.va + (SMEM_AP - ram_btwf.phys);
+		wlog = vzalloc(WLOG_MAX);
+		if (!wlog) {
+			ret = -ENOMEM;
+			goto fehler;
+		}
+		sbuf_vorbereiten();
+		arbeit_bereit = true;
+	}
+
 	cl.dev = &pdev->dev;
 	cl.rx_callback = empfangen;
-	cl.tx_block = false;
-	cl.knows_txdone = true;
+	cl.tx_block = true;		/* nur aus dem Arbeits-Thread gesendet */
+	cl.tx_tout = 100;		/* ms; kommt keine Quittung, geht es trotzdem weiter */
+	cl.knows_txdone = false;
 	chan = mbox_request_channel(&cl, 0);
 	if (IS_ERR(chan)) {
 		ret = PTR_ERR(chan);
@@ -310,16 +607,16 @@ static int __init lauscher_init(void)
 	if (ret)
 		pr_warn(TAG "Datei nachrichten: %d\n", ret);
 
-	/* WC wie Android (nocache); klappt nur bei no-map - sonst lieber gar nicht */
-	ram_btwf.va = memremap(ram_btwf.phys, ram_btwf.len, MEMREMAP_WC);
-	ram_hoch.va = memremap(ram_hoch.phys, ram_hoch.len, MEMREMAP_WC);
+	if (wlog && !sysfs_create_bin_file(&pdev->dev.kobj, &bin_attr_wcn_log))
+		bin_log = true;
 	if (ram_btwf.va && !sysfs_create_bin_file(&pdev->dev.kobj, &bin_attr_wcn_ram_btwf))
 		bin_btwf = true;
 	if (ram_hoch.va && !sysfs_create_bin_file(&pdev->dev.kobj, &bin_attr_wcn_ram_hoch))
 		bin_hoch = true;
 	pr_info(TAG "WCN-Speicher lesbar: wcn_ram_btwf %s, wcn_ram_hoch %s\n",
 		bin_btwf ? "ja" : "NEIN", bin_hoch ? "ja" : "NEIN");
-	pr_info(TAG "hoere auf Mailbox-Kanal %d - jetzt wcn_starttest stufe=3 laden\n", kanal);
+	pr_info(TAG "hoere auf Mailbox-Kanal %d%s - jetzt wcn_starttest stufe=3 laden\n", kanal,
+		antworten ? ", sipc-lite fuer Kanal 5 (Log) aktiv" : "");
 	return 0;
 
 fehler:
@@ -329,7 +626,8 @@ fehler:
 
 static void __exit lauscher_exit(void)
 {
-	pr_info(TAG "%u Nachrichten empfangen, Kanal %d wieder frei\n", anzahl, kanal);
+	pr_info(TAG "%u Nachrichten, %u Log-Ereignisse, %zu Bytes Log, Kanal %d wieder frei\n",
+		anzahl, ereignisse, wlog_len, kanal);
 	aufraeumen();
 }
 
