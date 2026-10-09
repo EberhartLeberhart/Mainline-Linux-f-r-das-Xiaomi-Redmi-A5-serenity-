@@ -1,0 +1,14 @@
+22:59:33 WCN aus
+22:59:33 vorher geladenen Treiber abgeschaltet
+22:59:33 gestartet - bitte Kabel abziehen (warte bis zu 3 min)
+22:59:39 Kabel ab
+23:00:10 WCN aus (1): -49 mA (Mittel aus 10 Werten, 20 s)
+23:00:16 WCN an (0xF0F0F0FF)
+23:00:46 WCN an, Kern schlaeft (1): -50 mA (Mittel aus 10 Werten, 20 s)
+23:00:46 WCN aus
+23:01:16 WCN aus (2): -52 mA (Mittel aus 10 Werten, 20 s)
+23:01:22 WCN an (0xF0F0F0FF)
+23:01:52 WCN an, Kern schlaeft (2): -52 mA (Mittel aus 10 Werten, 20 s)
+23:01:52 WCN aus
+23:02:22 WCN aus (3): -52 mA (Mittel aus 10 Werten, 20 s)
+23:02:22 fertig - Kabel wieder einstecken. Negativ = Entladen; je kleiner der Betrag, desto weniger Verbrauch
