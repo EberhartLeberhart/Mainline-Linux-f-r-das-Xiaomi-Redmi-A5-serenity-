@@ -65,10 +65,30 @@ Die Knoten stehen nicht im Haupt-Gerätebaum, sondern im **dtbo-Overlay**, wie b
 
 Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt danach) → später `sprdbt_tty.ko`.
 
+## Stand 09.10. abends
+
+- **Mailbox läuft bereits in Mainline** ✅: Treiber `sprd-mailbox.c` (`sprd,ums9230-mailbox`, R2) und DT-Knoten sind im Codeberg-Stand,
+  `CONFIG_SPRD_MBOX=y`. Am Handy: `641c0000.mailbox` gebunden, 3 Interrupts (GIC 114–116 = SPI 82–84) angemeldet, Zähler 0
+  (noch kein Partner-Kern aktiv). Hinweis: Mainline nutzt `#mbox-cells = <1>`, Unisoc `<2>` – beim sipc-Port beachten.
+- **WCN-Startdaten aus Xiaomis Overlay** (`cpwcn-btwf`): Firmware kommt aus der **Partition `wcnmodem`** (2 MB, `sprd,file-length`),
+  nicht aus einer Datei; Einschaltfolge `sprd,ctrl-reg/-mask/-value/-type/-rw-offset/-us-delay` (10 Schritte) ist **identisch mit Realme**;
+  Syscons: aon-apb, pmu-apb, wcn-aon-apb (`0x5180c000`), wcn-aon-ahb (`0x51880000`), pub-apb, wcn-btwf-ahb (`0x51130000`);
+  `sprd,apcp-sync-addr = 0x7fdc00`, `sprd,wcn-sipc-ver = 1`. Zusätzlich GPIOs `merlion-chip-en` (118), `merlion-rst` (117),
+  `xtal-26m-type-sel` (173) und Regler vddwcn, dcxo1v8, vddwifipa ❓ (Bedeutung beim integrierten WCN noch unklar).
+- **Firmware gefunden (09.10. abends):** nicht in einer Partition `wcnmodem` (gibt es auf dem Redmi A5 nicht), sondern in
+  **`odm_a`: `/odm/firmware/wcnmodem.bin`** (1 273 416 Bytes), `gnssmodem.bin` (195 412 Bytes) und `frsm-spk1.bin`
+  (Einstellungen Lautsprecher-Verstärker). **`wcnmodem.bin` ist nicht signiert**: Sie beginnt nicht mit `DHTB`
+  (`SEC_IMAGE_MAGIC`), sondern mit einer Cortex-M-Vektortabelle (Stapel `0x001e1788` < 2 MB, Einsprünge ungerade = Thumb).
+  Damit entfällt die trusty-Prüfung; ob eine Speicher-Sperre („UNLOCK_DDR") trotzdem greift: ❓ (zeigt der Startversuch).
+  Android lädt die Module in `odm/etc/init/wcn.rc` (`on cali-fs`): wcn_bsp → wlan_combo → gnss → sprdbt_tty → fm.
+  Audio-DSP-Firmware liegt in der Partition **`l_agdsp_a/b`**.
+- **Nächster Versuch:** WCN-Kern ohne sipc starten (Firmware aus `wcnmodem` nach `0x87000000`, Einschaltfolge nach
+  `wcn_integrate_boot.c`) und prüfen, ob er sich über die Mailbox meldet (Interrupt-Zähler). Klärt nebenbei die trusty-Frage.
+
 ## Offene Hürden
 
 1. **sipc + Mailbox fehlen in Mainline.** Ton, WLAN, Bluetooth, GNSS und Modem bauen alle darauf auf. Das ist der erste Port.
-2. **trusty:** `unisoc_wcn_bsp` hängt an `trusty-ipc`. Laut Realme-Code wird die WCN-Firmware nur dann von TrustZone
+2. **trusty (für WLAN vermutlich erledigt, s. o.):** `unisoc_wcn_bsp` hängt an `trusty-ipc`. Laut Realme-Code wird die WCN-Firmware nur dann von TrustZone
    geprüft, wenn sie einen Signatur-Kopf (`SEC_IMAGE_MAGIC`) hat; sonst wird sie direkt geladen. Ob Xiaomis Firmware
    signiert ist und ob der WCN-Kern ohne Freigabe startet: ❓ (nur durch Versuch zu klären). Mainline hat keinen trusty-Treiber.
 3. **Firmware:** Audio-DSP, VBC und WCN brauchen Firmware aus den Android-Partitionen (nicht frei, bleibt auf dem Handy).

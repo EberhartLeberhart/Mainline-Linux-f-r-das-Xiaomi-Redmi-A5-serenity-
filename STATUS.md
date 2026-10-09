@@ -167,7 +167,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 | Bereich | Status | Notiz |
 |---|---|---|
-| WLAN / Bluetooth / FM / GPS (Marlin3) | ❌ 🟡 | 09.10.: **Quellcode gefunden** (Realme C33, gleicher Chip, GPL) – Gerätebaum-Knoten aus Xiaomis dtbo-Overlay passen 1:1 (WCN `0x87000000`, WLAN `sprd,sc2355-sipc-wifi` `0x87380000`, BT sipc core@3). Offen: sipc/Mailbox-Port, trusty (Firmware-Prüfung, nur bei signierter Firmware ❓), Firmware nur aus dem Handy. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
+| WLAN / Bluetooth / FM / GPS (Marlin3) | ❌ 🟡 | 09.10.: **Quellcode gefunden** (Realme C33, gleicher Chip, GPL) – Gerätebaum-Knoten aus Xiaomis dtbo-Overlay passen 1:1 (WCN `0x87000000`, WLAN `sprd,sc2355-sipc-wifi` `0x87380000`, BT sipc core@3). Mailbox läuft schon (Mainline `sprd-mailbox`, 3 IRQs) ✅. Firmware `wcnmodem.bin` in `odm_a/firmware`, **nicht signiert** (Cortex-M-Vektortabelle) → kein trusty nötig ❓(Speichersperre). Offen: WCN-Start (Testtreiber), sipc-Port. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
 | FM-Senden | ❓ | Behauptung aus altem Chat, **nicht belegt** |
 | Mobilfunk | ❌ | Ziel: Ersatz-Internet |
 | GPU (Mali-G57) | ❌ | braucht Power-Domains; vorher Temperaturgrenze für `gpu-thermal` |
