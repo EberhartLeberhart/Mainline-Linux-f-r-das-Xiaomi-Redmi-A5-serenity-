@@ -7,6 +7,8 @@
 #   redmi-wcntest.sh 2     + WCN-System einschalten und aufwecken
 #   redmi-wcntest.sh 3     + Firmware nach 0x87000000, BTWF-CPU loslassen, auf 0xF0F0F0FF warten
 #   Weitere Parameter gehen ans Modul, z. B. redmi-wcntest.sh 3 fertig_melden=1
+#   redmi-wcntest.sh aus   WCN nach Stufe 3 sauber abschalten und Treiber entladen
+#                          (danach geht Stufe 3 wieder ohne Neustart; der Lauscher bleibt geladen)
 #
 # Regel 6: eine Stufe pro Start. Nach Stufe 1..3 vor dem naechsten Versuch neu starten
 # (der Treiber verweigert sonst mit "WCN-System ist schon an").
@@ -21,7 +23,21 @@ LOG=/root/wcntest_$(date +%Y-%m-%d_%H%M)_stufe${STUFE}.log
 log(){ echo "$*" | tee -a "$LOG"; }
 mbox(){ grep -i mailbox /proc/interrupts | tr -s ' '; }
 
-case "$STUFE" in 0|1|2|3) ;; *) echo "Stufe 0..3"; exit 1;; esac
+if [ "$STUFE" = aus ]; then
+	[ -w /sys/devices/platform/wcntest/aus ] || { echo "kein laufender Stufe-3-Treiber"; exit 1; }
+	LOG=/root/wcntest_$(date +%Y-%m-%d_%H%M)_aus.log
+	: > "$LOG"
+	log "== wcntest aus, $(date), boot_id $(cat /proc/sys/kernel/random/boot_id)"
+	N0=$(dmesg | wc -l)
+	echo 1 > /sys/devices/platform/wcntest/aus; RC=$?
+	log "-- Abschalten Rueckgabe $RC"
+	log "-- dmesg:"; dmesg | tail -n +$((N0 + 1)) | tee -a "$LOG"
+	log "-- Zustand:"; tee -a "$LOG" < /sys/devices/platform/wcntest/zustand
+	[ "$RC" = 0 ] && rmmod wcn_starttest && log "-- wcn_starttest entladen"
+	log "== Protokoll: $LOG"
+	exit $RC
+fi
+case "$STUFE" in 0|1|2|3) ;; *) echo "Stufe 0..3 oder aus"; exit 1;; esac
 [ -f "$KO" ] || { echo "Modul $KO fehlt"; exit 1; }
 if [ "$STUFE" = 3 ] && [ ! -f /lib/firmware/wcnmodem.bin ]; then
 	echo "ABBRUCH: /lib/firmware/wcnmodem.bin fehlt (aus odm_a:/firmware/wcnmodem.bin, 1 273 416 Bytes)"

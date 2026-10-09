@@ -757,6 +757,144 @@ static int auf_kern_warten(void)
 	return 0;
 }
 
+/* ---- Abschalten (Realme stop_integrate_wcn_module, nur BTWF aktiv) ---- */
+
+static DEFINE_MUTEX(aus_lock);
+static bool ist_aus;
+
+/* Regler ausschalten (PD-Bit 0 = 1); Spannung bleibt stehen */
+static void ldo_aus(const char *name, u32 pd_reg)
+{
+	u32 pd = 0;
+
+	if (regmap_update_bits(pmic_map, pd_reg, BIT(0), BIT(0)) || pmic_rd(pd_reg, &pd))
+		pr_err(TAG "  %s: Ausschalten fehlgeschlagen\n", name);
+	else
+		pr_info(TAG "  %s: %s\n", name, pd & 1 ? "aus" : "NOCH AN (?)");
+}
+
+/* wcn_dfs_poweroff_state_clear() bzw. _shutdown_clear(): Bits im BTWF-DFS-Wort loeschen */
+static void dfs_bits_loeschen(u32 maske, const char *was)
+{
+	u32 v = mem_rd(mem_sync, S_DFS);
+
+	mem_wr(mem_sync, S_DFS, v & ~maske);
+	pr_info(TAG "  DFS 0x%08x -> 0x%08x (%s)\n", v, mem_rd(mem_sync, S_DFS), was);
+}
+
+/*
+ * wcn_sys_forbid_deep_sleep(): BTWF und damit das WCN-System zwangsweise aufwecken und
+ * den Tiefschlaf verbieten, damit die WCN-Register beim Abschalten erreichbar bleiben.
+ */
+static int tiefschlaf_verbieten(void)
+{
+	pr_info(TAG "wcn_sys_forbid_deep_sleep:\n");
+	rmw(B_AON, 0x350, 0, BIT(5), "btwf_clear_force_deepsleep_aontop");
+	pr_info(TAG "  AON 0x34c war 0x%08x\n", rd(B_AON, 0x34c));
+	wr(B_AON, 0x34c + REG_CLR, BIT(16), "BTWF zwangsweise aufwecken");
+	msleep(8);	/* WCN_SYS_POWER_ON_WAKEUP_TIME */
+	warte(B_AON, 0x364, 0xf << 7, 0x6 << 7, "BTWF wach (AON 0x364 Bit 10:7)");
+	warte(B_AON, 0x360, 0x1f << 25, 0, "BTWF an (AON 0x360 Bit 29:25)");
+	warte(B_PMU, 0x860, 0xf0000000, 0x60000000, "WCN-System wach (PMU 0x860)");
+	if (!warte(B_PMU, 0x538, 0x1f000000, 0, "WCN-System an (PMU 0x538)") || !wcn_sys_an()) {
+		pr_err(TAG "  WCN-System wird nicht wach - Abbruch, WCN-Register bleiben unberuehrt\n");
+		wr(B_AON, 0x34c + REG_SET, BIT(16), "Zwangswecken wieder loesen");
+		return -ETIMEDOUT;
+	}
+	wcn_wach = true;
+	pr_info(TAG "  WCN-AON-AHB 0x0c4 war 0x%08x\n", rd(B_WAON_AHB, 0xc4));
+	wr(B_WAON_AHB, 0xc4, 0, "wcn_ip_allow_sleep(false)");
+	wr(B_AON, 0x34c + REG_SET, BIT(16), "btwf_sys_clear_force_exit_deep_sleep");
+	return 0;
+}
+
+/* btwf_sys_shutdown() */
+static void btwf_herunterfahren(void)
+{
+	pr_info(TAG "btwf_sys_shutdown:\n");
+	rmw(B_WAON_APB, 0x98, BIT(12), 0, "btwf auto shutdown an");
+	if (!warte(B_AON, 0x364, 0xf << 7, 0, "BTWF im Tiefschlaf (AON 0x364 Bit 10:7 = 0)"))
+		rmw(B_AON, 0x350, BIT(5), 0, "btwf_force_deepsleep_aontop");
+	if (!warte(B_AON, 0x360, 0x1f << 25, 0x7 << 25, "BTWF aus (AON 0x360 Bit 29:25 = 7)"))
+		rmw(B_AON, 0x350, BIT(21), 0, "btwf_force_shutdown_aontop");
+	rmw(B_WAON_AHB, 0x0c, 0x55, 0, "CPU/SYS/Cache/Busmonitor in Reset");
+	rmw(B_WAON_APB, 0x320, BIT(5), 0, "A-DIE Spannungsanpassung an");
+}
+
+/* wcn_sys_power_down() + wcn_sys_power_clock_unsupport(true) */
+static void wcn_sys_runter(void)
+{
+	int en = gpio_basis + GPIO_MERLION_EN, rst = gpio_basis + GPIO_MERLION_RST;
+
+	pr_info(TAG "wcn_sys_power_down:\n");
+	wr(B_PMU, 0x3a8 + REG_SET, BIT(24), "WCN auto shutdown an");
+	wr(B_WAON_AHB, 0xc4, 0xffffffff, "wcn_ip_allow_sleep(true)");
+	wcn_wach = false;	/* ab hier darf die WCN-Seite nicht mehr angefasst werden */
+	warte(B_PMU, 0x538, 0x1f000000, 0x7 << 24, "WCN-System aus (PMU 0x538 = 7)");
+
+	pr_info(TAG "Strom aus (wcn_sys_power_clock_unsupport):\n");
+	ldo_aus("vddwifipa", LDO_VDDWIFIPA_PD);
+	usleep_range(10000, 30000);	/* VDDWIFIPA_VDDCON_MIN/MAX_INTERVAL_TIME */
+	if (gpio_rst_req && gpio_en_req) {	/* wcn_merlion_power_off() */
+		gpio_set_value(rst, 0);
+		gpio_set_value(en, 0);
+		pr_info(TAG "  merlion: chip-en=%d rst=%d\n", gpio_get_value(en), gpio_get_value(rst));
+	}
+	usleep_range(10, 15);
+	ldo_aus("vddwcn", LDO_VDDWCN_PD);
+	usleep_range(10, 15);
+	ldo_aus("dcxo1v8", LDO_VDDSIM2_PD);
+}
+
+static int abschalten(void)
+{
+	int ret;
+
+	pr_info(TAG "==== Abschalten (stop_integrate_wcn_module) ====\n");
+	dfs_bits_loeschen(BIT(4), "btwf_pwr_state");
+	if (!warte(B_AON, 0x364, 0xf << 7, 0, "BTWF im Tiefschlaf (AON 0x364 Bit 10:7 = 0)"))
+		rmw(B_AON, 0x350, BIT(5), 0, "btwf_force_deepsleep_aontop");
+
+	ret = tiefschlaf_verbieten();
+	if (ret)
+		return ret;
+	btwf_herunterfahren();
+	wcn_sys_runter();
+	mem_wr(mem_sync, S_RFI, 0);	/* wcn_rfi_status_clear() */
+	dfs_bits_loeschen(0xef, "wcn_dfs_poweroff_shutdown_clear");
+
+	rmw(B_AON, 0x350, 0, BIT(5), "btwf_clear_force_deepsleep_aontop");
+	rmw(B_AON, 0x350, 0, BIT(21), "btwf_clear_force_shutdown_aontop");
+	pr_info(TAG "==== WCN aus. Neuer Start ohne Neustart: rmmod wcn_starttest; redmi-wcntest.sh 3 ====\n");
+	return 0;
+}
+
+static ssize_t aus_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t n)
+{
+	int ret;
+
+	if (!sysfs_streq(buf, "1"))
+		return -EINVAL;
+	if (stufe != 3 || !pmic_map) {
+		pr_err(TAG "Abschalten nur nach Stufe 3\n");
+		return -EINVAL;
+	}
+	mutex_lock(&aus_lock);
+	if (ist_aus) {
+		mutex_unlock(&aus_lock);
+		return -EALREADY;
+	}
+	ret = abschalten();
+	if (!ret) {
+		ist_aus = true;
+		ergebnis = "WCN wieder ausgeschaltet";
+	}
+	mutex_unlock(&aus_lock);
+	return ret ?: n;
+}
+static DEVICE_ATTR_WO(aus);
+
 /* ---- Ablauf ----------------------------------------------------------- */
 
 static int ablauf(void)
@@ -881,6 +1019,7 @@ static void aufraeumen(void)
 
 	if (pdev) {
 		device_remove_file(&pdev->dev, &dev_attr_zustand);
+		device_remove_file(&pdev->dev, &dev_attr_aus);
 		platform_device_unregister(pdev);
 		pdev = NULL;
 	}
@@ -945,6 +1084,8 @@ static int __init wcntest_init(void)
 		stufe, ergebnis, ret);
 
 	/* Modul bleibt geladen, auch bei Fehler: Zustandsdatei lesbar, nichts wird zurueckgedreht */
+	if (stufe == 3 && device_create_file(&pdev->dev, &dev_attr_aus))
+		pr_warn(TAG "Datei aus fehlt\n");
 	ret = device_create_file(&pdev->dev, &dev_attr_zustand);
 	if (ret)
 		pr_warn(TAG "Zustandsdatei: %d\n", ret);
