@@ -112,8 +112,16 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
     werden, weil Mainline keinen SC2730-Reglertreiber hat. Übernimmt der PMIC die Spannung nicht, bleibt der Regler aus.
   - Nicht übernommen: eFuse-Werte für WLAN (`0x877FEB70`, aus nvmem `wcn_efuse_blk0`) – werden nur angezeigt ❓;
     `0x13579BDF`-Rückmeldung nur mit `fertig_melden=1` (auf dem Redmi stand nach Android `0xF0F0F0FF`, Xiaomi macht es wohl nicht).
-  - Offen ❓: ob `0x87000000` im Mainline-Gerätebaum `no-map` ist (Treiber meldet „ungecacht“ bzw. „gecacht“); ob der Mainline-
-    Power-Domain-Treiber (wcn) sich mit dem direkten Einschalten über PMU `0x3a8` verträgt.
+  - Offen ❓: ob der Mainline-Power-Domain-Treiber (wcn) sich mit dem direkten Einschalten über PMU `0x3a8` verträgt.
+- **Stufe 0 am Handy (09.10., 21:23, Kernel g99c0890089ba, Protokoll `wcntest_2026-10-09_2123_stufe0.log`)** ✅:
+  - WCN-Speicher ist `no-map` (Abbildung ungecacht wie bei Android) ✅.
+  - Regler alle aus: dcxo1v8 3000 mV, vddwcn 900 mV, vddwifipa 3300 mV. GPIO 117/118 = 0, GPIO 173 (xtal-sel) = 1.
+  - **PMU meldet das WCN-System schon nach dem Start als an+wach** (`0x538` = 0, `0x860` = `0x60000006`, AON `0x364` = `0x331`:
+    BTWF und GNSS wach), obwohl alle Regler aus sind. Die Statusbits zeigen nur die Zustandsmaschine, nicht ob Strom/Takt anliegt –
+    passt zum „synchronous external abort“. Wer die Domäne einschaltet (Bootloader oder Mainline-Power-Domain), ist ❓.
+    Folge: Der Treiber prüft „schon gelaufen“ jetzt über vddwcn bzw. `init_status`, nicht mehr über die PMU.
+  - Speicher `0x87000000` und Sync-Bereich enthalten nur `0xffff0000` (nichts von Android übrig, auch die eFuse-Felder nicht).
+  - Mailbox-Zähler unverändert 0. `gpio-sprd` hat kein `get_direction` (WARN in gpiolib) → Treiber liest nur noch den Wert.
 
 ## Offene Hürden
 

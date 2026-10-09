@@ -59,7 +59,7 @@ MODULE_PARM_DESC(stufe, "0=lesen 1=Strom 2=+WCN-System an 3=Firmware+CPU-Start")
 
 static bool trotzdem;
 module_param(trotzdem, bool, 0444);
-MODULE_PARM_DESC(trotzdem, "auch starten, wenn das WCN-System schon an ist");
+MODULE_PARM_DESC(trotzdem, "auch starten, wenn seit dem Start schon ein Lauf war");
 
 static char *fw_name = "wcnmodem.bin";
 module_param(fw_name, charp, 0444);
@@ -295,18 +295,14 @@ static int pmic_rd(u32 reg, u32 *v)
 static int gpio_zustand(int nr, char *buf, size_t n)
 {
 	struct gpio_desc *d;
-	int dir, val;
 
 	if (!gdev)
 		return scnprintf(buf, n, "GPIO %d: kein Controller\n", nr);
 	d = gpio_device_get_desc(gdev, nr);
 	if (IS_ERR(d))
 		return scnprintf(buf, n, "GPIO %d: Fehler %ld\n", nr, PTR_ERR(d));
-	dir = gpiod_get_direction(d);
-	val = gpiod_get_raw_value(d);
-	return scnprintf(buf, n, "GPIO %d: %s, Wert %d\n", nr,
-			 dir == GPIO_LINE_DIRECTION_OUT ? "Ausgang" :
-			 dir == GPIO_LINE_DIRECTION_IN ? "Eingang" : "?", val);
+	/* gpio-sprd kennt kein get_direction (WARN in gpiolib, belegt 09.10.) -> nur den Wert */
+	return scnprintf(buf, n, "GPIO %d: Wert %d\n", nr, gpiod_get_raw_value(d));
 }
 
 static ssize_t zustand_schreiben(char *buf, size_t n)
@@ -767,10 +763,25 @@ static int ablauf(void)
 {
 	int ret;
 
-	if (stufe >= 1 && wcn_sys_an() && !trotzdem) {
-		pr_err(TAG "WCN-System ist schon an - erst neu starten (oder trotzdem=1)\n");
-		return -EBUSY;
+	/*
+	 * Nicht die PMU fragen: Die meldet das WCN-System schon nach dem Start als an+wach,
+	 * obwohl alle Regler aus sind (belegt 09.10., Stufe 0). Android prueft hier nur seinen
+	 * Softwarezustand. Ein frueherer Lauf dieses Treibers erkennt man an vddwcn (an) oder
+	 * an einem Kern, der sich schon gemeldet hat.
+	 */
+	if (stufe >= 1 && !trotzdem) {
+		u32 pd = 1, init = mem_rd(mem_sync, S_INIT_STATUS);
+
+		if (pmic_rd(LDO_VDDWCN_PD, &pd))
+			return -EIO;
+		if (!(pd & 1) || init == MAGIC_READY || init == MAGIC_SUCCESS) {
+			pr_err(TAG "Schon ein Lauf seit dem Start (vddwcn %s, init_status 0x%08x) - erst neu starten (oder trotzdem=1)\n",
+			       pd & 1 ? "aus" : "an", init);
+			return -EBUSY;
+		}
 	}
+	if (stufe >= 1 && wcn_sys_an())
+		pr_info(TAG "Hinweis: PMU meldet WCN-System schon an+wach, obwohl die Regler aus sind - Android-Ablauf laeuft trotzdem\n");
 
 	if (stufe == 3) {
 		ret = speicher_vorbereiten();
