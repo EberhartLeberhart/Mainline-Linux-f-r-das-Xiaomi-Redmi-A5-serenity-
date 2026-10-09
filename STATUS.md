@@ -167,11 +167,12 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 | Bereich | Status | Notiz |
 |---|---|---|
-| WLAN / Bluetooth / FM / GPS (Marlin3) | ❌ | Quellen: A7-Pro-Kernel, Firmware aus Dump |
+| WLAN / Bluetooth / FM / GPS (Marlin3) | ❌ 🟡 | 09.10.: **Quellcode gefunden** (Realme C33, gleicher Chip, GPL) – Gerätebaum-Knoten aus Xiaomis dtbo-Overlay passen 1:1 (WCN `0x87000000`, WLAN `sprd,sc2355-sipc-wifi` `0x87380000`, BT sipc core@3). Offen: sipc/Mailbox-Port, trusty (Firmware-Prüfung, nur bei signierter Firmware ❓), Firmware nur aus dem Handy. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
 | FM-Senden | ❓ | Behauptung aus altem Chat, **nicht belegt** |
 | Mobilfunk | ❌ | Ziel: Ersatz-Internet |
 | GPU (Mali-G57) | ❌ | braucht Power-Domains; vorher Temperaturgrenze für `gpu-thermal` |
-| Ton, Kamera | ❌ | für den Server nicht geplant |
+| Ton | ❌ 🟡 | 09.10.: **Quellcode gefunden** (Realme C33) für die ganze Kette sipc → audio-sipc/-mem/-pipe → VBC v4 + MCDT → Codec SC2730 → Soundkarte; alle Adressen im Xiaomi-Gerätebaum identisch (VBC `0x56480000`, MCDT `0x56490000`, Codec-Dig `0x56750000`, Audio-DMA `0x56580000`). Lücke: Lautsprecher-Verstärker FourSemi FS1588 (I2C `0x20220000`/`0x34`) ohne Quellcode. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
+| Kamera | ❌ | später |
 
 ## Nächste Schritte
 
@@ -181,9 +182,9 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 4. Akku: Ausschalten mit Kabel bei gekapptem Strom prüfen; später eigener Ladechip-Treiber statt i2cset
 5. Display: Abschalten/Wiedereinschalten im DRM-Treiber reparieren (Diagnose: DCS 0x0A muss 0x9C liefern), dann Schlaf über den Treiber (DPU/DSI aus) und Touch als Panel-Follower; Strom neu messen
 6. Touch: Feinschliff (Wächter-Erkennung im Treiber, Ausrichtung/Mehrfinger prüfen), Treiber-Korrekturen an George Chan melden
-6. Audio: Domain `/audio-dsp` → DMA → Codec
-7. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
-8. Marlin3 (WLAN …)
+7. **Gemeinsamer Unterbau für Ton/WLAN/BT/GNSS/Modem: Mailbox (`unisoc,mailbox`) + sipc aus der Realme-Quelle portieren** (siehe TREIBER_QUELLEN.md), dann prüfen, ob WCN- bzw. Audio-Kern antworten
+8. Danach WLAN (wcn_bsp + sc2355-sipc) oder Ton (VBC/Codec; Verstärker FS1588 offen)
+9. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
 
 ## Ideen für später (niedrige Priorität)
 
