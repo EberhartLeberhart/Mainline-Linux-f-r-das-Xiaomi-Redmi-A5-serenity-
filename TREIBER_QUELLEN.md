@@ -155,6 +155,18 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
 - **Lauschangriff auf den Speicher:** Der Lauscher gibt den reservierten WCN-Speicher nur lesend aus
   (`/sys/devices/platform/wcn-lauscher/wcn_ram_btwf` = `0x87000000–0x8747ffff`, `wcn_ram_hoch` = `0x87600000–0x877fffff`; die Lücke
   mit normalem Linux-RAM bleibt draußen). Ziel: Log-Text und Puffer des Kerns finden, bevor sipc steht ❓.
+- **Speicherauszug nach dem Start (22:14):** Firmware `0x87000000–0x87136E48`, Arbeitsdaten bis ~`0x87204000`
+  (Stapelanfang `0x871E1788`). Ab `0x87204000` und der ganze obere Bereich unberührt (Einschaltmuster `0xffff0000`).
+  Kein eigener Log-Ring im RAM; die `[T:…]`-Texte sind Reste von Formatierpuffern. Firmware-Texte bestätigen sipc auf
+  der Gegenseite (`sipc.c`, `smsg.c`, `sbuf.c`, `sblock.c`, `VLOG_main: cannot creat sbufl`).
+- **sipc-Speicher des WCN (Realme `ums9230-wcn.dtsi`, core@3):** `mboxes = <&mailbox 8 0>`,
+  `sprd,smem-info = <0x87240000 0x00240000 0x140000>` – genau im unberührten Bereich. Für Xiaomi noch gegen das dtbo prüfen ❓.
+- **sipc-lite, erster Handshake (22:27, Beleg `wcntest_2026-10-09_2227_stufe3.log`)** ✅: Lauscher mit `antworten=1`.
+  WCN OPEN 5 → **wir OPEN 5** → WCN CMD SBUF_INIT → **wir DONE (`0x240000`)** → WCN EVENT WRPTR. Die Mailbox
+  quittiert unser Senden (Inbox-IRQ GIC 114 zählt 2). Der Kern schreibt in unseren Ring (2880 Bytes in den ersten ~50 ms).
+- **Log-Format:** binäre Rahmen `7E7E7E7E | u16 Länge | u16 ? | 5A5A | u16 Typ | u32 Nr | u16 Nutzlänge | u16 ?`.
+  Erster Typ `0x0281`: Registerspur der RF-Kalibrierung (Paare `Adresse<<16 | Wert`, z. B. `d19a`/`d0a2` in 4er-Schritten).
+  Der Kern meldet WRPTR nur, wenn der Ring vorher leer war → Lauscher sieht zusätzlich alle 500 ms nach.
 - **Nächster Schritt:** sipc (smsg/sbuf) aus `drivers/soc/sprd/modem/sipc/` portieren und an Mailbox-Kanal 8 hängen
   (Mainline `#mbox-cells = <1>`), dann die Nachrichten des WCN-Kerns lesen. Danach `sprdbt_tty` bzw. WLAN `sc2355`.
 

@@ -38,6 +38,17 @@
  *   <0x87240000 0x00240000 0x140000>  (AP-Adresse, Adresse fuer den WCN-Kern, Groesse)
  * Puffer fuer Kanal 5 wie Realme wcn_sipc.c (SIPC_LOG_RX): 1 Ring, tx 0x8000, rx 0x30000.
  * Das Log steht danach in /sys/devices/platform/wcn-lauscher/wcn_log (und gekuerzt im dmesg).
+ *
+ * Log-Format (belegt 09.10., erster Lauf): binaere Rahmen
+ *   +0  7E 7E 7E 7E   Sync
+ *   +4  u16 Laenge    Rest des Rahmens ab +8 ... (0x59c bei einem 1440-Byte-Rahmen = 1440 - 4)
+ *   +6  u16 ?         (Pruefsumme/Folge?)
+ *   +8  5A 5A         Magic
+ *   +10 u16 Typ       0x0281 = Registerspur der RF-Kalibrierung (Paare Adresse<<16 | Wert)
+ *   +12 u32 Nummer
+ *   +16 u16 Nutzlaenge, +18 u16 ?, ab +20 Nutzdaten
+ * Der Kern meldet WRPTR offenbar nur, wenn der Ring vorher leer war - deshalb wird nach
+ * dem Lesen und alle 500 ms nachgesehen.
  * Andere Kanaele (4 = AT/BT/FM, 7 = WLAN) bleiben unbeantwortet.
  */
 
@@ -55,6 +66,7 @@
 #include <linux/vmalloc.h>
 #include <linux/workqueue.h>
 #include <linux/kfifo.h>
+#include <linux/unaligned.h>
 
 #define TAG "wcnlausch: "
 
@@ -259,39 +271,108 @@ static void sbuf_vorbereiten(void)
 		SMEM_AP, SMEM_CP, SB_TX, sm_rd(H_TX_ADDR), SB_RX, sm_rd(H_RX_ADDR));
 }
 
-static void dmesg_ausgeben(const char *p, size_t n)
+static size_t rahmen_pos;	/* bis hier sind die Rahmen in wlog ausgewertet */
+static unsigned int rahmen_anzahl;
+
+static bool druckbar(const u8 *p, size_t n)
+{
+	size_t i, gut = 0;
+
+	for (i = 0; i < n; i++)
+		gut += (p[i] >= 0x20 && p[i] < 0x7f) || p[i] == '\n' || p[i] == '\r' || p[i] == '\t';
+	return n && gut * 10 >= n * 9;
+}
+
+static void text_ausgeben(const u8 *p, size_t n)
 {
 	char zeile[161];
 	size_t i, z = 0;
 
-	for (i = 0; i < n && dmesg_zeilen < DMESG_ZEILEN; i++) {
-		char c = p[i];
+	for (i = 0; i <= n && dmesg_zeilen < DMESG_ZEILEN; i++) {
+		char c = i < n ? p[i] : '\n';
 
-		if (c == '\n' || c == '\r' || z == sizeof(zeile) - 1) {
+		if (c == '\n' || c == '\r' || c == 0 || z == sizeof(zeile) - 1) {
 			if (z) {
 				zeile[z] = 0;
-				pr_info("wcnlog: %s\n", zeile);
+				pr_info("wcnlog:   %s\n", zeile);
 				dmesg_zeilen++;
 			}
 			z = 0;
-			if (c == '\n' || c == '\r')
+			if (c == '\n' || c == '\r' || c == 0)
 				continue;
 		}
 		zeile[z++] = (c >= 0x20 && c < 0x7f) ? c : '.';
 	}
-	if (z && dmesg_zeilen < DMESG_ZEILEN) {
-		zeile[z] = 0;
-		pr_info("wcnlog: %s\n", zeile);
-		dmesg_zeilen++;
+}
+
+/* vollstaendige Rahmen ab rahmen_pos in wlog zerlegen und kurz im dmesg zeigen */
+static void rahmen_auswerten(void)
+{
+	static const u8 sync[4] = { 0x7e, 0x7e, 0x7e, 0x7e };
+
+	while (wlog && rahmen_pos + 20 <= wlog_len) {
+		const u8 *basis = (const u8 *)wlog, *r = basis + rahmen_pos;
+		u16 laenge, typ, nutz;
+		u32 nr;
+
+		if (memcmp(r, sync, 4)) {
+			/* nicht im Takt: bis zum naechsten Sync weitersuchen */
+			const u8 *t = memchr(r + 1, 0x7e, wlog_len - rahmen_pos - 1);
+
+			if (dmesg_zeilen < DMESG_ZEILEN) {
+				pr_info("wcnlog: %zu Bytes ohne Sync bei %zu\n",
+					(size_t)((t ? t : basis + wlog_len) - r), rahmen_pos);
+				dmesg_zeilen++;
+			}
+			if (!t) {
+				rahmen_pos = wlog_len;
+				return;
+			}
+			rahmen_pos = t - basis;
+			continue;
+		}
+		laenge = get_unaligned_le16(r + 4);
+		if (rahmen_pos + 4 + laenge > wlog_len)
+			return;		/* Rahmen noch nicht vollstaendig */
+		typ = get_unaligned_le16(r + 10);
+		nr = get_unaligned_le32(r + 12);
+		nutz = get_unaligned_le16(r + 16);
+		rahmen_anzahl++;
+		if (dmesg_zeilen < DMESG_ZEILEN) {
+			const u8 *d = r + 20;
+			size_t dn = min_t(size_t, nutz, laenge >= 16 ? laenge - 16 : 0);
+
+			pr_info("wcnlog: Rahmen %u: Typ 0x%04x, Nr %u, %u Bytes, Kopf %*ph\n",
+				rahmen_anzahl, typ, nr, nutz, 12, r + 4);
+			dmesg_zeilen++;
+			if (druckbar(d, dn)) {
+				text_ausgeben(d, dn);
+			} else if (dn >= 4) {
+				pr_info("wcnlog:   %*ph ...\n", (int)min_t(size_t, dn, 32), d);
+				dmesg_zeilen++;
+			}
+		}
+		rahmen_pos += 4 + laenge;
 	}
 	if (dmesg_zeilen == DMESG_ZEILEN) {
-		pr_info(TAG "weitere Log-Zeilen nur noch in wcn_log\n");
+		pr_info(TAG "weitere Rahmen nur noch in wcn_log\n");
 		dmesg_zeilen++;
 	}
 }
 
+static DEFINE_MUTEX(lese_lock);	/* Ereignis-Arbeit und Nachsehen koennen gleichzeitig laufen */
+
 /* sbuf_read() fuer den Empfangsring */
+static void log_lesen_ungeschuetzt(void);
+
 static void log_lesen(void)
+{
+	mutex_lock(&lese_lock);
+	log_lesen_ungeschuetzt();
+	mutex_unlock(&lese_lock);
+}
+
+static void log_lesen_ungeschuetzt(void)
 {
 	u32 rd, wr, alt, pos, n;
 	bool war_voll;
@@ -302,6 +383,8 @@ static void log_lesen(void)
 	rd = sm_rd(H_RX_RD);
 	wr = sm_rd(H_RX_WR);
 	alt = rd;
+	if (rd == wr)
+		return;
 	war_voll = (wr - rd) >= SB_RX;
 	if (wr - rd > SB_RX) {
 		pr_warn(TAG "Ring uebergelaufen (rd %u, wr %u)\n", rd, wr);
@@ -310,7 +393,6 @@ static void log_lesen(void)
 	while (rd != wr) {
 		pos = rd % SB_RX;
 		n = min(wr - rd, SB_RX - pos);
-		dmesg_ausgeben(smem + SB_HDR + SB_TX + pos, n);
 		if (wlog && wlog_len < WLOG_MAX) {
 			u32 k = min_t(size_t, n, WLOG_MAX - wlog_len);
 
@@ -321,10 +403,22 @@ static void log_lesen(void)
 	}
 	sm_wr(H_RX_RD, rd);
 	wmb();
-	if (rd != alt)
-		pr_info(TAG "Log: %u Bytes gelesen (gesamt %zu)\n", rd - alt, wlog_len);
+	pr_info(TAG "Log: %u Bytes gelesen (gesamt %zu)\n", rd - alt, wlog_len);
+	rahmen_auswerten();
 	if (war_voll)
 		senden(LOG_KANAL, T_EVENT, EV_RDPTR, 0, "EVENT RDPTR (Ring war voll)");
+}
+
+/* Nachsehen ohne Ereignis: der Kern meldet nur, wenn der Ring vorher leer war */
+static struct delayed_work nachsehen;
+
+static void nachsehen_fn(struct work_struct *w)
+{
+	if (!arbeit_bereit)
+		return;
+	if (sb_bereit)
+		log_lesen();
+	schedule_delayed_work(&nachsehen, msecs_to_jiffies(500));
 }
 
 static void bearbeiten(u32 lo, u32 hi)
@@ -360,6 +454,7 @@ static void bearbeiten(u32 lo, u32 hi)
 		if (flag == EV_WRPTR) {
 			ereignisse++;
 			log_lesen();
+			log_lesen();	/* waehrend des Lesens Nachgeschobenes gleich mitnehmen */
 		}
 		break;
 	}
@@ -428,9 +523,9 @@ static ssize_t nachrichten_show(struct device *dev, struct device_attribute *att
 		      n > RING ? " (nur die letzten 64 gezeigt)" : "");
 	if (antworten && smem)
 		p += scnprintf(buf + p, PAGE_SIZE - p,
-			       "sipc-lite Kanal 5: sbuf %s, rx rd %u wr %u, tx rd %u wr %u, %u Ereignisse, %zu Bytes Log\n",
+			       "sipc-lite Kanal 5: sbuf %s, rx rd %u wr %u, tx rd %u wr %u, %u Ereignisse, %zu Bytes Log, %u Rahmen\n",
 			       sb_bereit ? "BEREIT" : "nicht bereit", sm_rd(H_RX_RD), sm_rd(H_RX_WR),
-			       sm_rd(H_TX_RD), sm_rd(H_TX_WR), ereignisse, wlog_len);
+			       sm_rd(H_TX_RD), sm_rd(H_TX_WR), ereignisse, wlog_len, rahmen_anzahl);
 	start = n > RING ? n - RING : 0;
 	for (i = start; i < n && p < PAGE_SIZE - 200; i++)
 		p += zeile(buf + p, PAGE_SIZE - p, &kopie[i % RING], i);
@@ -507,6 +602,7 @@ static void aufraeumen(void)
 	if (chan)
 		mbox_free_channel(chan);
 	chan = NULL;
+	cancel_delayed_work_sync(&nachsehen);
 	cancel_work_sync(&arbeit);
 	if (pdev && bin_log)
 		sysfs_remove_bin_file(&pdev->dev.kobj, &bin_attr_wcn_log);
@@ -549,6 +645,7 @@ static int __init lauscher_init(void)
 	int ret;
 
 	INIT_WORK(&arbeit, arbeit_fn);
+	INIT_DELAYED_WORK(&nachsehen, nachsehen_fn);
 	if (kanal < 0 || kanal > 15) {
 		pr_err(TAG "kanal muss 0..15 sein\n");
 		return -EINVAL;
@@ -588,6 +685,7 @@ static int __init lauscher_init(void)
 		}
 		sbuf_vorbereiten();
 		arbeit_bereit = true;
+		schedule_delayed_work(&nachsehen, msecs_to_jiffies(500));
 	}
 
 	cl.dev = &pdev->dev;
@@ -626,8 +724,8 @@ fehler:
 
 static void __exit lauscher_exit(void)
 {
-	pr_info(TAG "%u Nachrichten, %u Log-Ereignisse, %zu Bytes Log, Kanal %d wieder frei\n",
-		anzahl, ereignisse, wlog_len, kanal);
+	pr_info(TAG "%u Nachrichten, %u Log-Ereignisse, %zu Bytes Log, %u Rahmen, Kanal %d wieder frei\n",
+		anzahl, ereignisse, wlog_len, rahmen_anzahl, kanal);
 	aufraeumen();
 }
 
