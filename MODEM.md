@@ -74,11 +74,35 @@ Vermutung: Art 1 = aus Partition laden, Art 2 = Text (Befehlszeile) ❓. Alle La
 und `sipc@8e000000` (`0x900000`). `0x87800000–0x87ffffff` (`sipc-mem` laut Container) ist **nicht** reserviert –
 erst klären, ob das Modem diesen Bereich wirklich nutzt ❓.
 
+## Der Kernel-Treiber (Realme `drivers/unisoc_platform/modem_loader/sprd_modem_loader.c`, 1 366 Zeilen)
+
+Der Kernel-Teil ist **dünn**. Er legt je Modem ein Gerät an (`modem@0` → `pmsys`, sipc-Ziel PM_SYS;
+`modem@1` → `modem`, sipc-Ziel PSCP) und bietet über ioctl nur an:
+Ladeplan setzen/lesen (`MODEM_SET/GET_LOAD_INFO`), Schreib-/Lesebereich wählen, Speicher beschreiben (`write`),
+Start/Stopp (`MODEM_START_CMD`/`MODEM_STOP_CMD`), Assert, Schlaf. **Das MECP-Format liest der Kernel nicht** – das macht
+unter Android das (nicht freie) Programm `modem_control`: Es zerlegt `l_modem`, schreibt Firmware, DSPs, NV-Daten und
+Befehlszeile an die Adressen aus der Tabelle und ruft dann START.
+
+Startfolge (`soc_modem_start`), die Bits kommen aus `syscon0…5` (Format `<regmap register maske>`, „löschen“ = Bits auf 0):
+
+1. shutdown löschen (`0x12`:`0x330` Maske `0x2000000`)
+2. deepsleep löschen (`0x12`:`0x818` Maske `0x02`)
+3. 50 ms warten
+4. sysreset löschen (`0x12`:`0xb98` Maske `0x800`)
+5. corereset löschen (`0x11`:`0x174` Maske `0x400`)
+6. 50 ms warten
+
+Stopp (`soc_modem_stop`) genau umgekehrt (setzen statt löschen). `getstatus` hat Register `0xff` = „ungültig“ und wird
+übersprungen; `dspreset` (`0x12`:`0xb88` Maske `0x18`) nutzt der Kernel-Treiber nicht selbst.
+
+Was `modem_control` außer dem Laden noch tut (Reihenfolge, Wartezeiten, ob `dspreset` geschaltet wird, was in
+`cpcmdline` steht, Umgang mit `sipc-mem`), ist **nicht** in der Quelle. Spur: das Programm und seine `.rc`-Datei aus der
+`vendor`-Partition lesen (nur Texte/Aufrufe, ohne es auszuführen) ❓.
+
 ## Offen / nächste Schritte
 
 1. Wo im `l_modem.img` die eigentlichen `modem`-Daten beginnen (Dateiversatz) und wie der Startcode sie erwartet.
-2. Treiber `unisoc,modem` (v2) und `modem_control` in der Realme-Quelle lesen: Ladeweg, Reihenfolge der Steuerbits,
-   was über `cpcmdline` übergeben wird.
+2. ~~Treiber `unisoc,modem` (v2) lesen~~ ✅ (s. o.). Offen: was `modem_control` zusätzlich tut, Inhalt von `cpcmdline`.
 3. Phandles `0x11`/`0x12` im Xiaomi-DT auflösen (aon-apb / pmu-apb).
 4. Danach – wie beim WCN – ein stufenweiser Testtreiber: lesen → Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.
