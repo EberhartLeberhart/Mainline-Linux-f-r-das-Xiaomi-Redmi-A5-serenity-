@@ -13,6 +13,10 @@
 # Strom, Temperatur). Alle LADEN s (Standard 1800) ein Download zum Messen der Geschwindigkeit, falls
 # curl oder wget da ist. Jede Zeile wird sofort auf die eMMC geschrieben (sync), damit sie einen Haenger
 # uebersteht. Ein Neustart des Handys zeigt sich als Luecke und neuer Kopf mit anderer boot_id.
+# Neue Fehlermeldungen (LAN, USB, Haenger-Warnungen) werden mit Umgebung ins Protokoll kopiert.
+# Fuer Haenger zusaetzlich redmi-kmsg.sh laufen lassen (sichert JEDE Kernel-Meldung sofort).
+# Download-Quelle umstellen, z. B. auf den PC im selben Netz:
+#   systemd-run --unit=landauer -E URL=http://192.168.1.50:8000/test20m.bin -E LADEN=300 /usr/local/sbin/redmi-lan-dauer.sh
 set -u
 RUNDE=${RUNDE:-60}
 LADEN=${LADEN:-1800}
@@ -22,6 +26,7 @@ URL=${URL:-https://speed.cloudflare.com/__down?bytes=20000000}
 LOG=/root/landauer.log
 CSV=/root/landauer.csv
 PS=/sys/class/power_supply/sc27xx-fgu
+MUSTER="Tx status|transmit queue|Tx timeout|reset high-speed|NETDEV WATCHDOG|unexpected dma|babble|rcu.*stall|soft lockup|hung_task|Oops|BUG"
 
 log(){ echo "$(date '+%F %T') $*" >> $LOG; sync $LOG 2>/dev/null; }
 
@@ -81,8 +86,13 @@ while true; do
 	fi
 	inet=$(quote "$INTERNET" 56 "$n")
 	if getent hosts "$NAME" >/dev/null 2>&1; then dns=ok; else dns=FEHLT; fi
-	fehler_jetzt=$(dmesg | grep -c -E "Tx status|transmit queue|Tx timeout|reset high-speed|NETDEV WATCHDOG")
+	fehler_alt=${fehler_jetzt:-0}
+	fehler_jetzt=$(dmesg | grep -c -E "$MUSTER")
 	[ -z "$fehler_start" ] && fehler_start=$fehler_jetzt
+	if [ "$fehler_jetzt" -gt "${fehler_alt:-0}" ]; then	# neue Fehlermeldungen samt Umgebung mitschreiben
+		dmesg | grep -E -B2 -A2 "$MUSTER" | tail -n $(( (fehler_jetzt - fehler_alt) * 5 + 5 )) | sed 's/^/    dmesg: /' >> $LOG
+		sync $LOG 2>/dev/null
+	fi
 	akku=$(cat $PS/capacity 2>/dev/null); strom=$(( $(cat $PS/current_now 2>/dev/null || echo 0) / 1000 ))
 	temp=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
 	ld=""
