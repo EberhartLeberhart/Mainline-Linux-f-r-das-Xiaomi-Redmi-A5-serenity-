@@ -125,7 +125,8 @@ Der Startcode aus dem MECP-Kopf (Dateiversatz `0xD0`, springt nach `0x8B001ACC`)
 
 **pmsys (`sp`)**, Gerät `/dev/pmsys`: `pm_sys` nach `0x88040000` (0x200000), Startcode **direkt im XML** (32 Wörter
 Thumb-Code) nach `0x62010000` (pmsys-iRAM, `modem_range` `0x62010000`/`0x4e000`). Android startet pmsys **vor** dem
-Modem und setzt danach `vendor.modem.sp-boot=1`. Unter Mainline liegt `0x88040000` in keinem reservierten Bereich ❓.
+Modem und setzt danach `vendor.modem.sp-boot=1`. Unter Mainline liegt `0x88040000` im schon reservierten
+`sp-ddr@88000000` (0x300000).
 
 **Sicherheit:** `modem_control` ruft über `libkernelbootcp.trusty.so` (trusty-Dienst `com.android.trusty.kernelbootcp`,
 `/dev/trusty-ipc-dev0`) zwei Dinge auf: `kernel_bootcp_verify_all` (Abbilder prüfen; es gibt die Meldung
@@ -161,5 +162,7 @@ Nebenprogramme: `refnotify` (Uhrzeit AP ↔ Modem), `modem_ctrl_dbg` (Start/Stop
 2. ~~Treiber `unisoc,modem` (v2) und `modem_control` lesen~~ ✅ (s. o.). Offen: Werte für `cpcmdline` (was der Bootloader
    unter Android übergibt), DDR-Freigabe ohne trusty, NV-Dienst auf `spipe_lte1`.
 3. ~~Phandles `0x11`/`0x12` auflösen~~ ✅ 11.10.: AON-APB / PMU-APB (s. o.).
-4. Danach – wie beim WCN – ein stufenweiser Testtreiber: lesen → Speicher/Firmware → Kern loslassen → sipc core@5.
+4. Stufenweiser Testtreiber `kernel/modem-test/modem_starttest.c` (wie beim WCN): Stufe 0 = lesen (Steuerbits,
+   pmsys-iRAM/-DDR, Modem-iRAM/-DDR, sipc) – gebaut 11.10., Lauf am Handy ❓. Danach Speicher/Firmware → Kern
+   loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.
