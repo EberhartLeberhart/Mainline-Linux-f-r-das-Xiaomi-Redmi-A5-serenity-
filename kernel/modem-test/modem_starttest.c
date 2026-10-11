@@ -34,6 +34,9 @@
  *  beobachten: aendert sich der pmsys-sipc-Bereich 0x6500a400 bzw. das Bit? Bricht ab, wenn pmsys
  *  schon laeuft (Bit geloescht), ausser trotzdem=1. Firmware-Dateien bleiben auf dem Handy.
  * Stufe 3: pmsys wieder anhalten (corereset setzen).
+ * Stufe 4: SCHREIBPROBE der Steuerbits (Register-Firewall?). Je Bit: Wert merken, ueber SET-/CLR-Spiegel
+ *  umschalten, zuruecklesen, alten Zustand wiederherstellen. Das Modem ist leer (nichts geladen), Umschalten
+ *  von Reset/Shutdown schadet also nicht. Am 11.10. blieb pmsys-corereset (AON 0x8c) trotz CLR-Spiegel 1.
  *
  * Ergebnis: dmesg, Praefix "modemtest:". Stufe 0 schreibt nichts.
  */
@@ -50,7 +53,7 @@
 
 static int stufe;
 module_param(stufe, int, 0444);
-MODULE_PARM_DESC(stufe, "0=nur lesen 1=Schreibtest 2=pmsys starten 3=pmsys anhalten");
+MODULE_PARM_DESC(stufe, "0=lesen 1=Schreibtest 2=pmsys starten 3=pmsys anhalten 4=Steuerbits-Schreibprobe");
 
 static bool trotzdem;
 module_param(trotzdem, bool, 0444);
@@ -394,14 +397,58 @@ static int stufe3(void)
 	return 0;
 }
 
+static int stufe4(void)
+{
+	void __iomem *aon = ioremap(AON_APB_PHYS, APB_LEN);
+	void __iomem *pmu = ioremap(PMU_APB_PHYS, APB_LEN);
+	int i, gut = 0;
+
+	if (!aon || !pmu) {
+		if (aon)
+			iounmap(aon);
+		if (pmu)
+			iounmap(pmu);
+		return -ENOMEM;
+	}
+	for (i = 0; i < ARRAY_SIZE(bits); i++) {
+		const struct steuerbit *b = &bits[i];
+		void __iomem *r = (b->aon ? aon : pmu) + b->reg;
+		u32 alt = readl(r), um, zurueck;
+		bool war = (alt & b->maske) != 0;
+
+		pr_info(TAG "probe %s ...\n", b->name);
+		msleep(200);
+		/* umschalten: war gesetzt -> loeschen, sonst setzen */
+		writel(b->maske, r + (war ? REG_CLR : REG_SET));
+		dsb(sy);
+		um = readl(r);
+		/* wiederherstellen */
+		writel(b->maske, r + (war ? REG_SET : REG_CLR));
+		dsb(sy);
+		zurueck = readl(r);
+		if (((um ^ alt) & b->maske) == b->maske)
+			gut++;
+		pr_info(TAG "  %-15s %s 0x%03x: vorher 0x%08x, nach %s 0x%08x, zurueck 0x%08x -> %s%s\n",
+			b->name, b->aon ? "AON" : "PMU", b->reg, alt, war ? "CLR" : "SET", um, zurueck,
+			((um ^ alt) & b->maske) == b->maske ? "SCHALTBAR" :
+			((um ^ alt) & b->maske) ? "teilweise schaltbar" : "GESPERRT (unveraendert)",
+			zurueck == alt ? "" : " - ACHTUNG: alter Wert nicht wieder erreicht");
+	}
+	pr_info(TAG "Schreibprobe: %d von %zu Steuerbits schaltbar\n", gut, ARRAY_SIZE(bits));
+	iounmap(pmu);
+	iounmap(aon);
+	return 0;
+}
+
 static int __init modemtest_init(void)
 {
-	static const char * const namen[] = { "nur lesen", "Schreibtest", "pmsys starten", "pmsys anhalten" };
+	static const char * const namen[] = { "nur lesen", "Schreibtest", "pmsys starten", "pmsys anhalten",
+					      "Steuerbits-Schreibprobe" };
 	struct platform_device *pd;
 	int ret;
 
-	if (stufe < 0 || stufe > 3) {
-		pr_err(TAG "stufe muss 0..3 sein\n");
+	if (stufe < 0 || stufe > 4) {
+		pr_err(TAG "stufe muss 0..4 sein\n");
 		return -EINVAL;
 	}
 	pr_info(TAG "Start, Stufe %d (%s), bereiche=0x%x\n", stufe, namen[stufe], bereiche);
@@ -415,6 +462,12 @@ static int __init modemtest_init(void)
 		platform_device_unregister(pd);
 		steuerbits_lesen();
 		pr_info(TAG "Ende Stufe 2: %d (pmsys bleibt so; anhalten: Stufe 3 oder Neustart)\n", ret);
+		return ret;
+	}
+	if (stufe == 4) {
+		ret = stufe4();
+		steuerbits_lesen();
+		pr_info(TAG "Ende Stufe 4: %d\n", ret);
 		return ret;
 	}
 	if (stufe == 3) {
