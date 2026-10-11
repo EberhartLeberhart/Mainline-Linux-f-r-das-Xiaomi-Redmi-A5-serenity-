@@ -257,12 +257,21 @@ static int pmsys_bit(void __iomem *aon)
 	return readl(aon + AON_PMSYS_RST) & PMSYS_RST_BIT;
 }
 
-static void pmsys_bit_setzen(void __iomem *aon, bool setzen)	/* wie regmap_update_bits */
+/*
+ * Wie beim WCN: Bits ueber die SET-/CLR-Spiegel (+0x1000 / +0x2000) aendern. Ein normaler Schreib-
+ * zugriff auf das Register selbst blieb am 11.10. wirkungslos (0x1 -> 0x1).
+ */
+#define REG_SET		0x1000
+#define REG_CLR		0x2000
+
+static void pmsys_bit_setzen(void __iomem *aon, bool setzen)
 {
 	u32 v = readl(aon + AON_PMSYS_RST);
 
-	writel(setzen ? (v | PMSYS_RST_BIT) : (v & ~PMSYS_RST_BIT), aon + AON_PMSYS_RST);
-	pr_info(TAG "AON 0x%03x: 0x%08x -> 0x%08x\n", AON_PMSYS_RST, v, readl(aon + AON_PMSYS_RST));
+	writel(PMSYS_RST_BIT, aon + (setzen ? REG_SET : REG_CLR) + AON_PMSYS_RST);
+	dsb(sy);
+	pr_info(TAG "AON 0x%03x ueber %s-Spiegel: 0x%08x -> 0x%08x\n", AON_PMSYS_RST,
+		setzen ? "SET" : "CLR", v, readl(aon + AON_PMSYS_RST));
 }
 
 static unsigned int unterschiede(const u32 *a, const u32 *b, unsigned int n)
