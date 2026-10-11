@@ -203,6 +203,21 @@ ohne trusty an seinen Speicher kommt, zeigt erst der Startversuch ❓.
 - iRAM `0x6500xxxx` wird geteilt: `0x65003400` Modem-Startcode, `0x65009400` Audio-DSP, `0x6500a400` sipc von
   pmsys (pmsys-Sicht `0x2000a400`, `sipc-pmsys`, Mailbox-Kanal 6).
 
+## Der trusty-Weg (Stand 11.10.)
+
+Die Steuerregister von Modem und pmsys sind für den normalen Kernel gesperrt (Stufe 4). Android öffnet sie über den
+trusty-Dienst `com.android.trusty.kernelbootcp`. Was dafür bekannt ist:
+
+- trusty selbst läuft auch unter Mainline (lk lädt `tos` vor dem Kernel); fehlt nur der Kernel-Treiber.
+- Treiber: AOSP `drivers/trusty` (GPL; trusty-core, -ipc, -virtio, -irq). Header liegen in der Realme-Quelle
+  (`include/linux/trusty/smcall.h`, `trusty_ipc.h`).
+- Protokoll des Dienstes (Realme `sprdwcn/platform/wcn_ca_trusty.[ch]`, GPL): Nachricht = `u32 cmd` + Nutzdaten,
+  Antwort `cmd | 1`. Befehle: `VERIFY_ALL` = 0, `UNLOCK_DDR` = 2, `VERIFY_VDSP` = 4, `VERIFY_WCN` = 6, `VERIFY_GPS` = 8.
+  Nutzdaten je Abbild `struct KBC_IMAGE_S` {u64 Adresse, u32 Länge, u32 Abbildlänge, 64 Byte AVB-Fußzeile,
+  32 Byte Partitionsname}. Das Format der Tabelle für `VERIFY_ALL` (Modem) steht nur in der closed
+  `libkernelbootcp.trusty.so` ❓.
+- trusty prüft die Abbilder gegen AVB (`vbmeta`); mit unveränderten Stock-Abbildern sollte das bestehen ❓.
+
 ## Offen / nächste Schritte
 
 1. ~~Dateiversatz der `modem`-Daten~~ ✅ 11.10.: ganze Datei ab 0 nach `0x8B000000` (s. o.).
@@ -216,5 +231,8 @@ ohne trusty an seinen Speicher kommt, zeigt erst der Startversuch ❓.
    (`0x1 -> 0x1`), pmsys also nicht losgelassen; Mailbox-Zähler 0. 2. Versuch über CLR-Spiegel `+0x2000`:
    ebenfalls `0x1 -> 0x1`. Die Spiegel funktionieren sonst (WCN, AON `0x234c`) → Vermutung: **Register-Firewall**
    (lk `tzfw`, trusty `TA_FIREWALL_CLR`/`SEC_KBC_START_CP` geben das Bit erst nach der Prüfung frei) ❓.
-   Stufe 4 = Schreibprobe aller Steuerbits (umschalten, zurücklesen, wiederherstellen) ❓. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
+   Stufe 4 = Schreibprobe aller Steuerbits ✅ 11.10.: **nur `dspreset` schaltbar** – shutdown, deepsleep, sysreset,
+   corereset (Modem) und pmsys-corereset sind **gesperrt** (SET/CLR ohne Wirkung). Damit ist klar: Modem und pmsys
+   lassen sich vom normalen Kernel nicht loslassen, solange trusty die Register-Firewall nicht öffnet.
+   Stufe 5 = trusty fragen (Versions-Fast-Call, ändert nichts) ❓. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.

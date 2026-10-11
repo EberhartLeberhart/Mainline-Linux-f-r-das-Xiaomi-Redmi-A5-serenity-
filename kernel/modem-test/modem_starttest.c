@@ -37,10 +37,14 @@
  * Stufe 4: SCHREIBPROBE der Steuerbits (Register-Firewall?). Je Bit: Wert merken, ueber SET-/CLR-Spiegel
  *  umschalten, zuruecklesen, alten Zustand wiederherstellen. Das Modem ist leer (nichts geladen), Umschalten
  *  von Reset/Shutdown schadet also nicht. Am 11.10. blieb pmsys-corereset (AON 0x8c) trotz CLR-Spiegel 1.
+ * Stufe 5: trusty FRAGEN (nur lesen): Antwortet das sichere Betriebssystem dem Mainline-Kernel? Fast-Call
+ *  SMC_FC_GET_VERSION_STR (wie AOSP drivers/trusty/trusty.c, Nummern aus Realme include/linux/trusty/smcall.h).
+ *  Aendert nichts an trusty (kein SMC_FC_API_VERSION, keine Kanaele).
  *
  * Ergebnis: dmesg, Praefix "modemtest:". Stufe 0 schreibt nichts.
  */
 
+#include <linux/arm-smccc.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/platform_device.h>
@@ -53,7 +57,7 @@
 
 static int stufe;
 module_param(stufe, int, 0444);
-MODULE_PARM_DESC(stufe, "0=lesen 1=Schreibtest 2=pmsys starten 3=pmsys anhalten 4=Steuerbits-Schreibprobe");
+MODULE_PARM_DESC(stufe, "0=lesen 1=Schreibtest 2=pmsys starten 3=pmsys anhalten 4=Steuerbits-Schreibprobe 5=trusty fragen");
 
 static bool trotzdem;
 module_param(trotzdem, bool, 0444);
@@ -440,19 +444,59 @@ static int stufe4(void)
 	return 0;
 }
 
+/* ---- Stufe 5: trusty fragen ---------------------------------------------- */
+
+#define SMC_ENTITY_SECURE_MONITOR	60
+#define SMC_FC_GET_VERSION_STR		(0x80000000u | (SMC_ENTITY_SECURE_MONITOR << 24) | 10)
+
+static long trusty_fc(u32 nr, u32 a1)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(nr, a1, 0, 0, 0, 0, 0, 0, &res);
+	return (long)res.a0;
+}
+
+static int stufe5(void)
+{
+	char buf[160];
+	long len, c;
+	int i;
+
+	pr_info(TAG "frage trusty: SMC 0x%08x (GET_VERSION_STR, Laenge) ...\n", SMC_FC_GET_VERSION_STR);
+	msleep(300);
+	len = trusty_fc(SMC_FC_GET_VERSION_STR, (u32)-1);
+	pr_info(TAG "  Antwort: %ld (0x%lx)%s\n", len, len,
+		len < 0 ? " -> unbekannter Aufruf, trusty antwortet so nicht" : "");
+	if (len <= 0)
+		return 0;
+	for (i = 0; i < len && i < sizeof(buf) - 1; i++) {
+		c = trusty_fc(SMC_FC_GET_VERSION_STR, i);
+		buf[i] = (c >= 0x20 && c < 0x7f) ? c : '.';
+	}
+	buf[i] = 0;
+	pr_info(TAG "  trusty-Version: \"%s\"\n", buf);
+	return 0;
+}
+
 static int __init modemtest_init(void)
 {
 	static const char * const namen[] = { "nur lesen", "Schreibtest", "pmsys starten", "pmsys anhalten",
-					      "Steuerbits-Schreibprobe" };
+					      "Steuerbits-Schreibprobe", "trusty fragen" };
 	struct platform_device *pd;
 	int ret;
 
-	if (stufe < 0 || stufe > 4) {
-		pr_err(TAG "stufe muss 0..4 sein\n");
+	if (stufe < 0 || stufe > 5) {
+		pr_err(TAG "stufe muss 0..5 sein\n");
 		return -EINVAL;
 	}
 	pr_info(TAG "Start, Stufe %d (%s), bereiche=0x%x\n", stufe, namen[stufe], bereiche);
 
+	if (stufe == 5) {
+		ret = stufe5();
+		pr_info(TAG "Ende Stufe 5: %d\n", ret);
+		return ret;
+	}
 	steuerbits_lesen();
 	if (stufe == 2) {
 		pd = platform_device_register_simple("modemtest", PLATFORM_DEVID_NONE, NULL, 0);
