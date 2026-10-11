@@ -174,7 +174,22 @@ Kein Absturz – **der AP darf Modem-DDR, pmsys-DDR, sipc und beide iRAMs ohne t
 | `cpcmdline` `0x8AF20000` | leer | |
 
 Die Steuerbits stehen also auf „laufen“, obwohl nichts geladen ist. Ob der Kern dabei wirklich Strom hat und
-was er ausführt, ist offen ❓. Nächster Test (Stufe 1): sperrt die Firewall **Schreibzugriffe**?
+was er ausführt, ist offen ❓.
+
+## Messung am Handy: Stufe 1 (11.10., Schreibtest)
+
+Je 16 Wörter geschrieben, zurückgelesen, alter Inhalt wiederhergestellt – kein Absturz:
+
+| Seite | Ergebnis |
+|---|---|
+| WCN `0x87700000` (Vergleich) | 16/16 übernommen |
+| pmsys-DDR `0x882FF000` | 16/16 übernommen |
+| Modem-DDR `0x8DEFF000` | 16/16 übernommen |
+| sipc `0x8E8FF000` | 16/16 übernommen |
+
+**Die Firewall ist unter Mainline offen: Der AP darf den Modem-Speicher ohne trusty beschreiben.**
+`kernel_bootcp_unlock_ddr` ist also (in diesem Zustand nach dem Bootloader) nicht nötig. Ob der *Modem-Kern* selbst
+ohne trusty an seinen Speicher kommt, zeigt erst der Startversuch ❓.
 
 ## Offen / nächste Schritte
 
@@ -183,5 +198,5 @@ was er ausführt, ist offen ❓. Nächster Test (Stufe 1): sperrt die Firewall *
    unter Android übergibt), DDR-Freigabe ohne trusty, NV-Dienst auf `spipe_lte1`.
 3. ~~Phandles `0x11`/`0x12` auflösen~~ ✅ 11.10.: AON-APB / PMU-APB (s. o.).
 4. Stufenweiser Testtreiber `kernel/modem-test/modem_starttest.c` (wie beim WCN): Stufe 0 = lesen ✅ 11.10.
-   (s. o.), Stufe 1 = Schreibtest ❓. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
+   (s. o.), Stufe 1 = Schreibtest ✅ 11.10. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.
