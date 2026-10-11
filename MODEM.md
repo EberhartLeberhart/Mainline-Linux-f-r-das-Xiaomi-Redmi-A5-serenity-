@@ -219,6 +219,35 @@ trusty-Dienst `com.android.trusty.kernelbootcp`. Was dafür bekannt ist:
   `libkernelbootcp.trusty.so` ❓.
 - trusty prüft die Abbilder gegen AVB (`vbmeta`); mit unveränderten Stock-Abbildern sollte das bestehen ❓.
 
+## Der gangbare Weg: Androids `modem_control` im chroot (Recherche 11.10.)
+
+Das Projekt **mu300-linux** (ZTE F50 / MU300, Unisoc T760 = UMS9620, naher Verwandter) hat das Modem unter
+Mainline 6.18/7.2 ans Laufen gebracht – **ohne trusty-Kernel-Treiber und ohne das `VERIFY_ALL`-Format
+nachzubauen**. Statt die Register-Firewall selbst zu öffnen, läuft Androids eigenes (signiertes) `modem_control`
+in einem chroot und macht den trusty-Handshake regulär selbst. Quelle:
+`github.com/dikeckaan/mu300-linux`, `docs/FINDINGS.md`.
+
+Das deckt sich mit unseren Funden:
+- Firewall-Freigabe macht `modem_control` über trusty (`kbc_verify_all_avb2()` → `SEC_KBC_START_CP()`).
+- Der PM-Watchdog kappt ~290 s nach Boot den Strom (unser pmsys-Fund). `sprd-pmic-wdt` schaltet ihn über eine
+  sipc-sbuf ab – der Kanal wird erst bereit, nachdem `modem_control` pm_sys neu geladen hat.
+- `sprd_modem_loader` nimmt ioctls/writes nur an, wenn `current->comm == "modem_control"` ist (die Prüfung aus
+  unseren Strings). Ein eigener Testtreiber reicht deshalb nie – die echte Binärdatei muss laufen.
+- Modem-Speicher muss **nicht gecacht** abgebildet werden (unser WCN-Treiber macht schon WC).
+
+**Benötigter Kernel-Stack (GPL, aus der Realme-Quelle zu portieren):**
+`sprd_modem_loader`, SIPC/sbuf/smsg, Mailbox (Fix: Deliver-Thread beim Einreihen wecken, nicht auf IRQ warten),
+nicht-gecachte Abbildung der geteilten Bereiche, `sprd-pmic-wdt`. **Kein** trusty-Treiber nötig.
+
+**Userspace (aus der vendor-Partition, bleibt auf dem Handy):** `modem_control` direkt ausführen (wegen der
+`comm`-Prüfung), dazu ein Mini-chroot mit bionic-Linker/Libs, `/dev/__properties__` von einem laufenden Android,
+`/dev/block/by-name`-Links, ein `/proc/cmdline` mit `androidboot.slot_suffix=_a`, ein logdw-Socket. Danach
+`cp_diskserver` (NV) und `refnotify`. Steuern per AT (`/dev/stty_lte*`, `AT+SFUN=…`), Daten über die IPA/`seth`-
+bzw. `sipa_eth`-Schnittstelle.
+
+**Offen bei mu300 (und damit auch bei uns zu erwarten):** Der AT-Kanal verstummt 20–60 s nach dem ersten Befehl;
+Verdacht auf den `refnotify`-Zeitkanal. Also ein belastbarer Startpunkt, kein fertiges Rezept.
+
 ## Offen / nächste Schritte
 
 1. ~~Dateiversatz der `modem`-Daten~~ ✅ 11.10.: ganze Datei ab 0 nach `0x8B000000` (s. o.).
@@ -238,3 +267,5 @@ trusty-Dienst `com.android.trusty.kernelbootcp`. Was dafür bekannt ist:
    Stufe 5 = trusty fragen ✅ 11.10.: **trusty antwortet dem Mainline-Kernel** (SMC `0xbc00000a`):
    „Unisoc TEE v2.1.1, qogirl6, Built: 01:20:24 Nov 28 2024, 921a4247“. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.
+6. **Empfohlener Weg (s. o.):** GPL-Treiberstack portieren und Androids `modem_control` im chroot nutzen, statt
+   trusty selbst nachzubauen. Die gesperrten Steuerbits (Stufe 4) löst dann `modem_control` über trusty.
