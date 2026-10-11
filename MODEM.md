@@ -191,9 +191,21 @@ Je 16 Wörter geschrieben, zurückgelesen, alter Inhalt wiederhergestellt – ke
 `kernel_bootcp_unlock_ddr` ist also (in diesem Zustand nach dem Bootloader) nicht nötig. Ob der *Modem-Kern* selbst
 ohne trusty an seinen Speicher kommt, zeigt erst der Startversuch ❓.
 
+## Aufbau von `l_modem.img` und pmsys-Steuerung (11.10., am PC, nur Struktur gelesen)
+
+- Datei 25 MB (`0x1900000`), Daten bis `0xD57600`, danach leer (Ende ebenfalls leer).
+- Kopf: `MECPV1.0`, Einträge ab `0x10` und ab `0x1A0` (je 0x30 Bytes); erstes Feld überall 0 – **kein Dateiversatz**.
+  Am Kopfende zusätzlich `cp-mem`, `mini-dump` (`0x8D163AFC`, 0x400), `smem` (`0x87800000`, 8 MB) und `ring`.
+- Bei `0xD0`: Anzahl `0x31` (49 Wörter), danach der ARM32-Startcode für den Modem-iRAM `0x65003400`.
+- **Ladeweg:** Die Datei wird ab Versatz 0 (mit Kopf) nach `0x8B000000` geladen – bei Dateiversatz `0x1ACC`
+  (= Sprungziel `0x8B001ACC` des Startcodes) stehen ARM32-Befehle.
+- pmsys (`modem@0`) hat nur **ein** gültiges Steuerbit: corereset = AON `0x8c` Bit 0 (alle anderen `0xff`).
+- iRAM `0x6500xxxx` wird geteilt: `0x65003400` Modem-Startcode, `0x65009400` Audio-DSP, `0x6500a400` sipc von
+  pmsys (pmsys-Sicht `0x2000a400`, `sipc-pmsys`, Mailbox-Kanal 6).
+
 ## Offen / nächste Schritte
 
-1. Wo im `l_modem.img` die eigentlichen `modem`-Daten beginnen (Dateiversatz) und wie der Startcode sie erwartet.
+1. ~~Dateiversatz der `modem`-Daten~~ ✅ 11.10.: ganze Datei ab 0 nach `0x8B000000` (s. o.).
 2. ~~Treiber `unisoc,modem` (v2) und `modem_control` lesen~~ ✅ (s. o.). Offen: Werte für `cpcmdline` (was der Bootloader
    unter Android übergibt), DDR-Freigabe ohne trusty, NV-Dienst auf `spipe_lte1`.
 3. ~~Phandles `0x11`/`0x12` auflösen~~ ✅ 11.10.: AON-APB / PMU-APB (s. o.).
