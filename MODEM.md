@@ -14,16 +14,17 @@ Wie beim WCN: erst lesen und belegen, dann Schritt für Schritt starten. Regeln 
 | sipc-lte | Nachrichtenweg AP ↔ Modem | `core@5`, Mailbox-Kanal 2, `sprd,smem-info = <0x8e000000 0x8e000000 0x900000>` |
 | seth | Netzwerkschnittstellen des Modems | `seth0`–`seth13` = `/sipc-virt/core@5/channel@7…31` |
 
-Steuerbits von `modem@1` (syscon: `0x11`/`0x12` = Phandles im Xiaomi-DT, Zuordnung zu aon-apb/pmu-apb noch prüfen ❓):
+Steuerbits von `modem@1` (syscon-Phandles im Xiaomi-DT, aufgelöst 11.10.: `0x11` = **AON-APB** `0x64000000`,
+`0x12` = **PMU-APB** `0x64020000` – dieselben Blöcke, die der WCN-Testtreiber schon nutzt):
 
-| Name | syscon | Register | Maske |
-|---|---|---|---|
-| shutdown | 0x12 | 0x330 | 0x2000000 |
-| deepsleep | 0x12 | 0x818 | 0x02 |
-| corereset | 0x11 | 0x174 | 0x400 |
-| sysreset | 0x12 | 0xb98 | 0x800 |
-| getstatus | 0x11 | 0xff | 0x00 |
-| dspreset | 0x12 | 0xb88 | 0x18 |
+| Name | syscon | Register | Maske | Adresse |
+|---|---|---|---|---|
+| shutdown | 0x12 | 0x330 | 0x2000000 | 0x64020330 |
+| deepsleep | 0x12 | 0x818 | 0x02 | 0x64020818 |
+| corereset | 0x11 | 0x174 | 0x400 | 0x64000174 |
+| sysreset | 0x12 | 0xb98 | 0x800 | 0x64020b98 |
+| getstatus | 0x11 | 0xff | 0x00 | – (ungültig) |
+| dspreset | 0x12 | 0xb88 | 0x18 | 0x64020b88 |
 
 Zusätzlich `sprd,decoup = "cproc-use-decoup"`. Bei `sprd,version = 2` stehen keine Ladeadressen im Gerätebaum;
 unter Android lädt das Programm `modem_control` die Abbilder über den Treiber (Modul `sprd_modem_loader.ko`).
@@ -103,6 +104,6 @@ Was `modem_control` außer dem Laden noch tut (Reihenfolge, Wartezeiten, ob `dsp
 
 1. Wo im `l_modem.img` die eigentlichen `modem`-Daten beginnen (Dateiversatz) und wie der Startcode sie erwartet.
 2. ~~Treiber `unisoc,modem` (v2) lesen~~ ✅ (s. o.). Offen: was `modem_control` zusätzlich tut, Inhalt von `cpcmdline`.
-3. Phandles `0x11`/`0x12` im Xiaomi-DT auflösen (aon-apb / pmu-apb).
+3. ~~Phandles `0x11`/`0x12` auflösen~~ ✅ 11.10.: AON-APB / PMU-APB (s. o.).
 4. Danach – wie beim WCN – ein stufenweiser Testtreiber: lesen → Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.
