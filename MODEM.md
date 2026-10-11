@@ -156,13 +156,32 @@ Datenweg) und bedient Assert/Neustart. Laufzeit-Kanäle (`vendor/build.prop`):
 Nebenprogramme: `refnotify` (Uhrzeit AP ↔ Modem), `modem_ctrl_dbg` (Start/Stopp über `modem_control`),
 `nvmerge` (NV-Zusammenführung bei Updates, für uns unwichtig).
 
+## Messung am Handy: Stufe 0 (11.10., Mainline, `modem_starttest.ko`, nur lesen)
+
+Kein Absturz – **der AP darf Modem-DDR, pmsys-DDR, sipc und beide iRAMs ohne trusty lesen.**
+
+| Was | gelesen | Deutung |
+|---|---|---|
+| shutdown PMU `0x330` | `0x00010101` → Bit 25 = 0 | Modem nicht abgeschaltet ❓ |
+| deepsleep PMU `0x818` | `0x00000004` → Bit 1 = 0 | |
+| sysreset PMU `0xb98` | `0x00004000` → Bit 11 = 0 | |
+| dspreset PMU `0xb88` | `0x00000018` → gesetzt | DSPs im Reset |
+| corereset AON `0x174` | `0x00000000` → Bit 10 = 0 | Kern nicht im Reset ❓ |
+| pmsys-iRAM `0x62010000` | 1024/1024 Wörter ≠ 0, ungeordnet | kein Startcode aus der XML → pmsys vermutlich **nicht** gestartet ❓ |
+| Modem-iRAM `0x65003400` | AArch64-Befehle (`mov`, `ldr`, `bl`) | Code des AP (Bootloader/ATF?), **nicht** der ARM32-Startcode des Modems – vor dem Beschreiben klären, ob der AP diesen Bereich noch braucht ❓ |
+| pmsys-DDR `0x88040000`, Modem-DDR `0x89600000` | gleiches Streifenmuster (`0000ffff`), 467/1024 ≠ 0 | gleicher Inhalt an verschiedenen Adressen → Rest eines Speichertests, **nichts geladen** |
+| Firmware `0x8B000000`, sipc `0x8E000000` | gleiches (anderes) Streifenmuster, 472/1024 ≠ 0 | ebenso |
+| `cpcmdline` `0x8AF20000` | leer | |
+
+Die Steuerbits stehen also auf „laufen“, obwohl nichts geladen ist. Ob der Kern dabei wirklich Strom hat und
+was er ausführt, ist offen ❓. Nächster Test (Stufe 1): sperrt die Firewall **Schreibzugriffe**?
+
 ## Offen / nächste Schritte
 
 1. Wo im `l_modem.img` die eigentlichen `modem`-Daten beginnen (Dateiversatz) und wie der Startcode sie erwartet.
 2. ~~Treiber `unisoc,modem` (v2) und `modem_control` lesen~~ ✅ (s. o.). Offen: Werte für `cpcmdline` (was der Bootloader
    unter Android übergibt), DDR-Freigabe ohne trusty, NV-Dienst auf `spipe_lte1`.
 3. ~~Phandles `0x11`/`0x12` auflösen~~ ✅ 11.10.: AON-APB / PMU-APB (s. o.).
-4. Stufenweiser Testtreiber `kernel/modem-test/modem_starttest.c` (wie beim WCN): Stufe 0 = lesen (Steuerbits,
-   pmsys-iRAM/-DDR, Modem-iRAM/-DDR, sipc) – gebaut 11.10., Lauf am Handy ❓. Danach Speicher/Firmware → Kern
-   loslassen → sipc core@5.
+4. Stufenweiser Testtreiber `kernel/modem-test/modem_starttest.c` (wie beim WCN): Stufe 0 = lesen ✅ 11.10.
+   (s. o.), Stufe 1 = Schreibtest ❓. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.

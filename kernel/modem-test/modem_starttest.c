@@ -22,7 +22,12 @@
  *     sie noch sichert. Endet das Protokoll dort, hat das Lesen den Absturz ausgeloest -
  *     dann diesen Bereich beim naechsten Versuch per "bereiche" weglassen.
  *
- * Schreibt nichts. Ergebnis: dmesg, Praefix "modemtest:".
+ * Stufe 1: SCHREIBTEST (startet nichts). Je eine Seite am Ende von Modem-DDR, pmsys-DDR und sipc,
+ *  zum Vergleich im WCN-Bereich (dort wissen wir, dass Schreiben geht): 16 Woerter merken, Pruefmuster
+ *  schreiben, dsb, zuruecklesen, alten Inhalt wiederherstellen. Zeigt, ob die Firewall (trusty
+ *  LOCK/UNLOCK_CP_DDR) Schreibzugriffe des AP verwirft. Gleiche Vorsichtsregel wie oben ("teste ...").
+ *
+ * Ergebnis: dmesg, Praefix "modemtest:". Stufe 0 schreibt nichts.
  */
 
 #include <linux/delay.h>
@@ -34,9 +39,9 @@
 
 static int stufe;
 module_param(stufe, int, 0444);
-MODULE_PARM_DESC(stufe, "0=nur lesen (andere Stufen gibt es noch nicht)");
+MODULE_PARM_DESC(stufe, "0=nur lesen 1=Schreibtest im Speicher (startet nichts)");
 
-static uint bereiche = 0x1f;
+static uint bereiche = 0x1f;	/* Stufe 1: Bits 0..3 = WCN, pmsys, Modem, sipc */
 module_param(bereiche, uint, 0444);
 MODULE_PARM_DESC(bereiche, "Bitmaske der zu lesenden Speicher (siehe Kopf), Standard 0x1f = alle");
 
@@ -162,15 +167,79 @@ static void lese_ram(int bit, const char *name, phys_addr_t phys, size_t len, bo
 	memunmap(va);
 }
 
+#define TEST_WORTE	16
+
+/* Muster schreiben, zuruecklesen, alten Inhalt wiederherstellen. 1 = Schreiben wirkt */
+static int schreibtest(const char *name, phys_addr_t phys)
+{
+	u32 alt[TEST_WORTE], v;
+	unsigned int i, gut = 0;
+	u32 *va;
+
+	pr_info(TAG "teste Schreiben %s %pa ...\n", name, &phys);
+	msleep(300);
+	va = memremap(phys, PAGE_SIZE, MEMREMAP_WC);
+	if (!va) {
+		pr_err(TAG "  memremap fehlgeschlagen\n");
+		return -1;
+	}
+	for (i = 0; i < TEST_WORTE; i++)
+		alt[i] = READ_ONCE(va[i]);
+	for (i = 0; i < TEST_WORTE; i++)
+		WRITE_ONCE(va[i], 0x4d440000 | (i << 8) | (~alt[i] & 0xff));	/* sicher != alt */
+	dsb(sy);
+	for (i = 0; i < TEST_WORTE; i++) {
+		v = READ_ONCE(va[i]);
+		if (v == (0x4d440000 | (i << 8) | (~alt[i] & 0xff)))
+			gut++;
+	}
+	pr_info(TAG "  vorher %08x %08x, nach Schreiben %08x %08x -> %u von %u Woertern uebernommen\n",
+		alt[0], alt[1], READ_ONCE(va[0]), READ_ONCE(va[1]), gut, TEST_WORTE);
+	for (i = 0; i < TEST_WORTE; i++)
+		WRITE_ONCE(va[i], alt[i]);
+	dsb(sy);
+	for (i = 0; i < TEST_WORTE; i++)
+		if (READ_ONCE(va[i]) != alt[i])
+			break;
+	pr_info(TAG "  alter Inhalt %s\n", i == TEST_WORTE ? "wiederhergestellt" : "NICHT wiederhergestellt");
+	memunmap(va);
+	return gut == TEST_WORTE;
+}
+
+static void stufe1(void)
+{
+	static const struct { const char *name; phys_addr_t phys; } seiten[] = {
+		{ "WCN-Bereich (Vergleich)",  0x87700000 },
+		{ "pmsys-DDR (letzte Seite)", 0x882ff000 },
+		{ "Modem-DDR (letzte Seite)", 0x8deff000 },
+		{ "sipc (letzte Seite)",      0x8e8ff000 },
+	};
+	int i, r;
+
+	for (i = 0; i < ARRAY_SIZE(seiten); i++) {
+		if (!(bereiche & BIT(i)))
+			continue;
+		r = schreibtest(seiten[i].name, seiten[i].phys);
+		pr_info(TAG "  => %s: %s\n", seiten[i].name,
+			r == 1 ? "AP darf schreiben" : r == 0 ? "SCHREIBEN WIRKT NICHT (Firewall?)" : "nicht getestet");
+	}
+}
+
 static int __init modemtest_init(void)
 {
-	if (stufe != 0) {
-		pr_err(TAG "nur Stufe 0 (lesen) gibt es bisher\n");
+	if (stufe < 0 || stufe > 1) {
+		pr_err(TAG "stufe muss 0 oder 1 sein\n");
 		return -EINVAL;
 	}
-	pr_info(TAG "Start, Stufe 0 (nur lesen), bereiche=0x%x\n", bereiche);
+	pr_info(TAG "Start, Stufe %d (%s), bereiche=0x%x\n", stufe,
+		stufe ? "Schreibtest" : "nur lesen", bereiche);
 
 	steuerbits_lesen();
+	if (stufe == 1) {
+		stufe1();
+		pr_info(TAG "Ende Stufe 1 - nichts gestartet, Testseiten wiederhergestellt\n");
+		return 0;
+	}
 
 	lese_io(0, "pmsys-iRAM", 0x62010000, 0x1000);
 	lese_ram(1, "pmsys-DDR", 0x88040000, 0x1000, false);
