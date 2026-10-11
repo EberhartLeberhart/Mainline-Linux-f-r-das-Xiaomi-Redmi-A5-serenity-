@@ -210,5 +210,6 @@ ohne trusty an seinen Speicher kommt, zeigt erst der Startversuch ❓.
    unter Android übergibt), DDR-Freigabe ohne trusty, NV-Dienst auf `spipe_lte1`.
 3. ~~Phandles `0x11`/`0x12` auflösen~~ ✅ 11.10.: AON-APB / PMU-APB (s. o.).
 4. Stufenweiser Testtreiber `kernel/modem-test/modem_starttest.c` (wie beim WCN): Stufe 0 = lesen ✅ 11.10.
-   (s. o.), Stufe 1 = Schreibtest ✅ 11.10. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
+   (s. o.), Stufe 1 = Schreibtest ✅ 11.10. Stufe 2 = pmsys starten (Startcode aus `modem_sp_info.xml` per
+   `werkzeuge/pmsys_bootcode.py`, erste zwei Wörter = SP und Reset-Vektor eines Cortex-M) ❓. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.

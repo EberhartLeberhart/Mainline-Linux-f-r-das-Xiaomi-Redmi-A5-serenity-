@@ -27,19 +27,34 @@
  *  schreiben, dsb, zuruecklesen, alten Inhalt wiederherstellen. Zeigt, ob die Firewall (trusty
  *  LOCK/UNLOCK_CP_DDR) Schreibzugriffe des AP verwirft. Gleiche Vorsichtsregel wie oben ("teste ...").
  *
+ * Stufe 2: pmsys (Hilfskern, Cortex-M) STARTEN - noch nicht das Modem. Wie modem_sp_info.xml:
+ *  /lib/firmware/pm_sys.bin (Partition pm_sys_a) nach 0x88040000, /lib/firmware/pmsys_bootcode.bin
+ *  (aus dem bootcode-Attribut der XML, werkzeuge/pmsys_bootcode.py) nach 0x62010000, dann corereset
+ *  AON 0x8c Bit 0 loeschen (soc_modem_start; andere Bits von modem@0 sind ungueltig). Danach 5 s
+ *  beobachten: aendert sich der pmsys-sipc-Bereich 0x6500a400 bzw. das Bit? Bricht ab, wenn pmsys
+ *  schon laeuft (Bit geloescht), ausser trotzdem=1. Firmware-Dateien bleiben auf dem Handy.
+ * Stufe 3: pmsys wieder anhalten (corereset setzen).
+ *
  * Ergebnis: dmesg, Praefix "modemtest:". Stufe 0 schreibt nichts.
  */
 
 #include <linux/delay.h>
+#include <linux/firmware.h>
+#include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 
 #define TAG "modemtest: "
 
 static int stufe;
 module_param(stufe, int, 0444);
-MODULE_PARM_DESC(stufe, "0=nur lesen 1=Schreibtest im Speicher (startet nichts)");
+MODULE_PARM_DESC(stufe, "0=nur lesen 1=Schreibtest 2=pmsys starten 3=pmsys anhalten");
+
+static bool trotzdem;
+module_param(trotzdem, bool, 0444);
+MODULE_PARM_DESC(trotzdem, "Stufe 2 auch, wenn pmsys schon zu laufen scheint");
 
 static uint bereiche = 0x1f;	/* Stufe 1: Bits 0..3 = WCN, pmsys, Modem, sipc */
 module_param(bereiche, uint, 0444);
@@ -62,6 +77,7 @@ static const struct steuerbit bits[] = {
 	{ "sysreset",  false, 0xb98, 0x800 },
 	{ "dspreset",  false, 0xb88, 0x18 },
 	{ "corereset", true,  0x174, 0x400 },
+	{ "pmsys-corereset", true, 0x08c, 0x01 },	/* modem@0: einziges gueltiges Bit */
 };
 
 static void steuerbits_lesen(void)
@@ -79,7 +95,7 @@ static void steuerbits_lesen(void)
 		const struct steuerbit *b = &bits[i];
 		u32 v = readl((b->aon ? aon : pmu) + b->reg);
 
-		pr_info(TAG "%-9s %s 0x%03x = 0x%08x, Maske 0x%08x -> %s\n", b->name,
+		pr_info(TAG "%-15s %s 0x%03x = 0x%08x, Maske 0x%08x -> %s\n", b->name,
 			b->aon ? "AON" : "PMU", b->reg, v, b->maske,
 			(v & b->maske) == b->maske ? "GESETZT (aus/Reset)" :
 			(v & b->maske) ? "teilweise gesetzt" : "geloescht (laeuft)");
@@ -225,16 +241,179 @@ static void stufe1(void)
 	}
 }
 
+/* ---- Stufe 2/3: pmsys ------------------------------------------------- */
+
+#define PMSYS_DDR	0x88040000
+#define PMSYS_DDR_LEN	0x200000
+#define PMSYS_IRAM	0x62010000
+#define PMSYS_IRAM_LEN	0x1000
+#define PMSYS_SIPC	0x6500a400	/* sipc-pmsys smem (AP-Sicht) */
+#define PMSYS_SIPC_LEN	0x2000
+#define AON_PMSYS_RST	0x8c
+#define PMSYS_RST_BIT	0x01
+
+static int pmsys_bit(void __iomem *aon)
+{
+	return readl(aon + AON_PMSYS_RST) & PMSYS_RST_BIT;
+}
+
+static void pmsys_bit_setzen(void __iomem *aon, bool setzen)	/* wie regmap_update_bits */
+{
+	u32 v = readl(aon + AON_PMSYS_RST);
+
+	writel(setzen ? (v | PMSYS_RST_BIT) : (v & ~PMSYS_RST_BIT), aon + AON_PMSYS_RST);
+	pr_info(TAG "AON 0x%03x: 0x%08x -> 0x%08x\n", AON_PMSYS_RST, v, readl(aon + AON_PMSYS_RST));
+}
+
+static unsigned int unterschiede(const u32 *a, const u32 *b, unsigned int n)
+{
+	unsigned int i, d = 0;
+
+	for (i = 0; i < n; i++)
+		d += a[i] != b[i];
+	return d;
+}
+
+static int stufe2(struct device *dev)
+{
+	const struct firmware *fw = NULL, *bc = NULL;
+	void __iomem *aon = NULL, *iram = NULL, *sipc = NULL;
+	void *ddr = NULL;
+	u32 *vorher = NULL, *jetzt = NULL;
+	unsigned int n = PMSYS_SIPC_LEN / 4, i, t;
+	int ret;
+
+	aon = ioremap(AON_APB_PHYS, APB_LEN);
+	iram = ioremap(PMSYS_IRAM, PMSYS_IRAM_LEN);
+	sipc = ioremap(PMSYS_SIPC, PMSYS_SIPC_LEN);
+	ddr = memremap(PMSYS_DDR, PMSYS_DDR_LEN, MEMREMAP_WC);
+	vorher = kmalloc(PMSYS_SIPC_LEN, GFP_KERNEL);
+	jetzt = kmalloc(PMSYS_SIPC_LEN, GFP_KERNEL);
+	if (!aon || !iram || !sipc || !ddr || !vorher || !jetzt) {
+		pr_err(TAG "Abbildung/Speicher fehlgeschlagen\n");
+		ret = -ENOMEM;
+		goto weg;
+	}
+	if (!pmsys_bit(aon) && !trotzdem) {
+		pr_err(TAG "pmsys-corereset ist schon geloescht - pmsys laeuft evtl. schon. Abbruch (trotzdem=1)\n");
+		ret = -EBUSY;
+		goto weg;
+	}
+
+	ret = request_firmware(&fw, "pm_sys.bin", dev);
+	if (ret) {
+		pr_err(TAG "/lib/firmware/pm_sys.bin fehlt (%d)\n", ret);
+		goto weg;
+	}
+	ret = request_firmware(&bc, "pmsys_bootcode.bin", dev);
+	if (ret) {
+		pr_err(TAG "/lib/firmware/pmsys_bootcode.bin fehlt (%d)\n", ret);
+		goto weg;
+	}
+	if (fw->size > PMSYS_DDR_LEN || bc->size > PMSYS_IRAM_LEN || bc->size < 8 || bc->size % 4) {
+		pr_err(TAG "Groessen passen nicht: pm_sys %zu (max 0x%x), Startcode %zu (8..0x%x, durch 4)\n",
+		       fw->size, PMSYS_DDR_LEN, bc->size, PMSYS_IRAM_LEN);
+		ret = -EINVAL;
+		goto weg;
+	}
+	pr_info(TAG "pm_sys.bin %zu Bytes, Startcode %zu Bytes (SP 0x%08x, Reset 0x%08x)\n", fw->size, bc->size,
+		((const u32 *)bc->data)[0], ((const u32 *)bc->data)[1]);
+
+	/* sicherheitshalber erst in Reset halten (ist es laut Pruefung schon) */
+	pmsys_bit_setzen(aon, true);
+	msleep(10);
+
+	memcpy(ddr, fw->data, fw->size);
+	dsb(sy);
+	ret = memcmp(ddr, fw->data, fw->size);
+	pr_info(TAG "pm_sys nach 0x%x geschrieben, Vergleich %s\n", PMSYS_DDR, ret ? "FALSCH" : "ok");
+	if (ret) {
+		ret = -EIO;
+		goto weg;
+	}
+	for (i = 0; i < bc->size / 4; i++)
+		writel(((const u32 *)bc->data)[i], iram + 4 * i);
+	for (i = 0; i < bc->size / 4; i++)
+		if (readl(iram + 4 * i) != ((const u32 *)bc->data)[i])
+			break;
+	pr_info(TAG "Startcode nach 0x%x geschrieben, Vergleich %s\n", PMSYS_IRAM,
+		i == bc->size / 4 ? "ok" : "FALSCH");
+	if (i != bc->size / 4) {
+		ret = -EIO;
+		goto weg;
+	}
+
+	memcpy_fromio(vorher, sipc, PMSYS_SIPC_LEN);
+	pr_info(TAG "pmsys loslassen (corereset loeschen) ...\n");
+	msleep(300);	/* damit redmi-kmsg.sh die Zeile sichert */
+	pmsys_bit_setzen(aon, false);
+
+	for (t = 1; t <= 10; t++) {
+		msleep(500);
+		memcpy_fromio(jetzt, sipc, PMSYS_SIPC_LEN);
+		pr_info(TAG "  nach %u ms: pmsys-sipc 0x%x: %u von %u Woertern veraendert, Bit %d, iRAM[0..1] %08x %08x\n",
+			t * 500, PMSYS_SIPC, unterschiede(vorher, jetzt, n), n, pmsys_bit(aon),
+			readl(iram), readl(iram + 4));
+	}
+	pr_info(TAG "  pmsys-sipc jetzt: %08x %08x %08x %08x\n", jetzt[0], jetzt[1], jetzt[2], jetzt[3]);
+	pr_info(TAG "  Mailbox-Zaehler: grep -i mailbox /proc/interrupts\n");
+	ret = 0;
+weg:
+	release_firmware(bc);
+	release_firmware(fw);
+	kfree(jetzt);
+	kfree(vorher);
+	if (ddr)
+		memunmap(ddr);
+	if (sipc)
+		iounmap(sipc);
+	if (iram)
+		iounmap(iram);
+	if (aon)
+		iounmap(aon);
+	return ret;
+}
+
+static int stufe3(void)
+{
+	void __iomem *aon = ioremap(AON_APB_PHYS, APB_LEN);
+
+	if (!aon)
+		return -ENOMEM;
+	pmsys_bit_setzen(aon, true);
+	iounmap(aon);
+	return 0;
+}
+
 static int __init modemtest_init(void)
 {
-	if (stufe < 0 || stufe > 1) {
-		pr_err(TAG "stufe muss 0 oder 1 sein\n");
+	static const char * const namen[] = { "nur lesen", "Schreibtest", "pmsys starten", "pmsys anhalten" };
+	struct platform_device *pd;
+	int ret;
+
+	if (stufe < 0 || stufe > 3) {
+		pr_err(TAG "stufe muss 0..3 sein\n");
 		return -EINVAL;
 	}
-	pr_info(TAG "Start, Stufe %d (%s), bereiche=0x%x\n", stufe,
-		stufe ? "Schreibtest" : "nur lesen", bereiche);
+	pr_info(TAG "Start, Stufe %d (%s), bereiche=0x%x\n", stufe, namen[stufe], bereiche);
 
 	steuerbits_lesen();
+	if (stufe == 2) {
+		pd = platform_device_register_simple("modemtest", PLATFORM_DEVID_NONE, NULL, 0);
+		if (IS_ERR(pd))
+			return PTR_ERR(pd);
+		ret = stufe2(&pd->dev);
+		platform_device_unregister(pd);
+		steuerbits_lesen();
+		pr_info(TAG "Ende Stufe 2: %d (pmsys bleibt so; anhalten: Stufe 3 oder Neustart)\n", ret);
+		return ret;
+	}
+	if (stufe == 3) {
+		ret = stufe3();
+		steuerbits_lesen();
+		pr_info(TAG "Ende Stufe 3: %d\n", ret);
+		return ret;
+	}
 	if (stufe == 1) {
 		stufe1();
 		pr_info(TAG "Ende Stufe 1 - nichts gestartet, Testseiten wiederhergestellt\n");
