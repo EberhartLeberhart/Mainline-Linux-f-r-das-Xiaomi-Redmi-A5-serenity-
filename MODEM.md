@@ -208,7 +208,8 @@ ohne trusty an seinen Speicher kommt, zeigt erst der Startversuch ❓.
 Die Steuerregister von Modem und pmsys sind für den normalen Kernel gesperrt (Stufe 4). Android öffnet sie über den
 trusty-Dienst `com.android.trusty.kernelbootcp`. Was dafür bekannt ist:
 
-- trusty selbst läuft auch unter Mainline (lk lädt `tos` vor dem Kernel); fehlt nur der Kernel-Treiber.
+- trusty selbst läuft auch unter Mainline (lk lädt `tos` vor dem Kernel) und antwortet auf Fast-Calls
+  (Stufe 5, 11.10.: „Unisoc TEE v2.1.1“); es fehlt nur der Kernel-Treiber für die Kanäle (trusty-ipc).
 - Treiber: AOSP `drivers/trusty` (GPL; trusty-core, -ipc, -virtio, -irq). Header liegen in der Realme-Quelle
   (`include/linux/trusty/smcall.h`, `trusty_ipc.h`).
 - Protokoll des Dienstes (Realme `sprdwcn/platform/wcn_ca_trusty.[ch]`, GPL): Nachricht = `u32 cmd` + Nutzdaten,
@@ -234,5 +235,6 @@ trusty-Dienst `com.android.trusty.kernelbootcp`. Was dafür bekannt ist:
    Stufe 4 = Schreibprobe aller Steuerbits ✅ 11.10.: **nur `dspreset` schaltbar** – shutdown, deepsleep, sysreset,
    corereset (Modem) und pmsys-corereset sind **gesperrt** (SET/CLR ohne Wirkung). Damit ist klar: Modem und pmsys
    lassen sich vom normalen Kernel nicht loslassen, solange trusty die Register-Firewall nicht öffnet.
-   Stufe 5 = trusty fragen (Versions-Fast-Call, ändert nichts) ❓. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
+   Stufe 5 = trusty fragen ✅ 11.10.: **trusty antwortet dem Mainline-Kernel** (SMC `0xbc00000a`):
+   „Unisoc TEE v2.1.1, qogirl6, Built: 01:20:24 Nov 28 2024, 921a4247“. Danach Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.
