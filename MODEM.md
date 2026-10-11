@@ -100,10 +100,66 @@ Was `modem_control` außer dem Laden noch tut (Reihenfolge, Wartezeiten, ob `dsp
 `cpcmdline` steht, Umgang mit `sipc-mem`), ist **nicht** in der Quelle. Spur: das Programm und seine `.rc`-Datei aus der
 `vendor`-Partition lesen (nur Texte/Aufrufe, ohne es auszuführen) ❓.
 
+## Android-Seite: `modem_control` (aus `vendor_a`, gelesen 11.10., nur Texte/Konfiguration)
+
+Dienst: `/vendor/etc/init/modem_control.rc` startet `/vendor/bin/modem_control` als root ohne Parameter (`class core`).
+Ladeplan steht in **`/vendor/etc/modem_cp_info.xml`** (Modem) und **`/vendor/etc/modem_sp_info.xml`** (pmsys).
+
+**Modem (`cp`)**, Gerät `/dev/modem`, Quelle `/dev/block/by-name/`:
+`modem_range` = `0x89600000`/`0x4900000` (= `cp@89600000` im DT), `all_range` = `0x87800000`/`0x7100000`
+(bis `0x8E8FFFFF`, schließt `sipc@8e000000` ein – damit erklärt sich `sipc-mem 0x87800000` im MECP-Kopf als Anfang
+dieses Gesamtbereichs, nicht als eigener sipc-Speicher ❓).
+
+| Teil | Partition | Flag | Bedeutung der Flag-Bits (laut XML-Kommentar) |
+|---|---|---|---|
+| modem | `l_modem` | `0x201` | sec + modem |
+| deltanv | `l_deltanv` | `0x202` | nv + modem |
+| gdsp, ldsp | `l_gdsp`, `l_ldsp` | `0x401` | sec + modem-dsp |
+| cdsp, warm | `l_cdsp`, `l_warm` | `0x401` | wie oben (gibt es auf dem A5 vermutlich nicht ❓) |
+| cpcmdline | (erzeugt) | `0x808` | cmdline + other modem |
+| fixnv, runnv | `l_fixnv`, `l_runtimenv` | `0x802` | nv + other modem |
+| modem_bootcode | – | `0x104` | boot iram + modem head: **`0x65003400`, 0x1000 Bytes** |
+
+Der Startcode aus dem MECP-Kopf (Dateiversatz `0xD0`, springt nach `0x8B001ACC`) gehört also nach **`0x65003400`**
+(iRAM); der Modem-Kern beginnt dort.
+
+**pmsys (`sp`)**, Gerät `/dev/pmsys`: `pm_sys` nach `0x88040000` (0x200000), Startcode **direkt im XML** (32 Wörter
+Thumb-Code) nach `0x62010000` (pmsys-iRAM, `modem_range` `0x62010000`/`0x4e000`). Android startet pmsys **vor** dem
+Modem und setzt danach `vendor.modem.sp-boot=1`. Unter Mainline liegt `0x88040000` in keinem reservierten Bereich ❓.
+
+**Sicherheit:** `modem_control` ruft über `libkernelbootcp.trusty.so` (trusty-Dienst `com.android.trusty.kernelbootcp`,
+`/dev/trusty-ipc-dev0`) zwei Dinge auf: `kernel_bootcp_verify_all` (Abbilder prüfen; es gibt die Meldung
+„skip cp image verify!“) und **`kernel_bootcp_unlock_ddr`** (vermutlich Freigabe der DDR-Schutzwand `dmc_mpu` für den
+Modem-Bereich). Mainline hat keinen trusty-IPC-Treiber. Ob das Modem ohne `unlock_ddr` an seinen Speicher kommt, ist
+**die entscheidende offene Frage** ❓ (beim WCN war keine Freigabe nötig).
+
+**`cpcmdline`** baut `modem_control` aus `/proc/cmdline` bzw. `/proc/bootconfig` zusammen: `modem=`, `calibration=`,
+`lcd_id=`, `rfboard.id=`, `hw_ver…`, Bootmodus, `modemboot=reset` (nach Neustart des Modems),
+`log_chan=sblock,…` (Adresse aus `sipc-virt/core@5/channel@5/base_addr`), Abschluss `cpcmdline=end`.
+Unter Mainline reicht der Bootloader davon **nichts** an `/proc/cmdline` weiter (geprüft 11.10.: nur `kvm-arm.mode=none`
+passt), `/proc/bootconfig` gibt es nicht (Kernel ohne `CONFIG_BOOT_CONFIG`) ❓.
+
+**Nach dem Start:** `modem_control` wartet auf „Modem Alive“, setzt `sipa_dele_reset` (IPA-Einheit für den
+Datenweg) und bedient Assert/Neustart. Laufzeit-Kanäle (`vendor/build.prop`):
+
+| Eigenschaft | Gerät | Zweck |
+|---|---|---|
+| `ro.vendor.modem.tty` | `/dev/stty_lte*` | AT-Befehle (`stty_lte2` u. a.) |
+| `ro.vendor.modem.eth` | `seth_lte*` | Datenschnittstellen |
+| `ro.vendor.modem.nv` | `/dev/spipe_lte1` | NV-Dienst: Modem liest/schreibt NV zur Laufzeit ❓ |
+| `ro.vendor.modem.assert` | `/dev/spipe_lte2` | Absturzmeldungen |
+| `ro.vendor.modem.loop` | `/dev/spipe_lte0` | Prüfschleife |
+| `ro.vendor.modem.log`/`diag` | `/dev/slog_lte`, `/dev/sdiag_lte` | Log/Diagnose |
+| `ro.vendor.modem.tmctl` | `/dev/sprd_time_sync` | Zeitabgleich (`refnotify`) |
+
+Nebenprogramme: `refnotify` (Uhrzeit AP ↔ Modem), `modem_ctrl_dbg` (Start/Stopp über `modem_control`),
+`nvmerge` (NV-Zusammenführung bei Updates, für uns unwichtig).
+
 ## Offen / nächste Schritte
 
 1. Wo im `l_modem.img` die eigentlichen `modem`-Daten beginnen (Dateiversatz) und wie der Startcode sie erwartet.
-2. ~~Treiber `unisoc,modem` (v2) lesen~~ ✅ (s. o.). Offen: was `modem_control` zusätzlich tut, Inhalt von `cpcmdline`.
+2. ~~Treiber `unisoc,modem` (v2) und `modem_control` lesen~~ ✅ (s. o.). Offen: Werte für `cpcmdline` (was der Bootloader
+   unter Android übergibt), DDR-Freigabe ohne trusty, NV-Dienst auf `spipe_lte1`.
 3. ~~Phandles `0x11`/`0x12` auflösen~~ ✅ 11.10.: AON-APB / PMU-APB (s. o.).
 4. Danach – wie beim WCN – ein stufenweiser Testtreiber: lesen → Speicher/Firmware → Kern loslassen → sipc core@5.
 5. NV-Daten: enthalten u. a. Kalibrierung und Gerätekennungen; sie bleiben auf dem Handy und gehören nicht ins Repo.
