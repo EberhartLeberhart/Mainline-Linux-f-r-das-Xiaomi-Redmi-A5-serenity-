@@ -82,9 +82,8 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
 ### Nächste Schritte
 0. ✅ 20.10.: `GET_INFO` (PR #1) und `DOWNLOAD_INI` (PR #2): INI-Abschnitte 1, 2, 4 Status 0, Abschnitt 3 Status 1.
    Arbeitsweise: jede Änderung als **Branch + Pull Request**, Commit erst nach erfolgreichem Test.
-1. **Status 1 bei INI-Abschnitt 3 (`rf_config`, 70 Bytes)** klären: Der Lauscher zeigt Log-Rahmen, deren Anfang
-   binär ist, nur als Hex (`druckbar()` zu streng) – Rahmen ab Byte 6 als Text ausgeben, dann den Firmware-Text zu
-   Abschnitt 3 lesen.
+1. ✅ Status 1 bei INI-Abschnitt 3 geklärt (PR #3): TLV wird angewendet, `result:0x0`. Firmware-Text (Rahmen 0x0920)
+   ist jetzt immer lesbar.
 2. **MAC-Adresse:** Woher nimmt Android sie (eigener Befehl, `miscdata`, Datei)? In der Realme-Quelle suchen
    (`mac_addr`, `WIFI_CMD_…`). Notfalls feste, selbst erzeugte MAC.
 3. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.

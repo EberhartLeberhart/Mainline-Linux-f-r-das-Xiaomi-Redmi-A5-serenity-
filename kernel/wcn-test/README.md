@@ -92,7 +92,8 @@ sudo mount -o ro,loop odm_a.img /mnt/odm && cp /mnt/odm/firmware/wifi_board_conf
 scp ~/redmi-android/firmware/wifi_board_config.ini root@192.168.7.2:/lib/firmware/
 ```
 Reihenfolge wie Realme: `sync_version`, `download_ini`, `get_info`.
-Belegt 20.10.: Abschnitte 1, 2, 4 Status 0, Abschnitt 3 (`rf_config`) Status 1 ❓.
+Belegt 20.10.: Abschnitte 1, 2, 4 Status 0, Abschnitt 3 (`rf_config`, TLV) Status 1 mit `result:0x0` –
+die Firmware liest und wendet ihn an (Pfadverlust 2,4/5 GHz), die 1 ist kein Fehler.
 
 Hinweis: Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem
 Veröffentlichen ansehen.

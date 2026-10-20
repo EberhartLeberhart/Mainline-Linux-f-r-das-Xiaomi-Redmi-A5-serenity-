@@ -262,7 +262,7 @@ static const u8 wl_api_map[256] = {
 };
 
 #define WLOG_MAX	(1024 * 1024)
-#define DMESG_ZEILEN	400
+#define DMESG_ZEILEN	3000	/* Firmware-Text ist jetzt immer lesbar, das braucht mehr Zeilen */
 
 static const char * const typ_name[] = {
 	"NONE", "OPEN", "CLOSE", "DATA", "EVENT", "CMD", "DONE",
@@ -1120,7 +1120,13 @@ static void rahmen_auswerten(void)
 			pr_info("wcnlog: Rahmen %u: Typ 0x%04x, Nr %u, %u Bytes, Kopf %*ph\n",
 				rahmen_anzahl, typ, nr, nutz, 12, r + 4);
 			dmesg_zeilen++;
-			if (druckbar(d, dn)) {
+			/*
+			 * Typ 0x0920 = Textmeldungen der Firmware: jeder Eintrag beginnt mit ein paar
+			 * Binaerbytes (Laenge/Kennung), danach "[T:...]text". druckbar() lehnt solche
+			 * Rahmen ab, wenn sie mit einem Kopf beginnen - deshalb immer als Text ausgeben
+			 * (nicht druckbare Zeichen werden zu '.').
+			 */
+			if (typ == 0x0920 || druckbar(d, dn)) {
 				text_ausgeben(d, dn);
 			} else if (dn >= 4) {
 				pr_info("wcnlog:   %*ph ...\n", (int)min_t(size_t, dn, 32), d);
