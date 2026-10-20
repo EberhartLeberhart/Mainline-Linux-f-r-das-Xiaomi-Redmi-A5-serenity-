@@ -83,5 +83,16 @@ API-Tabelle der Firmware.
 (`dmesg | grep GET_INFO`), die MAC-Adresse nur zur Hälfte, damit Logs teilbar bleiben.
 Belegt 20.10. (ohne INI): Status 0, Chip `0x2355`, Firmware `0xf13b`, 5 GHz, WPA3; MAC noch leer.
 
+`download_ini` liest `/lib/firmware/wifi_board_config.ini` und schickt sie wie Realme in 3–4 Abschnitten
+(`WIFI_CMD_DOWNLOAD_INI`, Nr. 76, je mit CRC16). Parser und Strukturen stehen in `wcn_ini.h`
+(aus Realme `rf_marlin3.c`, GPL, mit `SIPC_SUPPORT`). Die INI ist eine Gerätedatei aus `odm:/firmware`
+und kommt **nicht ins Repo**:
+```
+sudo mount -o ro,loop odm_a.img /mnt/odm && cp /mnt/odm/firmware/wifi_board_config.ini ~/redmi-android/firmware/ && sudo umount /mnt/odm
+scp ~/redmi-android/firmware/wifi_board_config.ini root@192.168.7.2:/lib/firmware/
+```
+Reihenfolge wie Realme: `sync_version`, `download_ini`, `get_info`.
+Belegt 20.10.: Abschnitte 1, 2, 4 Status 0, Abschnitt 3 (`rf_config`) Status 1 ❓.
+
 Hinweis: Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem
 Veröffentlichen ansehen.
