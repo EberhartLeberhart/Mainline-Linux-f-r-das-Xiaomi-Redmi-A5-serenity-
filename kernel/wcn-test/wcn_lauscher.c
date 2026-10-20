@@ -66,6 +66,10 @@
  *   Beleg 20.10.: Antwort Befehl 9, Status 0, API-Tabelle der Firmware.
  * echo get_info > .../wlan_befehl schickt WIFI_CMD_GET_INFO (liest nur: Chip, Firmware, Faehigkeiten, MAC);
  *   die Antwort wird entschluesselt ausgegeben, die MAC nur zur Haelfte.
+ *   Beleg 20.10. (ohne INI): Status 0, Chip 0x2355, Firmware 0xf13b, 5 GHz, WPA3, MAC leer.
+ * echo download_ini > .../wlan_befehl liest /lib/firmware/wifi_board_config.ini (Geraetedatei aus
+ *   odm:/firmware, NICHT veroeffentlichen), wandelt sie wie Realme rf_marlin3.c (wcn_ini.h) und
+ *   schickt WIFI_CMD_DOWNLOAD_INI in 3-4 Abschnitten mit CRC16.
  *
  * AT-Kanal (Parameter at=1, setzt antworten=1 voraus), Stand 19.10.:
  * Kanal 4 ist bei Realme (sprdwcn/sipc/wcn_sipc.c) ein sbuf mit 16 Ringen, je tx 0x2400 /
@@ -94,6 +98,10 @@
 #include <linux/workqueue.h>
 #include <linux/kfifo.h>
 #include <linux/unaligned.h>
+#include <linux/firmware.h>
+#include <linux/delay.h>
+
+#include "wcn_ini.h"
 
 #define TAG "wcnlausch: "
 
@@ -229,6 +237,8 @@ MODULE_PARM_DESC(alle_oeffnen, "jedes OPEN des WCN-Kerns (auch Kanal 7, 11, 12 .
  *   24 wiphy_sec2_t (52 Bytes: ht_cap_info, ampdu_para, ht_mcs 16, vht_cap 4, vht_mcs 8, ant tx/rx, ...),
  *   76 mac_addr[6], 82 credit_capa, 84 extend_feature (Bit 0 SAE, 1 OWE, 2 DPP, ...)
  */
+#define WIFI_CMD_DOWNLOAD_INI	76
+#define WL_INI_DATEI		"wifi_board_config.ini"	/* aus odm:/firmware, auf dem Handy in /lib/firmware */
 #define FWI_MAC		76
 #define FWI_CREDIT	82
 #define FWI_EXTEND	84
@@ -884,6 +894,91 @@ static int wl_get_info(void)
 	return sb7_senden(buf, sizeof(buf));
 }
 
+/*
+ * sprdwl_down_ini_cmd(): Nutzdaten = u8 Abschnitt, 3 Bytes frei, Daten, u16 CRC16 der Daten.
+ * Realme wartet nach jedem Abschnitt auf die Antwort; wir schicken mit kurzer Pause und lesen
+ * die Antworten (Befehl 76, Status) im dmesg.
+ */
+static int wl_ini_abschnitt(u8 nr, const void *daten, u32 len)
+{
+	u32 plen = WL_HDR + 4 + len + 2;
+	u32 ms = (u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+	u8 *buf;
+	u16 crc;
+	int ret;
+
+	if (plen > SB7_BLK) {
+		pr_warn(TAG "INI: Abschnitt %u zu gross (%u Bytes, Block %u)\n", nr, plen, SB7_BLK);
+		return -EMSGSIZE;
+	}
+	buf = kzalloc(plen, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	buf[0] = 0x10;			/* Typ CMD, Antwort erwuenscht, ctx 0 */
+	buf[1] = WIFI_CMD_DOWNLOAD_INI;
+	put_unaligned_le16(plen, buf + 2);
+	put_unaligned_le32(ms, buf + 4);
+	buf[WL_HDR] = nr;
+	memcpy(buf + WL_HDR + 4, daten, len);
+	crc = ini_crc16(daten, len);
+	put_unaligned_le16(crc, buf + WL_HDR + 4 + len);
+	pr_info(TAG "INI: sende Abschnitt %u, %u Bytes Daten, CRC 0x%04x\n", nr, len, crc);
+	ret = sb7_senden(buf, plen);
+	kfree(buf);
+	return ret;
+}
+
+/* sprdwl_download_ini(): Datei einlesen, in wifi_conf_t uebertragen, 3-4 Abschnitte senden */
+static int wl_download_ini(void)
+{
+	const struct firmware *fw;
+	struct wifi_conf_t *conf;
+	int treffer, unbekannt, ret;
+
+	ret = request_firmware(&fw, WL_INI_DATEI, &pdev->dev);
+	if (ret) {
+		pr_warn(TAG "INI: %s nicht gefunden (%d) - nach /lib/firmware kopieren\n", WL_INI_DATEI, ret);
+		return ret;
+	}
+	conf = kzalloc(sizeof(*conf), GFP_KERNEL);
+	if (!conf) {
+		release_firmware(fw);
+		return -ENOMEM;
+	}
+	treffer = ini_parse(fw->data, fw->size, conf, &unbekannt);
+	pr_info(TAG "INI: %s, %zu Bytes, %d Schluessel uebernommen, %d unbekannt\n",
+		WL_INI_DATEI, fw->size, treffer, unbekannt);
+	release_firmware(fw);
+	if (treffer <= 0) {
+		kfree(conf);
+		return treffer < 0 ? treffer : -EINVAL;
+	}
+	pr_info(TAG "INI: Version %u.%u, Ketten 2G 0x%x 5G 0x%x, Kalibrierung aus %u, Regdomain 0x%x/0x%x, rf_data %d Bytes\n",
+		conf->version.major, conf->version.minor, conf->board_config.g2_chain_mask,
+		conf->board_config.g5_chain_mask, conf->board_config.calibration_bypass,
+		conf->reg_domain.reg_domain1, conf->reg_domain.reg_domain2, conf->rf_config.rf_data_len);
+	pr_info(TAG "INI: Groessen sec1 %zu, sec2 %zu, sec4 %zu, gesamt %zu\n",
+		sizeof(struct wifi_conf_sec1_t), sizeof(struct wifi_conf_sec2_t),
+		sizeof(struct wifi_config_param_t), sizeof(struct wifi_conf_t));
+
+	ret = wl_ini_abschnitt(1, conf, sizeof(struct wifi_conf_sec1_t));
+	if (!ret) {
+		msleep(300);
+		ret = wl_ini_abschnitt(2, &conf->tx_scale, sizeof(struct wifi_conf_sec2_t));
+	}
+	if (!ret && conf->rf_config.rf_data_len > 0) {
+		msleep(300);
+		ret = wl_ini_abschnitt(3, conf->rf_config.rf_data,
+				       min_t(u32, conf->rf_config.rf_data_len, sizeof(conf->rf_config.rf_data)));
+	}
+	if (!ret) {
+		msleep(300);
+		ret = wl_ini_abschnitt(4, &conf->wifi_param, sizeof(struct wifi_config_param_t));
+	}
+	kfree(conf);
+	return ret;
+}
+
 /* Antwort auf GET_INFO lesbar ausgeben (MAC nur halb, damit Logs teilbar bleiben) */
 static void wl_info_zeigen(const u8 *h, u32 len)
 {
@@ -1308,7 +1403,7 @@ static ssize_t at_antworten_show(struct device *dev, struct device_attribute *at
 }
 static DEVICE_ATTR_RO(at_antworten);
 
-/* Testbefehle fuer Kanal 7: "sync_version", "get_info" */
+/* Testbefehle fuer Kanal 7: "sync_version", "get_info", "download_ini" */
 static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *attr,
 				 const char *buf, size_t count)
 {
@@ -1318,6 +1413,8 @@ static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *at
 		ret = wl_sync_version();
 	else if (sysfs_streq(buf, "get_info"))
 		ret = wl_get_info();
+	else if (sysfs_streq(buf, "download_ini"))
+		ret = wl_download_ini();
 	else
 		ret = -EINVAL;
 	return ret ? ret : count;

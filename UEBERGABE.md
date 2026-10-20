@@ -80,14 +80,14 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   Der Lauscher zeigt sie noch als Hex, weil `druckbar()` die ersten Binärbytes mitzählt.
 
 ### Nächste Schritte
-0. ✅ 20.10.: `GET_INFO` ohne INI → Status 0 (Chip 0x2355, Firmware 0xf13b, 5 GHz, WPA3, MAC leer). Ab jetzt
-   Änderungen über **Branch + Pull Request** (gewünscht, u. a. für die GitHub-Abzeichen).
-1. **`DOWNLOAD_INI`** (WIFI_CMD 76): Kalibrier-/Konfigurationsdatei des Geräts (Android `/vendor` bzw. `odm`) –
-   gerätespezifisch, **nicht veröffentlichen**. Realme `sprdwl_down_ini_cmd()` (CRC16, Abschnitte). Erst die Datei auf
-   dem Handy/in den Android-Abbildern finden.
-2. **MAC-Adresse:** Woher nimmt Android sie (INI, eigene Datei, `miscdata`)? Notfalls feste, selbst erzeugte MAC.
-3. ❓ `wiphy_sec2_t` in der GET_INFO-Antwort: Antennen 0, RTS 0xffffff, Frag 0 – nach der INI erneut prüfen.
-4. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
+0. ✅ 20.10.: `GET_INFO` (PR #1) und `DOWNLOAD_INI` (PR #2): INI-Abschnitte 1, 2, 4 Status 0, Abschnitt 3 Status 1.
+   Arbeitsweise: jede Änderung als **Branch + Pull Request**, Commit erst nach erfolgreichem Test.
+1. **Status 1 bei INI-Abschnitt 3 (`rf_config`, 70 Bytes)** klären: Der Lauscher zeigt Log-Rahmen, deren Anfang
+   binär ist, nur als Hex (`druckbar()` zu streng) – Rahmen ab Byte 6 als Text ausgeben, dann den Firmware-Text zu
+   Abschnitt 3 lesen.
+2. **MAC-Adresse:** Woher nimmt Android sie (eigener Befehl, `miscdata`, Datei)? In der Realme-Quelle suchen
+   (`mac_addr`, `WIFI_CMD_…`). Notfalls feste, selbst erzeugte MAC.
+3. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
 ## Nebenbefunde
@@ -107,6 +107,8 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
 - Erst der Kernel mit **kompletter Hardware** (WLAN, BT, Modem ohne Trusty-Teil, Kameras, Ton, Sensoren, UKW-Radio –
   FM hängt am selben WCN-Kern, Kanal 4 Ringe 13/14), **dann** die Oberfläche.
 - Am Ende **ein Kernel, zwei Abbilder:** Server-Variante (schlank, ohne Oberfläche) und Benutzer-Variante.
+- **Installer, Releases, fertige Abbilder erst, wenn der Kernel die Hardware ordentlich kann** (sonst nur
+  Beschwerden). Bis dahin heißt „professionell“: saubere Treiber, belegte Tests, Doku, Pull Requests.
 - Benutzer-Variante: eigene „Mint-Variante“ auf Ubuntu-arm64-Basis (Mint selbst gibt es nur für x86_64; Cinnamon
   gibt es für arm64, die Mint-eigenen Pakete selbst bauen, PC-spezifische Werkzeuge weglassen). Auf dem Handy eine
   Touch-Oberfläche (z. B. Phosh), am großen Bildschirm Cinnamon – vermutlich über das USB-Netz (VNC/RDP) oder einen
