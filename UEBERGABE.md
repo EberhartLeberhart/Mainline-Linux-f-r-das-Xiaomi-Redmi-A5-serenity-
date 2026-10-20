@@ -84,8 +84,10 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    Arbeitsweise: jede Änderung als **Branch + Pull Request**, Commit erst nach erfolgreichem Test.
 1. ✅ Status 1 bei INI-Abschnitt 3 geklärt (PR #3): TLV wird angewendet, `result:0x0`. Firmware-Text (Rahmen 0x0920)
    ist jetzt immer lesbar.
-2. **MAC-Adresse:** Woher nimmt Android sie (eigener Befehl, `miscdata`, Datei)? In der Realme-Quelle suchen
-   (`mac_addr`, `WIFI_CMD_…`). Notfalls feste, selbst erzeugte MAC.
+2. ✅ **MAC-Adresse** (20.10.): steht in `prodnv:/wifimac.txt` (Partition `prodnv` = Androids `/mnt/vendor`,
+   `mmcblk0p1`); Bluetooth-MAC in `btmac.txt`. Nicht über INI/Firmware – der Treiber setzt sie für `wlan0`
+   (Realme `sprdwl_set_mac_addr`, `default_mac`) und schickt sie mit `WIFI_CMD_OPEN`. `prodnv` nur lesend einhängen,
+   volle MAC nie veröffentlichen.
 3. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
