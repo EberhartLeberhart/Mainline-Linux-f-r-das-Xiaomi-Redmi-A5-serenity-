@@ -80,12 +80,13 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   Der Lauscher zeigt sie noch als Hex, weil `druckbar()` die ersten Binärbytes mitzählt.
 
 ### Nächste Schritte
-1. **`GET_INFO`** (WIFI_CMD 1, liest nur: Chipmodell, Firmware-Version, Fähigkeiten, MAC). Realme schickt vorher
-   `DOWNLOAD_INI` – erst ohne INI probieren. Aufbau: Realme `cmdevt.c` `sprdwl_get_fw_info()` (hängt TLV an),
-   Antwort `struct sprdwl_cmd_fw_info` in `cmdevt.h`.
-2. **`DOWNLOAD_INI`** (WIFI_CMD 76): Kalibrier-/Konfigurationsdatei des Geräts (Android `/vendor` bzw. `odm`) –
-   gerätespezifisch, **nicht veröffentlichen**. Realme `sprdwl_down_ini_cmd()` (CRC16, Abschnitte).
-3. Weitere AT-Befehle, nur lesende (in der Realme-Quelle nach `at+` suchen).
+0. ✅ 20.10.: `GET_INFO` ohne INI → Status 0 (Chip 0x2355, Firmware 0xf13b, 5 GHz, WPA3, MAC leer). Ab jetzt
+   Änderungen über **Branch + Pull Request** (gewünscht, u. a. für die GitHub-Abzeichen).
+1. **`DOWNLOAD_INI`** (WIFI_CMD 76): Kalibrier-/Konfigurationsdatei des Geräts (Android `/vendor` bzw. `odm`) –
+   gerätespezifisch, **nicht veröffentlichen**. Realme `sprdwl_down_ini_cmd()` (CRC16, Abschnitte). Erst die Datei auf
+   dem Handy/in den Android-Abbildern finden.
+2. **MAC-Adresse:** Woher nimmt Android sie (INI, eigene Datei, `miscdata`)? Notfalls feste, selbst erzeugte MAC.
+3. ❓ `wiphy_sec2_t` in der GET_INFO-Antwort: Antennen 0, RTS 0xffffff, Frag 0 – nach der INI erneut prüfen.
 4. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 

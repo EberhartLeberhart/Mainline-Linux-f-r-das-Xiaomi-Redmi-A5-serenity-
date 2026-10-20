@@ -63,6 +63,9 @@
  *   Beleg 20.10.: Firmware-Log "sblock_create ... raddr:2e0060, rcount:4, rsize:800 ..." passt genau.
  * Senden (nur mit kanal7=1): echo sync_version > /sys/devices/platform/wcn-lauscher/wlan_befehl
  *   schickt WIFI_CMD_SYNC_VERSION (erster Befehl des Realme-WLAN-Treibers, aendert nichts am Funk).
+ *   Beleg 20.10.: Antwort Befehl 9, Status 0, API-Tabelle der Firmware.
+ * echo get_info > .../wlan_befehl schickt WIFI_CMD_GET_INFO (liest nur: Chip, Firmware, Faehigkeiten, MAC);
+ *   die Antwort wird entschluesselt ausgegeben, die MAC nur zur Haelfte.
  *
  * AT-Kanal (Parameter at=1, setzt antworten=1 voraus), Stand 19.10.:
  * Kanal 4 ist bei Realme (sprdwcn/sipc/wcn_sipc.c) ein sbuf mit 16 Ringen, je tx 0x2400 /
@@ -215,8 +218,20 @@ MODULE_PARM_DESC(alle_oeffnen, "jedes OPEN des WCN-Kerns (auch Kanal 7, 11, 12 .
  * u8 rsp_cnt, u8 reserv[2]. Danach sprdwl_cmd_api_t: u32 main_ver (1) + u8 api_map[256]
  * (Werte aus Realme api_version.c g_api_array, Index = Position in der Tabelle).
  */
+#define WIFI_CMD_GET_INFO	1
 #define WIFI_CMD_SYNC_VERSION	9
 #define WL_HDR			12
+/*
+ * WIFI_CMD_GET_INFO: Nutzdaten = ein TLV {le16 Typ 2 NOTIFY_AP_VERSION, le16 Laenge 1, u8 0 = User-Build}.
+ * Antwort struct sprdwl_cmd_fw_info (Realme cmdevt.h, NICHT gepackt; Versatz ab Nutzdaten):
+ *   0 chip_model, 4 chip_version, 8 fw_version, 12 fw_std, 16 fw_capa (Bit 0 = 5 GHz),
+ *   20 max_ap_assoc_sta, 21 max_acl_mac_addrs, 22 max_mc_mac_addrs, 23 wnm_ft_support,
+ *   24 wiphy_sec2_t (52 Bytes: ht_cap_info, ampdu_para, ht_mcs 16, vht_cap 4, vht_mcs 8, ant tx/rx, ...),
+ *   76 mac_addr[6], 82 credit_capa, 84 extend_feature (Bit 0 SAE, 1 OWE, 2 DPP, ...)
+ */
+#define FWI_MAC		76
+#define FWI_CREDIT	82
+#define FWI_EXTEND	84
 static const u8 wl_api_map[256] = {
 	1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -723,6 +738,8 @@ static void sb7_vorbereiten(void)
 		SB7_RXN, SB7_BLK, cp7(SB7_RXBLK), cp7(SB7_ENDE));
 }
 
+static void wl_info_zeigen(const u8 *h, u32 len);
+
 /* sblock_receive() + sblock_release() fuer alle angekommenen Bloecke, Inhalt ins dmesg */
 static void sb7_empfangen(void)
 {
@@ -765,8 +782,13 @@ static void sb7_empfangen(void)
 					get_unaligned_le16(h + 2), get_unaligned_le32(h + 4),
 					(s8)h[8], h[9]);
 			}
-			print_hex_dump(KERN_INFO, kopf, DUMP_PREFIX_OFFSET, 16, 1,
-				       smem + off, min(len, 320u), true);
+			if (len >= WL_HDR && ((const u8 *)smem + off)[1] == WIFI_CMD_GET_INFO) {
+				/* kein Roh-Dump: enthaelt die volle MAC-Adresse */
+				wl_info_zeigen(smem + off, len);
+			} else {
+				print_hex_dump(KERN_INFO, kopf, DUMP_PREFIX_OFFSET, 16, 1,
+					       smem + off, min(len, 320u), true);
+			}
 		}
 		sm_wr(r + SH_RX_RD, rd + 1);
 		/* Block zurueck in den Pool (sblock_release) */
@@ -843,6 +865,57 @@ static int wl_sync_version(void)
 	memcpy(buf + WL_HDR + 4, wl_api_map, sizeof(wl_api_map));
 	pr_info(TAG "WLAN: sende WIFI_CMD_SYNC_VERSION (%zu Bytes)\n", sizeof(buf));
 	return sb7_senden(buf, sizeof(buf));
+}
+
+static int wl_get_info(void)
+{
+	u8 buf[WL_HDR + 5];
+	u32 ms = (u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+
+	memset(buf, 0, sizeof(buf));
+	buf[0] = 0x10;			/* Typ CMD, Antwort erwuenscht, ctx 0 */
+	buf[1] = WIFI_CMD_GET_INFO;
+	put_unaligned_le16(sizeof(buf), buf + 2);
+	put_unaligned_le32(ms, buf + 4);
+	put_unaligned_le16(2, buf + WL_HDR);		/* NOTIFY_AP_VERSION */
+	put_unaligned_le16(1, buf + WL_HDR + 2);
+	buf[WL_HDR + 4] = 0;				/* NOTIFY_AP_VERSION_USER */
+	pr_info(TAG "WLAN: sende WIFI_CMD_GET_INFO (%zu Bytes)\n", sizeof(buf));
+	return sb7_senden(buf, sizeof(buf));
+}
+
+/* Antwort auf GET_INFO lesbar ausgeben (MAC nur halb, damit Logs teilbar bleiben) */
+static void wl_info_zeigen(const u8 *h, u32 len)
+{
+	const u8 *d = h + WL_HDR;
+	u32 n = len - WL_HDR, capa;
+
+	if (n < 24) {
+		pr_info(TAG "GET_INFO: nur %u Bytes Nutzdaten\n", n);
+		return;
+	}
+	capa = get_unaligned_le32(d + 16);
+	pr_info(TAG "GET_INFO: Chip 0x%08x, Chipversion 0x%08x, Firmware 0x%08x\n",
+		get_unaligned_le32(d), get_unaligned_le32(d + 4), get_unaligned_le32(d + 8));
+	pr_info(TAG "GET_INFO: Standards 0x%08x, Faehigkeiten 0x%08x (5 GHz: %s)\n",
+		get_unaligned_le32(d + 12), capa, (capa & 1) ? "ja" : "nein");
+	pr_info(TAG "GET_INFO: max. AP-Clients %u, ACL %u, Multicast %u, WNM/FT %u\n",
+		d[20], d[21], d[22], d[23]);
+	if (n >= 76)
+		pr_info(TAG "GET_INFO: HT-Cap 0x%04x, VHT-Cap 0x%08x, Antennen tx %u rx %u, RTS %u, Frag %u\n",
+			get_unaligned_le16(d + 24), get_unaligned_le32(d + 24 + 20),
+			get_unaligned_le32(d + 24 + 32), get_unaligned_le32(d + 24 + 36),
+			get_unaligned_le32(d + 24 + 48), get_unaligned_le32(d + 24 + 44));
+	if (n >= FWI_MAC + 6)
+		pr_info(TAG "GET_INFO: MAC %02x:%02x:%02x:xx:xx:xx (%s)\n", d[FWI_MAC], d[FWI_MAC + 1],
+			d[FWI_MAC + 2], memchr_inv(d + FWI_MAC, 0, 6) ? "gesetzt" : "leer");
+	if (n >= FWI_CREDIT + 1)
+		pr_info(TAG "GET_INFO: Credit-Modus %u (0 = mit Credit, 1 = ohne)\n", d[FWI_CREDIT]);
+	if (n >= FWI_EXTEND + 4)
+		pr_info(TAG "GET_INFO: erweiterte Funktionen 0x%08x (SAE %u, OWE %u)\n",
+			get_unaligned_le32(d + FWI_EXTEND), get_unaligned_le32(d + FWI_EXTEND) & 1,
+			(get_unaligned_le32(d + FWI_EXTEND) >> 1) & 1);
+	pr_info(TAG "GET_INFO: %u Bytes Nutzdaten (Realme erwartet ab 88)\n", n);
 }
 
 static void sb7_bearbeiten(u8 typ, u16 flag, u32 wert)
@@ -1235,7 +1308,7 @@ static ssize_t at_antworten_show(struct device *dev, struct device_attribute *at
 }
 static DEVICE_ATTR_RO(at_antworten);
 
-/* Testbefehle fuer Kanal 7: "sync_version" */
+/* Testbefehle fuer Kanal 7: "sync_version", "get_info" */
 static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *attr,
 				 const char *buf, size_t count)
 {
@@ -1243,6 +1316,8 @@ static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *at
 
 	if (sysfs_streq(buf, "sync_version"))
 		ret = wl_sync_version();
+	else if (sysfs_streq(buf, "get_info"))
+		ret = wl_get_info();
 	else
 		ret = -EINVAL;
 	return ret ? ret : count;

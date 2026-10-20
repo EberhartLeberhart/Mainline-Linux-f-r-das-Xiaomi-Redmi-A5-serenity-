@@ -79,5 +79,9 @@ sleep 2; dmesg | grep -E "Kanal 7|K7 |wcnlog"
 `marlin3_sipc`. Er ändert nichts am Funk. Belegt 20.10.: Antwort mit Befehl 9, Status 0 und der
 API-Tabelle der Firmware.
 
+`get_info` schickt `WIFI_CMD_GET_INFO` (Nr. 1, liest nur). Die Antwort wird entschlüsselt ausgegeben
+(`dmesg | grep GET_INFO`), die MAC-Adresse nur zur Hälfte, damit Logs teilbar bleiben.
+Belegt 20.10. (ohne INI): Status 0, Chip `0x2355`, Firmware `0xf13b`, 5 GHz, WPA3; MAC noch leer.
+
 Hinweis: Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem
 Veröffentlichen ansehen.
