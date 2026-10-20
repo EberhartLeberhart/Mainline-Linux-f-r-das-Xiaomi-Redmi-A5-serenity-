@@ -38,6 +38,9 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
 - 20.10.: Firmware-Log bestätigt den sblock von Kanal 7 bis aufs Byte (`raddr:2e0060, rcount:4, rsize:800, rblks:2e6060 …`, Pool `rwrptr:4` / `twrptr:8`)
 - 20.10.: **erster WLAN-Befehl** `WIFI_CMD_SYNC_VERSION` (Nr. 9, wie beim Start des Realme-Treibers `marlin3_sipc`) → Firmware: `[RECV_CMD][0][id = 9][WIFI_CMD_SYNC_CMD_VERSION]`, Antwort auf Kanal 7: Befehl 9, unser Zeitstempel, **Status 0**, dazu ihre API-Tabelle ✅. Einzige Warnung: Befehl 36 (`WIFI_CMD_FLUSH_SDIO`) kennt die Firmware nicht – betrifft nur SDIO, harmlos.
 
+- 20.10.: **zweiter WLAN-Befehl** `WIFI_CMD_GET_INFO` (Nr. 1) **ohne INI-Download** → Status 0 ✅. Firmware-Log: `[GET_INFO]: chip_model:0x2355, fw_version:0xf13b`, `feature: 0x00120f7f, IEEE_std: 0x0000007f` – deckt sich mit unserer Entschlüsselung.
+  Steckbrief: Chip `0x2355` (Marlin3-WLAN), Firmware `0xf13b`, 802.11d/e/k/r/u/v/w, **5 GHz** (Fähigkeit Bit 0), WPA3/SAE und OWE (`0x543`), AP-Modus bis 10 Clients, HT-Cap `0x16f`, VHT-Cap `0x03b07031`. **MAC-Adresse leer** – kommt unter Android vom Treiber ❓ (INI oder eigene Datei). Antennen 0, RTS `0xffffff`, Frag 0 ❓ (leer ohne INI oder Versatz in `wiphy_sec2_t` falsch). Ob das Gerät 5 GHz auch wirklich nutzt (Antenne, Ländereinstellung), ❓. Hinweis: Realme schaltet 5 GHz im Treiber ab, wenn der Projektname nicht auf seiner Liste steht – das gilt für uns nicht.
+
 Testmodul: `kernel/wcn-test/wcn_lauscher.c`, Parameter `kanal=8 antworten=1 at=1 alle_oeffnen=1 kanal11=1 kanal12=1 kanal7=1` (alle neuen Funktionen Standard aus), Ablauf in `kernel/wcn-test/README.md`.
 
 ## Durchbruch vom 08.10.: Netzwerk über USB-LAN-Adapter am Hub
@@ -191,7 +194,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 | Bereich | Status | Notiz |
 |---|---|---|
-| WLAN / Bluetooth / FM / GPS (Marlin3) | 🟡 | **20.10.: Firmware beantwortet den ersten WLAN-Befehl** ✅ (`WIFI_CMD_SYNC_VERSION`, Status 0), siehe Abschnitt oben. 19.10.: alle fünf sipc-Kanäle (4, 5, 7, 11, 12) bedient, erste AT-Antwort ✅. 09.10.: WCN-Kern startet ✅ – Testtreiber `kernel/wcn-test` (Stufe 3): Firmware `wcnmodem.bin` (aus `odm_a/firmware`, **nicht signiert**, läuft ohne trusty und ohne Speichersperre) nach `0x87000000`, Einschaltfolge nach Realme `wcn_poweron_device()` → `0xF0F0F0FF` nach ~520–540 ms. Sauber abschalten und ohne Neustart wieder starten ✅ (09.10.). Verbrauch mit schlafendem WCN-Kern nicht messbar höher (< ~2 mA). Offen: `GET_INFO`, INI-Download (Kalibrierdatei des Geräts, nicht veröffentlichen), WLAN-Treiber `marlin3_sipc` portieren → `wlan0`; Bluetooth (Kanal 4, Ringe 11/10), FM (Ringe 14/13). Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
+| WLAN / Bluetooth / FM / GPS (Marlin3) | 🟡 | **20.10.: Firmware beantwortet die ersten WLAN-Befehle** ✅ (`SYNC_VERSION` und `GET_INFO`, beide Status 0; Chip `0x2355`, 5 GHz, WPA3), siehe Abschnitt oben. 19.10.: alle fünf sipc-Kanäle (4, 5, 7, 11, 12) bedient, erste AT-Antwort ✅. 09.10.: WCN-Kern startet ✅ – Testtreiber `kernel/wcn-test` (Stufe 3): Firmware `wcnmodem.bin` (aus `odm_a/firmware`, **nicht signiert**, läuft ohne trusty und ohne Speichersperre) nach `0x87000000`, Einschaltfolge nach Realme `wcn_poweron_device()` → `0xF0F0F0FF` nach ~520–540 ms. Sauber abschalten und ohne Neustart wieder starten ✅ (09.10.). Verbrauch mit schlafendem WCN-Kern nicht messbar höher (< ~2 mA). Offen: INI-Download (Kalibrierdatei des Geräts, nicht veröffentlichen), MAC-Adresse, WLAN-Treiber `marlin3_sipc` portieren → `wlan0`; Bluetooth (Kanal 4, Ringe 11/10), FM (Ringe 14/13). Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
 | FM-Senden | ❓ | Behauptung aus altem Chat, **nicht belegt** |
 | Mobilfunk | ❌ 🟡 | Ziel: Ersatz-Internet. 10.10.: Modem-Firmware (`l_modem` MECP-Container, `l_ldsp`, `l_gdsp`) **ohne `DHTB`-Signatur** ✅, Ladeplan aus dem Container gelesen, Modem-Speicher im Mainline-DT schon reserviert. Siehe [MODEM.md](MODEM.md) |
 | GPU (Mali-G57) | ❌ | braucht Power-Domains; vorher Temperaturgrenze für `gpu-thermal` |
@@ -206,7 +209,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 4. Akku: Ausschalten mit Kabel bei gekapptem Strom prüfen; später eigener Ladechip-Treiber statt i2cset
 5. Display: Abschalten/Wiedereinschalten im DRM-Treiber reparieren (Diagnose: DCS 0x0A muss 0x9C liefern), dann Schlaf über den Treiber (DPU/DSI aus) und Touch als Panel-Follower; Strom neu messen
 6. Touch: Feinschliff (Wächter-Erkennung im Treiber, Ausrichtung/Mehrfinger prüfen), Treiber-Korrekturen an George Chan melden
-7. **WLAN:** `GET_INFO` (liest nur: Chip, Fähigkeiten, MAC), dann INI-Download, dann den Realme-Treiber `marlin3_sipc` portieren → `wlan0` → Scan. Den sipc-Teil aus `wcn_lauscher.c` später in einen richtigen sipc-Kern überführen (Plan in `kernel/modem-sipc/`)
+7. **WLAN:** `GET_INFO` läuft ✅ (20.10.); als Nächstes INI-Download und Herkunft der MAC-Adresse klären, dann den Realme-Treiber `marlin3_sipc` portieren → `wlan0` → Scan. Den sipc-Teil aus `wcn_lauscher.c` später in einen richtigen sipc-Kern überführen (Plan in `kernel/modem-sipc/`)
 8. Danach Bluetooth (Kanal 4, Ringe 11/10) oder Ton (VBC/Codec; Verstärker FS1588 offen); prüfen, ob auch der Audio-Kern über sipc antwortet
 9. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
 
