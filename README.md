@@ -4,7 +4,9 @@
 **Model**: 25028RN03A (Global)  
 **SoC**: Unisoc T7250 / UMS9230E (`sharkl5pro` family)  
 **Stock OS**: Android 15 Go — Build `A15.0.20.0.VGWMIXM`  
-**Status**: ✅ Bootloader unlocked, custom Mainline kernel boots, Ubuntu 24.04 runs
+**Status** (20 Oct 2026): ✅ Bootloader unlocked · ✅ Mainline 7.1 kernel boots cold and warm · ✅ Ubuntu 24.04 runs ·
+✅ display, touch, battery, USB networking · 🟡 Wi-Fi/Bluetooth firmware already talks to Mainline (first Wi-Fi command answered) ·
+detailed, evidence-based status (German): [STATUS.md](STATUS.md)
 
 > This is the most complete public documentation of the Xiaomi Redmi A5's internals.
 > Built from hands-on reverse engineering — no leaked schematics, no vendor documentation.
@@ -795,13 +797,51 @@ This approach works because LK always initializes the display, regardless of wha
 
 ## 15. Booting Linux
 
-### What Works (as of September 2026)
+### What Works (as of 20 October 2026)
 
-- ✅ Custom Mainline kernel boots (all 8 CPUs, eMMC)
-- ✅ Ubuntu 24.04 Server (aarch64, debootstrap) boots to login prompt
-- ✅ Ubuntu rootfs runs from the `cust` partition
-- ✅ Display shows kernel text via simple-framebuffer
-- ✅ Both warm and cold boot are reliable
+Every item below is backed by a dated log or measurement in [STATUS.md](STATUS.md) (German).
+Kernel: Linux 7.1.0-rc1 (Codeberg `ums9230` tree + the patches in [`kernel/patches/`](kernel/patches/)),
+slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_a5_defconfig)).
+
+**Boot and base system**
+- ✅ Cold and warm boot are reliable (logged in `belege/startreihe.csv`). Root cause of the old random hangs:
+  the kernel image was too large for the bootloader's load area (~48 MB limit) — slim config is ~28 MB
+- ✅ All 8 CPU cores, CPU frequency scaling (cpufreq, as a module) with deep idle on all cores
+  (fix: `sprd,pmic-type = 0` for the big cluster, as in Xiaomi's device tree)
+- ✅ Power off and reboot via the SC2730 PMIC, PMIC watchdog handled, real-time clock
+- 🟡 Thermal zones: passive and critical trip points work; the GPU zone has no limit yet
+- ✅ eMMC; Ubuntu 24.04 Server (aarch64) runs from the `userdata` partition
+
+**Connectivity**
+- ✅ USB device mode: NCM network + ACM console, SSH over USB
+- ✅ USB host mode through a powered hub (the phone charges and is host at the same time)
+- ✅ USB Ethernet (RTL8153) — needed a fix in the MUSB host DMA path (patch 0017, AUTOSET/DMAMODE)
+- 🟡 Automatic USB role switching (service); a long-running LAN test on a router still hangs
+
+**Power**
+- ✅ Battery gauge (SC2730 FGU): voltage, charge level, current, battery temperature
+- ✅ Charger chip SGM41513 controlled over I²C; charge-limit service for server use (e.g. 75–80 %)
+- ✅ Idle consumption ~51 mA with the panel asleep
+
+**Display and input**
+- ✅ DRM display driver (DPU/DSI) with an own panel driver for the NT36528 (720×1640), brightness via DCS
+- ✅ Touchscreen (NT36528 TDDI over SPI, based on the `nt36xxx_spi` RFC driver plus NT36528 support)
+- ✅ Power and volume buttons
+- 🟡 Panel off/on through the DRM driver does not wake the panel yet (workaround: direct DCS sleep)
+
+**Wireless (in progress)**
+- ✅ The integrated WCN core (Wi-Fi/Bluetooth/FM/GNSS) boots from Mainline with its own, unsigned firmware
+- ✅ All five SIPC channels the firmware opens are served by a test module ([`kernel/wcn-test/`](kernel/wcn-test/)):
+  AT/BT (4), firmware log (5), Wi-Fi commands (7, `sblock`), heartbeat (11), assert (12)
+- ✅ 19 Oct: first AT reply (`Platform Version:WCN_TRUNK_22A_W25.03.4 …`)
+- ✅ 20 Oct: first Wi-Fi command `WIFI_CMD_SYNC_VERSION` answered with status 0
+- Next: `GET_INFO`, calibration INI download, port of the `marlin3_sipc` Wi-Fi driver → `wlan0`
+
+**Not working yet**
+- ❌ Wi-Fi and Bluetooth as usable interfaces, audio, GPU, camera
+- ⏸️ LTE: the modem firmware is unsigned, but the part that needs the TEE (trusty) is **deliberately on hold**
+  until the legal situation is clear — see [MODEM.md](MODEM.md). Everything else is being prepared
+  ([`kernel/modem-sipc/`](kernel/modem-sipc/))
 
 ### Strategy: Slot B Experiments, Slot A Safety
 

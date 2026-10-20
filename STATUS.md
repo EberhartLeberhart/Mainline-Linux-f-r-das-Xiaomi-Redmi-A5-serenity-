@@ -1,6 +1,6 @@
 # Redmi A5 (serenity) – Hardware-Status
 
-Stand: 08.10.2026 · Kernel 7.1.0-rc1-ga1b678ac5cbb (Slot b, Patch 0017) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig`
+Stand: 20.10.2026 · Kernel 7.1.0-rc1-g99c0890089ba #78 (Slot b) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig`
 
 ## Regeln
 
@@ -15,6 +15,30 @@ Stand: 08.10.2026 · Kernel 7.1.0-rc1-ga1b678ac5cbb (Slot b, Patch 0017) · Konf
 **Prüfskript selbst:** Bisher 6 falsche OKs gefunden und behoben (Power-Domains, USB-Host 2×, ums9230-clk, DRM; dazu ein Zeitfehler: vor ~15 s Laufzeit fehlen die -110-Fehler noch). Auch das Prüfskript wird geprüft.
 
 Legende: ✅ belegt · 🟡 teilweise / eingeschränkt · ❌ fehlt oder kaputt · ❓ behauptet, aber nicht geprüft
+
+## Durchbruch vom 19./20.10.: WCN-Firmware spricht mit Mainline (AT und erster WLAN-Befehl)
+
+**Befund vorher (19.10.):** Kanal 4 (AT) wurde aufgebaut, der AT-Befehl lag nachweislich im Ring, die Mailbox hat ihn zugestellt (jede gesendete Nachricht = eine Inbox-„Deliver“-Unterbrechung, IRQ 25) – aber `txbuf_rdptr` blieb 0, danach `cp2_sleep = DSLP`.
+**Ursache (belegt):** Die Firmware öffnet nach dem Start der Reihe nach die Kanäle **4, 5, 7, 11, 12** und wartet auf unsere Antworten (OPEN, dann DONE SBUF_INIT bzw. SBLOCK_INIT). Erst wenn **4, 5, 11 und 12** fertig sind, bearbeitet sie AT-Befehle. Kanal 7 ist dafür nicht nötig.
+**Korrektur einer falschen Spur:** `marlin_set_wakeup()` (Realme) ist nur ein Platzhalter (`return 0;`), Android weckt den WCN-Kern vor dem Senden **nicht** extra. Das „DSLP“ war Folge der fehlenden Kanäle.
+
+| Kanal | Zweck | Art (Realme `wcn_sipc.c`) | Puffer (WCN-Sicht) | Stand |
+|---|---|---|---|---|
+| 4 | AT/BT/FM | sbuf, 16 Ringe 0x2400/0x2400 (Ring 5 = AT) | 0x280000 | ✅ AT läuft |
+| 5 | Firmware-Log | sbuf, 1 Ring 0x8000/0x30000 | 0x240000 | ✅ Klartext im dmesg |
+| 7 | WLAN-Befehle | sblock, tx 4×2048, rx 8×2048 | 0x2e0000 | ✅ senden und empfangen |
+| 11 | Lebenszeichen | sbuf, 1 Ring 0x400/0x400 | 0x2d0000 | ✅ |
+| 12 | Absturzmeldungen | sbuf, 1 Ring 0x400/0x400 | 0x2d1000 | ✅ |
+
+Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, WCN, Größe).
+
+**Belege:**
+- 19.10.: `at+spatgetcp2info` → `Platform Version:WCN_TRUNK_22A_W25.03.4 Project Version:uww2631_qogirL6 … 01-16-2025 19:10:48` ✅
+- 19.10.: Firmware-Log bestätigt `sbuf_create: channel b, sbuf_res->smem_addr is 2d0000`
+- 20.10.: Firmware-Log bestätigt den sblock von Kanal 7 bis aufs Byte (`raddr:2e0060, rcount:4, rsize:800, rblks:2e6060 …`, Pool `rwrptr:4` / `twrptr:8`)
+- 20.10.: **erster WLAN-Befehl** `WIFI_CMD_SYNC_VERSION` (Nr. 9, wie beim Start des Realme-Treibers `marlin3_sipc`) → Firmware: `[RECV_CMD][0][id = 9][WIFI_CMD_SYNC_CMD_VERSION]`, Antwort auf Kanal 7: Befehl 9, unser Zeitstempel, **Status 0**, dazu ihre API-Tabelle ✅. Einzige Warnung: Befehl 36 (`WIFI_CMD_FLUSH_SDIO`) kennt die Firmware nicht – betrifft nur SDIO, harmlos.
+
+Testmodul: `kernel/wcn-test/wcn_lauscher.c`, Parameter `kanal=8 antworten=1 at=1 alle_oeffnen=1 kanal11=1 kanal12=1 kanal7=1` (alle neuen Funktionen Standard aus), Ablauf in `kernel/wcn-test/README.md`.
 
 ## Durchbruch vom 08.10.: Netzwerk über USB-LAN-Adapter am Hub
 
@@ -167,7 +191,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 | Bereich | Status | Notiz |
 |---|---|---|
-| WLAN / Bluetooth / FM / GPS (Marlin3) | 🟡 | **09.10. abends: WCN-Kern läuft** ✅ – Testtreiber `kernel/wcn-test` (Stufe 3): Firmware `wcnmodem.bin` (aus `odm_a/firmware`, **nicht signiert**, läuft ohne trusty und ohne Speichersperre) nach `0x87000000`, Einschaltfolge nach Realme `wcn_poweron_device()` → Kern meldet `0xF0F0F0FF` nach **~540 ms**, schickt 3 Mailbox-Nachrichten auf **Kanal 8** (BT-sipc), geht danach in den Tiefschlaf (`DSLP`). Beleg `wcntest_2026-10-09_2146_stufe3.log`. **sipc auf Kanal 5 (Firmware-Log) läuft in beide Richtungen** ✅ (22:27/22:31: OPEN, SBUF_INIT/DONE, Log-Rahmen gelesen; sipc-Speicher `0x87240000` = Xiaomi-dtbo). **Sauber abschalten und ohne Neustart wieder starten** ✅ (22:54). Verbrauch mit schlafendem WCN-Kern nicht messbar höher (< ~2 mA, 23:00). Offen: Kanal 4 (AT/BT), Kanal 7 (WLAN), eFuse-Werte. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
+| WLAN / Bluetooth / FM / GPS (Marlin3) | 🟡 | **20.10.: Firmware beantwortet den ersten WLAN-Befehl** ✅ (`WIFI_CMD_SYNC_VERSION`, Status 0), siehe Abschnitt oben. 19.10.: alle fünf sipc-Kanäle (4, 5, 7, 11, 12) bedient, erste AT-Antwort ✅. 09.10.: WCN-Kern startet ✅ – Testtreiber `kernel/wcn-test` (Stufe 3): Firmware `wcnmodem.bin` (aus `odm_a/firmware`, **nicht signiert**, läuft ohne trusty und ohne Speichersperre) nach `0x87000000`, Einschaltfolge nach Realme `wcn_poweron_device()` → `0xF0F0F0FF` nach ~520–540 ms. Sauber abschalten und ohne Neustart wieder starten ✅ (09.10.). Verbrauch mit schlafendem WCN-Kern nicht messbar höher (< ~2 mA). Offen: `GET_INFO`, INI-Download (Kalibrierdatei des Geräts, nicht veröffentlichen), WLAN-Treiber `marlin3_sipc` portieren → `wlan0`; Bluetooth (Kanal 4, Ringe 11/10), FM (Ringe 14/13). Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
 | FM-Senden | ❓ | Behauptung aus altem Chat, **nicht belegt** |
 | Mobilfunk | ❌ 🟡 | Ziel: Ersatz-Internet. 10.10.: Modem-Firmware (`l_modem` MECP-Container, `l_ldsp`, `l_gdsp`) **ohne `DHTB`-Signatur** ✅, Ladeplan aus dem Container gelesen, Modem-Speicher im Mainline-DT schon reserviert. Siehe [MODEM.md](MODEM.md) |
 | GPU (Mali-G57) | ❌ | braucht Power-Domains; vorher Temperaturgrenze für `gpu-thermal` |
@@ -182,9 +206,15 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 4. Akku: Ausschalten mit Kabel bei gekapptem Strom prüfen; später eigener Ladechip-Treiber statt i2cset
 5. Display: Abschalten/Wiedereinschalten im DRM-Treiber reparieren (Diagnose: DCS 0x0A muss 0x9C liefern), dann Schlaf über den Treiber (DPU/DSI aus) und Touch als Panel-Follower; Strom neu messen
 6. Touch: Feinschliff (Wächter-Erkennung im Treiber, Ausrichtung/Mehrfinger prüfen), Treiber-Korrekturen an George Chan melden
-7. **sipc weiter ausbauen:** Kanal 5 (Log) und Abschalten laufen; als Nächstes Kanal 4 (AT-Befehle, dann Bluetooth); danach prüfen, ob auch der Audio-Kern antwortet
-8. Danach WLAN (wcn_bsp + sc2355-sipc) oder Ton (VBC/Codec; Verstärker FS1588 offen)
+7. **WLAN:** `GET_INFO` (liest nur: Chip, Fähigkeiten, MAC), dann INI-Download, dann den Realme-Treiber `marlin3_sipc` portieren → `wlan0` → Scan. Den sipc-Teil aus `wcn_lauscher.c` später in einen richtigen sipc-Kern überführen (Plan in `kernel/modem-sipc/`)
+8. Danach Bluetooth (Kanal 4, Ringe 11/10) oder Ton (VBC/Codec; Verstärker FS1588 offen); prüfen, ob auch der Audio-Kern über sipc antwortet
 9. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
+
+## Aufräumen später
+
+- Root-Dateisystem `/dev/mmcblk0p81`: „clean with errors“, betroffen ist **nur** Inode 8101 = `/var/log/wtmp` (Fehler seit dem frühen Aufsetzen, harmlos). Später umbenennen und `e2fsck` offline; `Maximum mount count -1` → es wird nie automatisch geprüft
+- Auf dem Handy fehlt `strings` (binutils)
+- `wcn_lauscher.c` ist längst mehr als ein Lauscher – später in einen richtigen sipc-Kern überführen
 
 ## Ideen für später (niedrige Priorität)
 
