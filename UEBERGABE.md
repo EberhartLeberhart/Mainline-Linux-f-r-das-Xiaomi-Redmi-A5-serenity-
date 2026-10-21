@@ -92,7 +92,12 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    Firmware stellt auf Station und öffnet die **Datenkanäle 8 und 9** (Lauscher `datenkanaele=1`, nur Empfang).
    `close` → Status 0, Firmware fährt sauber herunter. Ganze Kette mit Übersicht: `werkzeuge/redmi-wlantest.sh`
    (Handy vorher neu starten; Log in `~/redmi-logs/`, MAC halb ausgeblendet).
-4. Als Nächstes `WIFI_CMD_SCAN` (Nr. 11) im Lauscher: Ergebnisse kommen als Ereignis auf Kanal 7 ❓.
+4. ✅ **Erster Scan** (21.10., PR #5): `scan` (2,4 GHz 1–13) / `scan5` (+ 5 GHz 36–48). Ergebnisse als Ereignis
+   `MGMT_FRAME` 0x83 (Typ 4) auf Kanal 7, Ende `SCAN_DONE` 0x82. 7 Netze auf 2,4 GHz, Sicherheit richtig erkannt.
+   Offen ❓: **5 GHz** – Firmware fragt 36–48 aktiv ab (`scan_channel [36]`…), empfängt aber nichts, obwohl es in der
+   Umgebung 5-GHz-Netze gibt. Ideen: `WIFI_CMD_SET_REGDOM` (Nr. 2) vor dem Scan, 5-GHz-Teil der INI/`rf_config`
+   prüfen, DFS-Kanäle passiv. Außerdem einmal `report event fail` (Kanal-7-Empfangsblöcke voll ❓).
+   Netznamen/BSSIDs der Nachbarn nie ins Repo.
 5. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
