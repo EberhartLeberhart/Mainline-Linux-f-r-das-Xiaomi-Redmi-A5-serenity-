@@ -106,10 +106,21 @@ Zu jeder Antwort schreibt der Lauscher eine Klartextzeile, z. B. `WLAN-Antwort: 
 (Fehlercodes als Text). Die ganze Kette mit Übersicht macht das PC-Skript `werkzeuge/redmi-wlantest.sh`
 (Handy vorher neu starten):
 ```
-./werkzeuge/redmi-wlantest.sh                       # sync_version download_ini get_info open close
+./werkzeuge/redmi-wlantest.sh                       # sync_version download_ini get_info open scan close
 ./werkzeuge/redmi-wlantest.sh sync_version get_info # nur diese
 ```
 Belegt 21.10.: Kanäle 4, 5, 7, 8, 9, 11, 12 bereit, alle acht Antworten „ok“.
+
+`scan` schickt `WIFI_CMD_SCAN` (Nr. 11) ohne SSID über 2,4 GHz Kanal 1–13, `scan5` zusätzlich über
+5 GHz Kanal 36–48 (ohne DFS). Vorher muss `open` gelaufen sein. Jedes Netz erscheint als eine Zeile
+`SCAN: Kanal 6, -42 dBm, WPA2/WPA3 BSSID aa:bb:cc:xx:xx:xx, "Name"`, am Ende
+`WLAN-Ereignis: SCAN_DONE -> fertig, N Netze`. Beacons werden nicht roh ausgegeben (volle BSSIDs).
+Belegt 21.10.: 7 Netze auf 2,4 GHz; 5 GHz wird abgefragt, liefert aber noch nichts ❓.
+**Logs mit Scan-Ergebnissen enthalten die Netznamen der Nachbarn – nicht ins Repo.**
+```
+./werkzeuge/redmi-wlantest.sh                                                   # ... open scan close
+./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info open scan5 close
+```
 
 Hinweis: Im Firmware-Log blendet der Lauscher MAC-Adressen zur Hälfte aus (`d0:c1:bf:xx:xx:xx`).
 Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem

@@ -254,6 +254,12 @@ MODULE_PARM_DESC(alle_oeffnen, "jedes OPEN des WCN-Kerns (auch Kanal 7, 11, 12 .
 #define WIFI_CMD_DOWNLOAD_INI	76
 #define WIFI_CMD_OPEN		3	/* struct sprdwl_cmd_open { u8 mode; u8 reserved; u8 mac[6]; } __packed */
 #define WIFI_CMD_CLOSE		4	/* struct sprdwl_cmd_close { u8 mode; } __packed */
+#define WIFI_CMD_SCAN		11	/* struct sprdwl_cmd_scan { le32 channels; le32 reserved; le16 ssid_len; ssid[] }
+					 * danach le16 Anzahl 5-GHz-Kanaele + le16 Kanalnummern (Realme sprdwl_scan) */
+#define WIFI_EVENT_SCAN_DONE	0x82	/* u8 type: 1 fertig, 2 sched, 3 Fehler, 4 gscan, 5 abgebrochen */
+#define WIFI_EVENT_MGMT_FRAME	0x83	/* u8 type (4 = Scan), u8 channel, s8 signal, u8 res, bssid[6], le16 len, Rahmen */
+#define WL_FRAME_SCAN		4
+#define WL_SCAN_MAX		64
 #define WL_MODE_STATION		1	/* enum sprdwl_mode: NONE 0, STATION 1, AP 2, ... */
 #define WL_MAC_DATEI		"wifimac.txt"	/* aus prodnv:/wifimac.txt, auf dem Handy in /lib/firmware */
 #define WL_INI_DATEI		"wifi_board_config.ini"	/* aus odm:/firmware, auf dem Handy in /lib/firmware */
@@ -808,18 +814,182 @@ static const char *wl_status_text(u8 id, s8 st)
 	return st > 0 ? "unbekannter Hinweis" : "unbekannter Fehler";
 }
 
+static const char *wl_ereignis_name(u8 id)
+{
+	switch (id) {
+	case 0x80: return "CONNECT";
+	case 0x81: return "DISCONNECT";
+	case 0x82: return "SCAN_DONE";
+	case 0x83: return "MGMT_FRAME";
+	case 0x84: return "MGMT_TX_STATUS";
+	case 0x89: return "RSSI_MONITOR";
+	case 0x90: return "COEX_BT_ON_OFF";
+	case 0xb0: return "CQM";
+	case 0xf6: return "HANG_RECOVERY";
+	case 0xf7: return "THERMAL_WARN";
+	case 0xfa: return "FW_PWR_DOWN";
+	default: return "?";
+	}
+}
+
+/* ---- Scan-Ergebnisse (WIFI_EVENT_MGMT_FRAME Typ 4 = Beacon/Probe-Response) ---- */
+static u8 scan_bssid[WL_SCAN_MAX][ETH_ALEN];
+static unsigned int scan_anzahl, scan_rahmen;
+
+/* Sicherheit grob aus Capability (Privacy-Bit) und RSN-Element (AKM 8 = SAE) */
+static const char *scan_sicherheit(u16 capab, const u8 *rsn, u8 rsn_len)
+{
+	unsigned int i, n, akm_pos;
+	bool psk = false, sae = false;
+
+	if (!(capab & 0x10))
+		return "offen";
+	if (!rsn)
+		return "WEP/WPA1";
+	/* RSN: ver 2, Gruppe 4, Anzahl paarweise 2 + 4*n, Anzahl AKM 2 + 4*m */
+	if (rsn_len < 8)
+		return "WPA2?";
+	n = get_unaligned_le16(rsn + 6);
+	akm_pos = 8 + 4 * n;
+	if (akm_pos + 2 > rsn_len)
+		return "WPA2?";
+	n = get_unaligned_le16(rsn + akm_pos);
+	for (i = 0; i < n && akm_pos + 2 + 4 * i + 4 <= rsn_len; i++) {
+		const u8 *a = rsn + akm_pos + 2 + 4 * i;
+
+		if (a[0] == 0x00 && a[1] == 0x0f && a[2] == 0xac) {
+			if (a[3] == 2 || a[3] == 6)
+				psk = true;
+			if (a[3] == 8 || a[3] == 24)
+				sae = true;
+		}
+	}
+	if (sae && psk)
+		return "WPA2/WPA3";
+	if (sae)
+		return "WPA3";
+	return psk ? "WPA2" : "WPA2-Enterprise?";
+}
+
+static void scan_rahmen_zeigen(const u8 *d, u32 n)
+{
+	const u8 *f, *ie, *ssid = NULL, *rsn = NULL;
+	u8 kanal, ssid_len = 0, rsn_len = 0, ds_kanal = 0;
+	s8 signal;
+	u16 flen, capab;
+	u32 pos, i;
+	bool versteckt = true;
+
+	if (n < 12 || d[0] != WL_FRAME_SCAN)
+		return;
+	kanal = d[1];
+	signal = (s8)d[2];
+	flen = get_unaligned_le16(d + 10);
+	f = d + 12;
+	if (flen > n - 12 || flen < 36)	/* 24 Kopf + 8 Zeitstempel + 2 Intervall + 2 Capability */
+		return;
+	scan_rahmen++;
+	/* BSSID = addr3 im 802.11-Kopf; doppelte (2,4 und mehrfach empfangen) nur einmal zeigen */
+	for (i = 0; i < scan_anzahl; i++)
+		if (ether_addr_equal(scan_bssid[i], f + 16))
+			return;
+	if (scan_anzahl < WL_SCAN_MAX)
+		ether_addr_copy(scan_bssid[scan_anzahl], f + 16);
+	scan_anzahl++;
+	capab = get_unaligned_le16(f + 34);
+	for (pos = 36; pos + 2 <= flen; pos += 2 + ie[1]) {
+		ie = f + pos;
+		if (pos + 2 + ie[1] > flen)
+			break;
+		if (ie[0] == 0 && !ssid) {
+			ssid = ie + 2;
+			ssid_len = min_t(u8, ie[1], 32);
+		} else if (ie[0] == 3 && ie[1] >= 1) {
+			ds_kanal = ie[2];
+		} else if (ie[0] == 48 && !rsn) {
+			rsn = ie + 2;
+			rsn_len = ie[1];
+		}
+	}
+	for (i = 0; i < ssid_len; i++)
+		if (ssid[i])
+			versteckt = false;
+	if (versteckt)
+		pr_info(TAG "SCAN: Kanal %3u, %4d dBm, %-16s BSSID %02x:%02x:%02x:xx:xx:xx, (versteckt)\n",
+			ds_kanal ? ds_kanal : kanal, signal, scan_sicherheit(capab, rsn, rsn_len),
+			f[16], f[17], f[18]);
+	else
+		pr_info(TAG "SCAN: Kanal %3u, %4d dBm, %-16s BSSID %02x:%02x:%02x:xx:xx:xx, \"%*pE\"\n",
+			ds_kanal ? ds_kanal : kanal, signal, scan_sicherheit(capab, rsn, rsn_len),
+			f[16], f[17], f[18], ssid_len, ssid);
+}
+
 /* eine Zeile pro Antwort bzw. Ereignis der Firmware */
-static void wl_ergebnis(const u8 *h)
+static void wl_ergebnis(const u8 *h, u32 len)
 {
 	u8 typ = h[0] & 7, id = h[1];
 	s8 st = (s8)h[8];
+	u16 plen = get_unaligned_le16(h + 2);
+	u32 n = min_t(u32, plen, len);
 
-	if (typ == 0)
+	if (typ == 0) {
 		pr_info(TAG "WLAN-Antwort: %s -> %s\n", wl_befehl_name(id), wl_status_text(id, st));
-	else if (typ == 1)
-		pr_info(TAG "WLAN-Ereignis: Nr %u (0x%02x), %u Bytes\n", id, id, get_unaligned_le16(h + 2));
-	else
+	} else if (typ == 1 && id == WIFI_EVENT_MGMT_FRAME) {
+		if (n > WL_HDR)
+			scan_rahmen_zeigen(h + WL_HDR, n - WL_HDR);
+	} else if (typ == 1 && id == WIFI_EVENT_SCAN_DONE) {
+		u8 t = n > WL_HDR ? h[WL_HDR] : 0;
+
+		pr_info(TAG "WLAN-Ereignis: SCAN_DONE -> %s, %u Netze (%u Rahmen)\n",
+			t == 1 ? "fertig" : t == 3 ? "FEHLER" : t == 5 ? "abgebrochen" : "?",
+			scan_anzahl, scan_rahmen);
+	} else if (typ == 1) {
+		pr_info(TAG "WLAN-Ereignis: %s (0x%02x), %u Bytes\n", wl_ereignis_name(id), id, plen);
+	} else {
 		pr_info(TAG "WLAN: Nachricht Typ %u, Nr %u\n", typ, id);
+	}
+}
+
+/* einen empfangenen Block von Kanal 7 auswerten (Aufruf unter sb7_lock) */
+static void sb7_block_zeigen(u32 off, u32 len)
+{
+	const u8 *h = smem + off;
+	char kopf[48];
+
+	if (len >= WL_HDR && (h[0] & 7) == 1 && h[1] == WIFI_EVENT_MGMT_FRAME) {
+		/* Scan-Rahmen: nur die Auswertung, der Rohinhalt enthaelt volle BSSIDs */
+		wl_ergebnis(h, len);
+		return;
+	}
+	snprintf(kopf, sizeof(kopf), "wcnlausch: K7 #%u ", sb7_bloecke);
+	pr_info(TAG "Kanal 7: Block %u empfangen, %u Bytes (WCN 0x%x)\n",
+		sb7_bloecke, len, SMEM_CP + off);
+	if (len >= WL_HDR) {
+		pr_info(TAG "Kanal 7: Kopf: Typ %u, rsp %u, ctx %u, Befehl %u, plen %u, Zeit %u, Status %d, rsp_cnt %u\n",
+			h[0] & 7, (h[0] >> 4) & 1, h[0] >> 5, h[1],
+			get_unaligned_le16(h + 2), get_unaligned_le32(h + 4),
+			(s8)h[8], h[9]);
+		wl_ergebnis(h, len);
+	}
+	if (len >= WL_HDR && h[1] == WIFI_CMD_OPEN) {
+		u16 plen = get_unaligned_le16(h + 2);
+
+		/*
+		 * Realme sprdwl_open_fw(): ctx_id = erstes Nutzdatenbyte, falls vorhanden,
+		 * sonst bleibt der Vorgabewert 0. Beleg 21.10.: plen 12 (nur Kopf), Firmware-Log
+		 * "ctxt_id:0" - das Byte hinter dem Kopf ist dann nur ein Speicherrest.
+		 */
+		wl_ctx = (plen > WL_HDR && len > WL_HDR) ? h[WL_HDR] : h[0] >> 5;
+		pr_info(TAG "OPEN: ctx_id %d (%s)\n", wl_ctx,
+			plen > WL_HDR ? "aus den Nutzdaten" : "keine Nutzdaten, Kopf");
+	}
+	if (len >= WL_HDR && h[1] == WIFI_CMD_GET_INFO) {
+		/* kein Roh-Dump: enthaelt die volle MAC-Adresse */
+		wl_info_zeigen(smem + off, len);
+	} else {
+		print_hex_dump(KERN_INFO, kopf, DUMP_PREFIX_OFFSET, 16, 1,
+			       smem + off, min(len, 320u), true);
+	}
 }
 
 /* sblock_receive() + sblock_release() fuer alle angekommenen Bloecke, Inhalt ins dmesg */
@@ -828,7 +998,6 @@ static void sb7_empfangen(void)
 	u32 r = SB7_OFF + SH_RING, p = SB7_OFF + SH_POOL;
 	u32 rd, wr, pos, addr, len, off, pwr;
 	bool melden = false;
-	char kopf[48];
 
 	if (!sb7_bereit)
 		return;
@@ -853,38 +1022,7 @@ static void sb7_empfangen(void)
 			pr_warn(TAG "Kanal 7: Block %u unplausibel (Adresse 0x%x, Laenge %u)\n",
 				sb7_bloecke, addr, len);
 		} else {
-			pr_info(TAG "Kanal 7: Block %u empfangen, %u Bytes (WCN 0x%x)\n",
-				sb7_bloecke, len, addr);
-			snprintf(kopf, sizeof(kopf), "wcnlausch: K7 #%u ", sb7_bloecke);
-			if (len >= WL_HDR) {
-				const u8 *h = smem + off;
-
-				pr_info(TAG "Kanal 7: Kopf: Typ %u, rsp %u, ctx %u, Befehl %u, plen %u, Zeit %u, Status %d, rsp_cnt %u\n",
-					h[0] & 7, (h[0] >> 4) & 1, h[0] >> 5, h[1],
-					get_unaligned_le16(h + 2), get_unaligned_le32(h + 4),
-					(s8)h[8], h[9]);
-				wl_ergebnis(h);
-			}
-			if (len >= WL_HDR && ((const u8 *)smem + off)[1] == WIFI_CMD_OPEN) {
-				const u8 *h = smem + off;
-				u16 plen = get_unaligned_le16(h + 2);
-
-				/*
-				 * Realme sprdwl_open_fw(): ctx_id = erstes Nutzdatenbyte, falls vorhanden,
-				 * sonst bleibt der Vorgabewert 0. Beleg 21.10.: plen 12 (nur Kopf), Firmware-Log
-				 * "ctxt_id:0" - das Byte hinter dem Kopf ist dann nur ein Speicherrest.
-				 */
-				wl_ctx = (plen > WL_HDR && len > WL_HDR) ? h[WL_HDR] : h[0] >> 5;
-				pr_info(TAG "OPEN: ctx_id %d (%s)\n", wl_ctx,
-					plen > WL_HDR ? "aus den Nutzdaten" : "keine Nutzdaten, Kopf");
-			}
-			if (len >= WL_HDR && ((const u8 *)smem + off)[1] == WIFI_CMD_GET_INFO) {
-				/* kein Roh-Dump: enthaelt die volle MAC-Adresse */
-				wl_info_zeigen(smem + off, len);
-			} else {
-				print_hex_dump(KERN_INFO, kopf, DUMP_PREFIX_OFFSET, 16, 1,
-					       smem + off, min(len, 320u), true);
-			}
+			sb7_block_zeigen(off, len);
 		}
 		sm_wr(r + SH_RX_RD, rd + 1);
 		/* Block zurueck in den Pool (sblock_release) */
@@ -1126,6 +1264,39 @@ static int wl_close(void)
 	buf[WL_HDR] = WL_MODE_STATION;
 	pr_info(TAG "WLAN: sende WIFI_CMD_CLOSE (ctx %d)\n", wl_ctx);
 	return sb7_senden(buf, sizeof(buf));
+}
+
+/*
+ * sprdwl_scan(): Suchlauf ohne SSID (wie cfg80211 mit Platzhalter-SSID). 2,4 GHz Kanaele 1-13 als Bitmaske;
+ * mit fuenf=true zusaetzlich nur die 5-GHz-Kanaele 36-48 (in Deutschland ohne DFS/Radarpruefung erlaubt).
+ */
+static int wl_scan(bool fuenf)
+{
+	static const u16 k5[] = { 36, 40, 44, 48 };
+	u8 buf[WL_HDR + 10 + 2 + sizeof(k5)];
+	u32 ms = (u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+	u32 plen = WL_HDR + 10 + 2 + (fuenf ? sizeof(k5) : 0), i;
+
+	if (wl_ctx < 0) {
+		pr_warn(TAG "WLAN: SCAN ohne vorheriges OPEN\n");
+		return -EINVAL;
+	}
+	memset(buf, 0, sizeof(buf));
+	buf[0] = 0x10 | ((wl_ctx & 7) << 5);
+	buf[1] = WIFI_CMD_SCAN;
+	put_unaligned_le16(plen, buf + 2);
+	put_unaligned_le32(ms, buf + 4);
+	put_unaligned_le32(0x1fff, buf + WL_HDR);	/* Kanaele 1-13 */
+	/* reserved 0 (ABORT_SCAN_MODE waere 1), ssid_len 0 */
+	if (fuenf) {
+		put_unaligned_le16(ARRAY_SIZE(k5), buf + WL_HDR + 10);
+		for (i = 0; i < ARRAY_SIZE(k5); i++)
+			put_unaligned_le16(k5[i], buf + WL_HDR + 12 + 2 * i);
+	}
+	scan_anzahl = 0;
+	scan_rahmen = 0;
+	pr_info(TAG "WLAN: sende WIFI_CMD_SCAN (2,4 GHz Kanal 1-13%s)\n", fuenf ? ", 5 GHz 36-48" : "");
+	return sb7_senden(buf, plen);
 }
 
 /* Antwort auf GET_INFO lesbar ausgeben (MAC nur halb, damit Logs teilbar bleiben) */
@@ -1761,7 +1932,7 @@ static ssize_t at_antworten_show(struct device *dev, struct device_attribute *at
 }
 static DEVICE_ATTR_RO(at_antworten);
 
-/* Testbefehle fuer Kanal 7: "sync_version", "get_info", "download_ini", "open", "close" */
+/* Testbefehle fuer Kanal 7: "sync_version", "get_info", "download_ini", "open", "scan", "scan5", "close" */
 static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *attr,
 				 const char *buf, size_t count)
 {
@@ -1777,6 +1948,10 @@ static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *at
 		ret = wl_open();
 	else if (sysfs_streq(buf, "close"))
 		ret = wl_close();
+	else if (sysfs_streq(buf, "scan"))
+		ret = wl_scan(false);
+	else if (sysfs_streq(buf, "scan5"))
+		ret = wl_scan(true);
 	else
 		ret = -EINVAL;
 	return ret ? ret : count;
