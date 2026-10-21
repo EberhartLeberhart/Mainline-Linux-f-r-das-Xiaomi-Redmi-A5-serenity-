@@ -88,7 +88,12 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    `mmcblk0p1`); Bluetooth-MAC in `btmac.txt`. Nicht über INI/Firmware – der Treiber setzt sie für `wlan0`
    (Realme `sprdwl_set_mac_addr`, `default_mac`) und schickt sie mit `WIFI_CMD_OPEN`. `prodnv` nur lesend einhängen,
    volle MAC nie veröffentlichen.
-3. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
+3. ✅ **WLAN ein/aus** (21.10., PR #4): `open` → Status 0, ctx_id 0 (Antwort ohne Nutzdaten, ctx steht im Kopf),
+   Firmware stellt auf Station und öffnet die **Datenkanäle 8 und 9** (Lauscher `datenkanaele=1`, nur Empfang).
+   `close` → Status 0, Firmware fährt sauber herunter. Ganze Kette mit Übersicht: `werkzeuge/redmi-wlantest.sh`
+   (Handy vorher neu starten; Log in `~/redmi-logs/`, MAC halb ausgeblendet).
+4. Als Nächstes `WIFI_CMD_SCAN` (Nr. 11) im Lauscher: Ergebnisse kommen als Ereignis auf Kanal 7 ❓.
+5. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
 ## Nebenbefunde
@@ -114,6 +119,15 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   gibt es für arm64, die Mint-eigenen Pakete selbst bauen, PC-spezifische Werkzeuge weglassen). Auf dem Handy eine
   Touch-Oberfläche (z. B. Phosh), am großen Bildschirm Cinnamon – vermutlich über das USB-Netz (VNC/RDP) oder einen
   DisplayLink-Adapter, weil die USB-Buchse wohl kein Bild ausgeben kann ❓.
+
+## Entscheidungen (21.10.)
+- **Funk-Firmware (WCN, Modem) und Sendeleistung werden nicht verändert.** Wer mehr Leistung will, kauft ein Gerät,
+  das das kann und darf.
+- **LTE** wartet auf die Antwort von Bundesnetzagentur/Hersteller (Anfrage noch zu stellen).
+- **Übertakten** (CPU/RAM über SPL/SML; Secure-Boot-eFuses nicht gebrannt, BROM-Rettung möglich) ist eine Idee für
+  **nach** WLAN – mit dem zweiten Redmi als Testgerät und besserer Kühlung.
+- **Sicherung** aller Partitionen außer `userdata` auf den PC: Skript `redmi-sicherung.sh` (nur lesend, SHA256 auf
+  beiden Seiten). Gerätedaten, **nie ins Repo**.
 
 ## Andere Stände (aus dem Repo)
 - Modem: Firmware nicht signiert, trusty antwortet; **trusty-Teil bewusst zurückgestellt** bis zur rechtlichen
