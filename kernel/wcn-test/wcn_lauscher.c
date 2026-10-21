@@ -70,6 +70,13 @@
  * echo download_ini > .../wlan_befehl liest /lib/firmware/wifi_board_config.ini (Geraetedatei aus
  *   odm:/firmware, NICHT veroeffentlichen), wandelt sie wie Realme rf_marlin3.c (wcn_ini.h) und
  *   schickt WIFI_CMD_DOWNLOAD_INI in 3-4 Abschnitten mit CRC16.
+ *   Beleg 20.10.: Abschnitte 1, 2, 4 Status 0; 3 (rf_config, TLV) Status 1 mit result 0 (angewendet).
+ * echo open > .../wlan_befehl schickt WIFI_CMD_OPEN (Modus Station) mit der MAC aus
+ *   /lib/firmware/wifimac.txt (Kopie von prodnv:/wifimac.txt, NICHT veroeffentlichen), sonst einer
+ *   zufaelligen lokal verwalteten MAC; die Antwort enthaelt die ctx_id. "close" schaltet wieder ab.
+ *   Beleg 21.10.: Firmware faehrt den WLAN-Teil hoch (PLL an, eFuse-Kalibrierung, "create sta ctxt"),
+ *   oeffnet dann Kanal 8 und wartet - deshalb datenkanaele=1 (Kanal 8/9).
+ * Das Firmware-Log enthaelt die volle MAC; im gesammelten Log (wcn_log, dmesg) wird sie halb ausgeblendet.
  *
  * AT-Kanal (Parameter at=1, setzt antworten=1 voraus), Stand 19.10.:
  * Kanal 4 ist bei Realme (sprdwcn/sipc/wcn_sipc.c) ein sbuf mit 16 Ringen, je tx 0x2400 /
@@ -100,6 +107,9 @@
 #include <linux/unaligned.h>
 #include <linux/firmware.h>
 #include <linux/delay.h>
+#include <linux/etherdevice.h>
+#include <linux/hex.h>
+#include <linux/ctype.h>
 
 #include "wcn_ini.h"
 
@@ -128,6 +138,10 @@ MODULE_PARM_DESC(kanal12, "Kanal 12 (Absturzmeldungen) als sbuf bereitstellen (1
 static bool kanal7;
 module_param(kanal7, bool, 0444);
 MODULE_PARM_DESC(kanal7, "Kanal 7 (WLAN-Befehle) als sblock bereitstellen und nur empfangen (tx 4x2048, rx 8x2048); braucht antworten=1");
+
+static bool datenkanaele;
+module_param(datenkanaele, bool, 0444);
+MODULE_PARM_DESC(datenkanaele, "Kanal 8 und 9 (WLAN-Daten) als sblock bereitstellen, nur Empfang; braucht antworten=1");
 
 static bool alle_oeffnen;
 module_param(alle_oeffnen, bool, 0444);
@@ -238,6 +252,10 @@ MODULE_PARM_DESC(alle_oeffnen, "jedes OPEN des WCN-Kerns (auch Kanal 7, 11, 12 .
  *   76 mac_addr[6], 82 credit_capa, 84 extend_feature (Bit 0 SAE, 1 OWE, 2 DPP, ...)
  */
 #define WIFI_CMD_DOWNLOAD_INI	76
+#define WIFI_CMD_OPEN		3	/* struct sprdwl_cmd_open { u8 mode; u8 reserved; u8 mac[6]; } __packed */
+#define WIFI_CMD_CLOSE		4	/* struct sprdwl_cmd_close { u8 mode; } __packed */
+#define WL_MODE_STATION		1	/* enum sprdwl_mode: NONE 0, STATION 1, AP 2, ... */
+#define WL_MAC_DATEI		"wifimac.txt"	/* aus prodnv:/wifimac.txt, auf dem Handy in /lib/firmware */
 #define WL_INI_DATEI		"wifi_board_config.ini"	/* aus odm:/firmware, auf dem Handy in /lib/firmware */
 #define FWI_MAC		76
 #define FWI_CREDIT	82
@@ -700,6 +718,7 @@ static void klein_bearbeiten(struct klein *k, u8 typ, u16 flag)
 
 /* ---- Kanal 7 (WLAN-Befehle, sblock) ---- */
 static bool sb7_bereit;
+static int wl_ctx = -1;		/* ctx_id aus der OPEN-Antwort */
 static unsigned int sb7_bloecke;
 static DEFINE_MUTEX(sb7_lock);
 
@@ -750,6 +769,59 @@ static void sb7_vorbereiten(void)
 
 static void wl_info_zeigen(const u8 *h, u32 len);
 
+/* Namen der Befehle (Realme cmdevt.h) und Fehlercodes (msg.h), fuer eine lesbare Ergebniszeile */
+static const char *wl_befehl_name(u8 id)
+{
+	switch (id) {
+	case 0: return "ERR";
+	case 1: return "GET_INFO";
+	case 2: return "SET_REGDOM";
+	case 3: return "OPEN";
+	case 4: return "CLOSE";
+	case 5: return "POWER_SAVE";
+	case 6: return "SET_PARAM";
+	case 9: return "SYNC_VERSION";
+	case 10: return "CONNECT";
+	case 11: return "SCAN";
+	case 76: return "DOWNLOAD_INI";
+	default: return "?";
+	}
+}
+
+static const char *wl_status_text(u8 id, s8 st)
+{
+	switch (st) {
+	case 0: return "ok";
+	case -1: return "FEHLER: Argument";
+	case -2: return "FEHLER: Ergebnis";
+	case -3: return "FEHLER: Ausfuehrung";
+	case -4: return "FEHLER: kein Speicher";
+	case -5: return "FEHLER: falscher WLAN-Modus";
+	case -6: return "FEHLER";
+	case -7: return "FEHLER: nicht ausfuehrbar";
+	case -8: return "FEHLER: nicht unterstuetzt";
+	case -9: return "FEHLER: Pruefsumme";
+	case -10: return "FEHLER: INI-Abschnitt";
+	}
+	if (id == 76 && st == 1)
+		return "ok (TLV-Abschnitt angewendet)";
+	return st > 0 ? "unbekannter Hinweis" : "unbekannter Fehler";
+}
+
+/* eine Zeile pro Antwort bzw. Ereignis der Firmware */
+static void wl_ergebnis(const u8 *h)
+{
+	u8 typ = h[0] & 7, id = h[1];
+	s8 st = (s8)h[8];
+
+	if (typ == 0)
+		pr_info(TAG "WLAN-Antwort: %s -> %s\n", wl_befehl_name(id), wl_status_text(id, st));
+	else if (typ == 1)
+		pr_info(TAG "WLAN-Ereignis: Nr %u (0x%02x), %u Bytes\n", id, id, get_unaligned_le16(h + 2));
+	else
+		pr_info(TAG "WLAN: Nachricht Typ %u, Nr %u\n", typ, id);
+}
+
 /* sblock_receive() + sblock_release() fuer alle angekommenen Bloecke, Inhalt ins dmesg */
 static void sb7_empfangen(void)
 {
@@ -791,6 +863,20 @@ static void sb7_empfangen(void)
 					h[0] & 7, (h[0] >> 4) & 1, h[0] >> 5, h[1],
 					get_unaligned_le16(h + 2), get_unaligned_le32(h + 4),
 					(s8)h[8], h[9]);
+				wl_ergebnis(h);
+			}
+			if (len >= WL_HDR && ((const u8 *)smem + off)[1] == WIFI_CMD_OPEN) {
+				const u8 *h = smem + off;
+				u16 plen = get_unaligned_le16(h + 2);
+
+				/*
+				 * Realme sprdwl_open_fw(): ctx_id = erstes Nutzdatenbyte, falls vorhanden,
+				 * sonst bleibt der Vorgabewert 0. Beleg 21.10.: plen 12 (nur Kopf), Firmware-Log
+				 * "ctxt_id:0" - das Byte hinter dem Kopf ist dann nur ein Speicherrest.
+				 */
+				wl_ctx = (plen > WL_HDR && len > WL_HDR) ? h[WL_HDR] : h[0] >> 5;
+				pr_info(TAG "OPEN: ctx_id %d (%s)\n", wl_ctx,
+					plen > WL_HDR ? "aus den Nutzdaten" : "keine Nutzdaten, Kopf");
 			}
 			if (len >= WL_HDR && ((const u8 *)smem + off)[1] == WIFI_CMD_GET_INFO) {
 				/* kein Roh-Dump: enthaelt die volle MAC-Adresse */
@@ -979,6 +1065,69 @@ static int wl_download_ini(void)
 	return ret;
 }
 
+/* MAC wie Android aus wifimac.txt ("aa:bb:cc:dd:ee:ff"), sonst zufaellige lokal verwaltete MAC */
+static void wl_mac_holen(u8 *mac)
+{
+	const struct firmware *fw;
+	char text[32];
+	size_t n;
+
+	if (!request_firmware(&fw, WL_MAC_DATEI, &pdev->dev)) {
+		n = min_t(size_t, fw->size, sizeof(text) - 1);
+		memcpy(text, fw->data, n);
+		text[n] = 0;
+		release_firmware(fw);
+		if (mac_pton(strim(text), mac) && is_valid_ether_addr(mac)) {
+			pr_info(TAG "WLAN: MAC aus %s: %02x:%02x:%02x:xx:xx:xx\n", WL_MAC_DATEI,
+				mac[0], mac[1], mac[2]);
+			return;
+		}
+		pr_warn(TAG "WLAN: %s unlesbar - nehme zufaellige MAC\n", WL_MAC_DATEI);
+	} else {
+		pr_warn(TAG "WLAN: %s nicht in /lib/firmware - nehme zufaellige MAC\n", WL_MAC_DATEI);
+	}
+	eth_random_addr(mac);	/* lokal verwaltet (Bit 1 gesetzt), kollidiert mit keiner Hersteller-MAC */
+	pr_info(TAG "WLAN: zufaellige MAC %02x:%02x:%02x:xx:xx:xx\n", mac[0], mac[1], mac[2]);
+}
+
+/* sprdwl_open_fw(): WLAN-Teil im Client-Modus einschalten */
+static int wl_open(void)
+{
+	u8 buf[WL_HDR + 8];
+	u32 ms = (u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+
+	memset(buf, 0, sizeof(buf));
+	buf[0] = 0x10;			/* Typ CMD, Antwort erwuenscht, ctx 0 */
+	buf[1] = WIFI_CMD_OPEN;
+	put_unaligned_le16(sizeof(buf), buf + 2);
+	put_unaligned_le32(ms, buf + 4);
+	buf[WL_HDR] = WL_MODE_STATION;
+	buf[WL_HDR + 1] = 0;
+	wl_mac_holen(buf + WL_HDR + 2);
+	pr_info(TAG "WLAN: sende WIFI_CMD_OPEN (Modus Station)\n");
+	return sb7_senden(buf, sizeof(buf));
+}
+
+/* sprdwl_close_fw(): wieder ausschalten (ctx_id aus der OPEN-Antwort im Kopf) */
+static int wl_close(void)
+{
+	u8 buf[WL_HDR + 1];
+	u32 ms = (u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+
+	if (wl_ctx < 0) {
+		pr_warn(TAG "WLAN: CLOSE ohne vorheriges OPEN\n");
+		return -EINVAL;
+	}
+	memset(buf, 0, sizeof(buf));
+	buf[0] = 0x10 | ((wl_ctx & 7) << 5);
+	buf[1] = WIFI_CMD_CLOSE;
+	put_unaligned_le16(sizeof(buf), buf + 2);
+	put_unaligned_le32(ms, buf + 4);
+	buf[WL_HDR] = WL_MODE_STATION;
+	pr_info(TAG "WLAN: sende WIFI_CMD_CLOSE (ctx %d)\n", wl_ctx);
+	return sb7_senden(buf, sizeof(buf));
+}
+
 /* Antwort auf GET_INFO lesbar ausgeben (MAC nur halb, damit Logs teilbar bleiben) */
 static void wl_info_zeigen(const u8 *h, u32 len)
 {
@@ -1044,6 +1193,179 @@ static void sb7_bearbeiten(u8 typ, u16 flag, u32 wert)
 			pr_info(TAG "Kanal 7: EVENT RELEASE (WCN gibt Sendeblock zurueck), Wert 0x%x\n", wert);
 		break;
 	}
+}
+
+/*
+ * ---- Kanal 8 und 9 (WLAN-Daten, sblock) ----
+ * Realme wcn_sipc.c: SIPC_WIFI_DATA0 tx 64 x 1664, rx 192 x 1664; SIPC_WIFI_DATA1 tx 64 x 1664, rx 8 x 1664.
+ * Aufbau wie Kanal 7 (sblock_host_init), Lage im gemeinsamen Speicher:
+ *   Kanal 8 bei SMEM + 0xb0000 (bis 0x119060), Kanal 9 bei SMEM + 0x120000 (bis 0x13d460), Ende 0x140000.
+ * Beleg 21.10.: nach WIFI_CMD_OPEN meldet die Firmware "sipc devices open : 8" und wartet (sbuf_wait).
+ * Vorerst nur Empfang: Bloecke gekuerzt ins dmesg, dann zurueck in den Pool.
+ */
+struct sbd {
+	u8 kanal;
+	u32 off, txn, rxn, blk;
+	bool bereit;
+	unsigned int bloecke;
+	struct mutex lock;
+};
+
+static struct sbd sbds[] = {
+	{ .kanal = 8, .off = 0xb0000, .txn = 64, .rxn = 192, .blk = 1664 },
+	{ .kanal = 9, .off = 0x120000, .txn = 64, .rxn = 8, .blk = 1664 },
+};
+
+static u32 sbd_txblk(const struct sbd *d) { return d->off + 96; }
+static u32 sbd_rxblk(const struct sbd *d) { return sbd_txblk(d) + d->txn * d->blk; }
+static u32 sbd_r_txl(const struct sbd *d) { return sbd_rxblk(d) + d->rxn * d->blk; }
+static u32 sbd_r_rxl(const struct sbd *d) { return sbd_r_txl(d) + d->txn * 8; }
+static u32 sbd_p_txl(const struct sbd *d) { return sbd_r_rxl(d) + d->rxn * 8; }
+static u32 sbd_p_rxl(const struct sbd *d) { return sbd_p_txl(d) + d->txn * 8; }
+static u32 sbd_ende(const struct sbd *d) { return sbd_p_rxl(d) + d->rxn * 8; }
+
+static struct sbd *sbd_fuer(u8 ch)
+{
+	unsigned int i;
+
+	if (!datenkanaele)
+		return NULL;
+	for (i = 0; i < ARRAY_SIZE(sbds); i++)
+		if (sbds[i].kanal == ch)
+			return &sbds[i];
+	return NULL;
+}
+
+static void sbd_vorbereiten(struct sbd *d)
+{
+	u32 r = d->off + SH_RING, p = d->off + SH_POOL, i;
+
+	memset(smem + d->off, 0, sbd_ende(d) - d->off);
+	sm_wr(r + SH_TX_ADDR, SMEM_CP + sbd_txblk(d));
+	sm_wr(r + SH_TX_CNT, d->txn);
+	sm_wr(r + SH_TX_SIZE, d->blk);
+	sm_wr(r + SH_TX_BLKS, SMEM_CP + sbd_r_txl(d));
+	sm_wr(r + SH_RX_ADDR, SMEM_CP + sbd_rxblk(d));
+	sm_wr(r + SH_RX_CNT, d->rxn);
+	sm_wr(r + SH_RX_SIZE, d->blk);
+	sm_wr(r + SH_RX_BLKS, SMEM_CP + sbd_r_rxl(d));
+	sm_wr(p + SH_TX_ADDR, SMEM_CP + sbd_txblk(d));
+	sm_wr(p + SH_TX_CNT, d->txn);
+	sm_wr(p + SH_TX_SIZE, d->blk);
+	sm_wr(p + SH_TX_BLKS, SMEM_CP + sbd_p_txl(d));
+	sm_wr(p + SH_RX_ADDR, SMEM_CP + sbd_rxblk(d));
+	sm_wr(p + SH_RX_CNT, d->rxn);
+	sm_wr(p + SH_RX_SIZE, d->blk);
+	sm_wr(p + SH_RX_BLKS, SMEM_CP + sbd_p_rxl(d));
+	for (i = 0; i < d->txn; i++) {
+		sm_wr(sbd_p_txl(d) + i * 8, SMEM_CP + sbd_txblk(d) + i * d->blk);
+		sm_wr(sbd_p_txl(d) + i * 8 + 4, d->blk);
+	}
+	sm_wr(p + SH_TX_WR, d->txn);
+	for (i = 0; i < d->rxn; i++) {
+		sm_wr(sbd_p_rxl(d) + i * 8, SMEM_CP + sbd_rxblk(d) + i * d->blk);
+		sm_wr(sbd_p_rxl(d) + i * 8 + 4, d->blk);
+	}
+	sm_wr(p + SH_RX_WR, d->rxn);
+	wmb();
+	pr_info(TAG "sblock fuer Kanal %u bei 0x%x (WCN-Sicht 0x%x): tx %ux%u @0x%x, rx %ux%u @0x%x, Ende 0x%x\n",
+		d->kanal, SMEM_AP + d->off, SMEM_CP + d->off, d->txn, d->blk, SMEM_CP + sbd_txblk(d),
+		d->rxn, d->blk, SMEM_CP + sbd_rxblk(d), SMEM_CP + sbd_ende(d));
+}
+
+/* sblock_receive() + sblock_release(): Bloecke gekuerzt anzeigen und zurueckgeben */
+static void sbd_empfangen(struct sbd *d)
+{
+	u32 r = d->off + SH_RING, p = d->off + SH_POOL;
+	u32 rd, wr, addr, len, off, pwr;
+	bool melden = false;
+	char kopf[40];
+
+	if (!d->bereit)
+		return;
+	mutex_lock(&d->lock);
+	for (;;) {
+		rmb();
+		rd = sm_rd(r + SH_RX_RD);
+		wr = sm_rd(r + SH_RX_WR);
+		if (rd == wr)
+			break;
+		if (wr - rd > d->rxn) {
+			pr_warn(TAG "Kanal %u: Ring-Zeiger unplausibel (rd %u, wr %u)\n", d->kanal, rd, wr);
+			break;
+		}
+		addr = sm_rd(sbd_r_rxl(d) + (rd % d->rxn) * 8);
+		len = sm_rd(sbd_r_rxl(d) + (rd % d->rxn) * 8 + 4);
+		off = addr - SMEM_CP;
+		d->bloecke++;
+		if (off < sbd_rxblk(d) || off + d->blk > sbd_r_txl(d) || (off - sbd_rxblk(d)) % d->blk ||
+		    len > d->blk) {
+			pr_warn(TAG "Kanal %u: Block %u unplausibel (0x%x, %u Bytes)\n", d->kanal, d->bloecke, addr, len);
+		} else if (d->bloecke <= 20) {
+			pr_info(TAG "Kanal %u: Block %u, %u Bytes\n", d->kanal, d->bloecke, len);
+			snprintf(kopf, sizeof(kopf), "wcnlausch: K%u #%u ", d->kanal, d->bloecke);
+			print_hex_dump(KERN_INFO, kopf, DUMP_PREFIX_OFFSET, 16, 1, smem + off,
+				       min(len, 48u), false);
+		}
+		sm_wr(r + SH_RX_RD, rd + 1);
+		pwr = sm_rd(p + SH_RX_WR);
+		sm_wr(sbd_p_rxl(d) + (pwr % d->rxn) * 8, addr);
+		sm_wr(sbd_p_rxl(d) + (pwr % d->rxn) * 8 + 4, d->blk);
+		wmb();
+		sm_wr(p + SH_RX_WR, pwr + 1);
+		wmb();
+		if (pwr + 1 - sm_rd(p + SH_RX_RD) == 1)
+			melden = true;
+	}
+	mutex_unlock(&d->lock);
+	if (melden)
+		senden(d->kanal, T_EVENT, EV_SBLOCK_RELEASE, 0, "EVENT RELEASE (Datenblock zurueck)");
+}
+
+static void sbd_bearbeiten(struct sbd *d, u8 typ, u16 flag)
+{
+	char was[48];
+
+	switch (typ) {
+	case T_OPEN:	/* auch mit alle_oeffnen=1: Datenkanaele werden hier quittiert */
+		if (flag == SMSG_OPEN_MAGIC) {
+			d->bereit = false;
+			snprintf(was, sizeof(was), "OPEN Kanal %u", d->kanal);
+			senden(d->kanal, T_OPEN, SMSG_OPEN_MAGIC, 0, was);
+		}
+		break;
+	case T_CLOSE:
+		d->bereit = false;
+		snprintf(was, sizeof(was), "CLOSE-Antwort Kanal %u", d->kanal);
+		senden(d->kanal, T_CLOSE, SMSG_CLOSE_MAGIC, 0, was);
+		break;
+	case T_CMD:
+		if (flag == CMD_SBUF_INIT && !d->bereit) {	/* SMSG_CMD_SBLOCK_INIT = 1 */
+			mutex_lock(&d->lock);
+			sbd_vorbereiten(d);
+			mutex_unlock(&d->lock);
+			d->bereit = true;
+			snprintf(was, sizeof(was), "DONE SBLOCK_INIT Kanal %u (WCN 0x%x)", d->kanal,
+				 SMEM_CP + d->off);
+			senden(d->kanal, T_DONE, DONE_SBUF_INIT, SMEM_CP + d->off, was);
+			sbd_empfangen(d);
+		}
+		break;
+	case T_EVENT:
+		if (flag == EV_SBLOCK_SEND)
+			sbd_empfangen(d);
+		break;
+	}
+}
+
+static void sbd_alle_empfangen(void)
+{
+	unsigned int i;
+
+	if (!datenkanaele)
+		return;
+	for (i = 0; i < ARRAY_SIZE(sbds); i++)
+		sbd_empfangen(&sbds[i]);
 }
 
 static size_t rahmen_pos;	/* bis hier sind die Rahmen in wlog ausgewertet */
@@ -1141,6 +1463,25 @@ static void rahmen_auswerten(void)
 	}
 }
 
+/*
+ * Die Firmware schreibt die volle Geraete-MAC in ihr Log ("mac addr AA:BB:CC:DD:EE:FF").
+ * Damit Logs teilbar bleiben, wird jede MAC im gesammelten Log zur Haelfte ausgeblendet.
+ */
+static void mac_ausblenden(char *t, size_t n)
+{
+	size_t i, k;
+
+	for (i = 0; i + 17 <= n; i++) {
+		for (k = 0; k < 17; k++)
+			if ((k % 3 == 2) ? t[i + k] != ':' : !isxdigit(t[i + k]))
+				break;
+		if (k == 17) {
+			memcpy(t + i + 9, "xx:xx:xx", 8);
+			i += 16;
+		}
+	}
+}
+
 static DEFINE_MUTEX(lese_lock);	/* Ereignis-Arbeit und Nachsehen koennen gleichzeitig laufen */
 
 /* sbuf_read() fuer den Empfangsring */
@@ -1184,6 +1525,11 @@ static void log_lesen_ungeschuetzt(void)
 	}
 	sm_wr(H_RX_RD, rd);
 	wmb();
+	if (wlog) {	/* auch ueber die Grenze zum vorigen Stueck hinweg */
+		size_t ab = (wlog_len > (rd - alt) + 16) ? wlog_len - (rd - alt) - 16 : 0;
+
+		mac_ausblenden(wlog + ab, wlog_len - ab);
+	}
 	pr_info(TAG "Log: %u Bytes gelesen (gesamt %zu)\n", rd - alt, wlog_len);
 	rahmen_auswerten();
 	if (war_voll)
@@ -1203,6 +1549,7 @@ static void nachsehen_fn(struct work_struct *w)
 	klein_alle_lesen();
 	if (kanal7)
 		sb7_empfangen();
+	sbd_alle_empfangen();
 	schedule_delayed_work(&nachsehen, msecs_to_jiffies(500));
 }
 
@@ -1219,7 +1566,7 @@ static void bearbeiten(u32 lo, u32 hi)
 	 */
 	if (alle_oeffnen && typ == T_OPEN && flag == SMSG_OPEN_MAGIC &&
 	    ch != LOG_KANAL && !(ch == AT_KANAL && at) && !klein_fuer(ch) &&
-	    !(ch == SB7_KANAL && kanal7)) {
+	    !(ch == SB7_KANAL && kanal7) && !sbd_fuer(ch)) {
 		char was[32];
 
 		snprintf(was, sizeof(was), "OPEN Kanal %u (nur Quittung)", ch);
@@ -1229,6 +1576,11 @@ static void bearbeiten(u32 lo, u32 hi)
 
 	if (ch == SB7_KANAL && kanal7) {
 		sb7_bearbeiten(typ, flag, hi);
+		return;
+	}
+
+	if (sbd_fuer(ch)) {
+		sbd_bearbeiten(sbd_fuer(ch), typ, flag);
 		return;
 	}
 
@@ -1409,7 +1761,7 @@ static ssize_t at_antworten_show(struct device *dev, struct device_attribute *at
 }
 static DEVICE_ATTR_RO(at_antworten);
 
-/* Testbefehle fuer Kanal 7: "sync_version", "get_info", "download_ini" */
+/* Testbefehle fuer Kanal 7: "sync_version", "get_info", "download_ini", "open", "close" */
 static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *attr,
 				 const char *buf, size_t count)
 {
@@ -1421,6 +1773,10 @@ static ssize_t wlan_befehl_store(struct device *dev, struct device_attribute *at
 		ret = wl_get_info();
 	else if (sysfs_streq(buf, "download_ini"))
 		ret = wl_download_ini();
+	else if (sysfs_streq(buf, "open"))
+		ret = wl_open();
+	else if (sysfs_streq(buf, "close"))
+		ret = wl_close();
 	else
 		ret = -EINVAL;
 	return ret ? ret : count;
@@ -1530,6 +1886,8 @@ static void aufraeumen(void)
 	for (i = 0; i < ARRAY_SIZE(kleine); i++)
 		kleine[i].bereit = false;
 	sb7_bereit = false;
+	for (i = 0; i < ARRAY_SIZE(sbds); i++)
+		sbds[i].bereit = false;
 	kfree(at_antw);
 	at_antw = NULL;
 	if (pdev) {
@@ -1560,6 +1918,8 @@ static int __init lauscher_init(void)
 	INIT_DELAYED_WORK(&nachsehen, nachsehen_fn);
 	for (i = 0; i < ARRAY_SIZE(kleine); i++)
 		mutex_init(&kleine[i].lock);
+	for (i = 0; i < ARRAY_SIZE(sbds); i++)
+		mutex_init(&sbds[i].lock);
 	if (kanal < 0 || kanal > 15) {
 		pr_err(TAG "kanal muss 0..15 sein\n");
 		return -EINVAL;
@@ -1568,8 +1928,8 @@ static int __init lauscher_init(void)
 		pr_err(TAG "at=1 braucht antworten=1\n");
 		return -EINVAL;
 	}
-	if ((kanal7 || kanal11 || kanal12) && !antworten) {
-		pr_err(TAG "kanal7=1 / kanal11=1 / kanal12=1 brauchen antworten=1\n");
+	if ((kanal7 || kanal11 || kanal12 || datenkanaele) && !antworten) {
+		pr_err(TAG "kanal7/kanal11/kanal12/datenkanaele brauchen antworten=1\n");
 		return -EINVAL;
 	}
 	if (alle_oeffnen && !antworten) {
@@ -1670,7 +2030,9 @@ static int __init lauscher_init(void)
 			pr_info(TAG "Kanal %u (%s) wird als sbuf bereitgestellt\n",
 				kleine[i].kanal, kleine[i].name);
 	if (kanal7)
-		pr_info(TAG "Kanal 7 (WLAN-Befehle) wird als sblock bereitgestellt (nur Empfang)\n");
+		pr_info(TAG "Kanal 7 (WLAN-Befehle) wird als sblock bereitgestellt\n");
+	if (datenkanaele)
+		pr_info(TAG "Kanal 8 und 9 (WLAN-Daten) werden als sblock bereitgestellt (nur Empfang)\n");
 	return 0;
 
 fehler:

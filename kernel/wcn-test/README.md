@@ -46,9 +46,11 @@ unverändert wiederholbar bleibt.
 | `kanal11=1` | Kanal 11 (Lebenszeichen) als sbuf, 1 Ring 0x400/0x400 | 19.10. |
 | `kanal12=1` | Kanal 12 (Absturzmeldungen) als sbuf, 1 Ring 0x400/0x400 | 19.10. |
 | `kanal7=1` | Kanal 7 (WLAN-Befehle) als sblock, tx 4×2048, rx 8×2048; Datei `wlan_befehl` | 20.10. |
+| `datenkanaele=1` | Kanäle 8 und 9 (WLAN-Daten) als sblock bereitstellen, wenn die Firmware sie nach `open` öffnet; nur Empfang | 21.10. |
 
 Puffer im gemeinsamen Speicher (`0x87240000`, WCN-Sicht `0x240000`):
-Kanal 5 `0x240000`, Kanal 4 `0x280000`, Kanal 11 `0x2d0000`, Kanal 12 `0x2d1000`, Kanal 7 `0x2e0000`.
+Kanal 5 `0x240000`, Kanal 4 `0x280000`, Kanal 11 `0x2d0000`, Kanal 12 `0x2d1000`, Kanal 7 `0x2e0000`,
+Kanal 8 `0x2f0000` (tx 64×1664, rx 192×1664), Kanal 9 `0x360000` (tx 64×1664, rx 8×1664).
 
 ## AT-Kanal (Kanal 4) – erstes Gespräch mit dem WCN-Kern ✅ (19.10.)
 
@@ -95,5 +97,20 @@ Reihenfolge wie Realme: `sync_version`, `download_ini`, `get_info`.
 Belegt 20.10.: Abschnitte 1, 2, 4 Status 0, Abschnitt 3 (`rf_config`, TLV) Status 1 mit `result:0x0` –
 die Firmware liest und wendet ihn an (Pfadverlust 2,4/5 GHz), die 1 ist kein Fehler.
 
-Hinweis: Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem
+`open` schickt `WIFI_CMD_OPEN` (Nr. 3, Modus Station) mit der Geräte-MAC aus `/lib/firmware/wifimac.txt`
+(von `prodnv`, **nicht ins Repo**; fehlt sie, nimmt der Lauscher eine Zufalls-MAC). `close` schickt
+`WIFI_CMD_CLOSE` (Nr. 4) mit der ctx_id aus der OPEN-Antwort.
+Belegt 21.10.: beide Status 0; nach `open` öffnet die Firmware die Kanäle 8 und 9, nach `close` schaltet sie ab.
+
+Zu jeder Antwort schreibt der Lauscher eine Klartextzeile, z. B. `WLAN-Antwort: OPEN -> ok`
+(Fehlercodes als Text). Die ganze Kette mit Übersicht macht das PC-Skript `werkzeuge/redmi-wlantest.sh`
+(Handy vorher neu starten):
+```
+./werkzeuge/redmi-wlantest.sh                       # sync_version download_ini get_info open close
+./werkzeuge/redmi-wlantest.sh sync_version get_info # nur diese
+```
+Belegt 21.10.: Kanäle 4, 5, 7, 8, 9, 11, 12 bereit, alle acht Antworten „ok“.
+
+Hinweis: Im Firmware-Log blendet der Lauscher MAC-Adressen zur Hälfte aus (`d0:c1:bf:xx:xx:xx`).
+Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem
 Veröffentlichen ansehen.
