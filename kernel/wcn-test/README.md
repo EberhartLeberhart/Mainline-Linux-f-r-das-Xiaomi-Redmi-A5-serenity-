@@ -122,6 +122,21 @@ Belegt 21.10.: 7 Netze auf 2,4 GHz; 5 GHz wird abgefragt, liefert aber noch nich
 ./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info open scan5 close
 ```
 
+`regdom` schickt `WIFI_CMD_SET_REGDOM` (Nr. 2) mit den DE-Regeln aus der wireless-regdb (gesetzliche Grenzen,
+nichts erhöht). Ohne diesen Befehl findet der Scan auf 5 GHz nichts (21.10.), mit ihm Kanal 36 (22.10.).
+Reihenfolge wie Android: vor `open`.
+
+Anmelden ohne Passwort (nur Test der Anmeldung und des Empfangswegs):
+```
+echo -n MeinNetz > /sys/devices/platform/wcn-lauscher/wlan_ziel   # SSID; wird beim nächsten Scan gesucht
+echo scan > /sys/devices/platform/wcn-lauscher/wlan_befehl       # findet Kanal, BSSID, Verschlüsselung
+echo connect > /sys/devices/platform/wcn-lauscher/wlan_befehl    # SET_IE (RSN) + CONNECT
+echo disconnect > /sys/devices/platform/wcn-lauscher/wlan_befehl
+```
+Nur WPA2-PSK mit CCMP. Belegt 22.10.: `CONNECT -> VERBUNDEN`, viermal `Kanal 9: EAPOL-Key … Nachricht 1
+vom Router`, dann `DISCONNECT -> Grund 15`. Mit dem Skript:
+`ZIEL=MeinNetz ./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close`
+
 Hinweis: Im Firmware-Log blendet der Lauscher MAC-Adressen zur Hälfte aus (`d0:c1:bf:xx:xx:xx`).
 Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem
 Veröffentlichen ansehen.

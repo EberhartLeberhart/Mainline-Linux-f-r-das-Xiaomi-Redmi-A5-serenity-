@@ -98,11 +98,23 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    Umgebung 5-GHz-Netze gibt. Ideen: `WIFI_CMD_SET_REGDOM` (Nr. 2) vor dem Scan, 5-GHz-Teil der INI/`rf_config`
    prüfen, DFS-Kanäle passiv. Außerdem einmal `report event fail` (Kanal-7-Empfangsblöcke voll ❓).
    Netznamen/BSSIDs der Nachbarn nie ins Repo.
-5. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
+5. ✅ **5 GHz** (22.10., PR #6): Ursache war die fehlende Ländereinstellung. Befehl `regdom` (DE-Regeln aus der
+   wireless-regdb, gesetzliche Grenzen) vor `open` → `scan5` findet Kanal 36.
+6. ✅ **Erste Anmeldung beim Router** (22.10., PR #6): `echo -n MeinNetz > wlan_ziel` (SSID des eigenen Netzes), dann `scan`, `connect`.
+   `SET_IE` (RSN) + `CONNECT` → Ereignis CONNECT verbunden, **EAPOL Nachricht 1 auf Kanal 9** (Versatz 66 im Block),
+   nach ~5 s Abmeldung Grund 15 (kein Passwort – erwartet). Testaufruf:
+   `ZIEL=MeinNetz ./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close`
+   Rohzeilen von Kanal 8/9 (`K9 #…`) enthalten volle MACs → Log nur lokal.
+7. Als Nächstes: Deskriptor vor dem Rahmen auf Kanal 9 entschlüsseln (Realme `rx_msg_sc2355.c`/`sprdwl_rx_mh_*`),
+   Senden auf Kanal 8; Namen für Ereignisse 0xf5/0xf9/0xa2 nachtragen.
+8. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
 ## Nebenbefunde
-- `redmi-licht.service` hing am 18./19.10. ~24 h im Start und blockierte das Herunterfahren. Ursache unbekannt ❓.
+- `redmi-licht.service` hing am 18./19.10. ~24 h im Start und blockierte das Herunterfahren. **22.10. wieder:**
+  Herunterfahren hing ~13 min; Journal: `redmi-licht.sh` reagiert nicht auf SIGTERM, **bleibt sogar nach SIGKILL**
+  (also im Kernel festgehangen – vermutlich DSI/devmem- oder Touch-Treiber-Zugriff ❓). Nicht das WLAN.
+  Dienst am 22.10. **abgeschaltet** (`systemctl disable`); Ursache später klären.
   `/etc/redmi/licht.conf` steht auf `START=aus`.
 - Jede Minute `sc27xx-fgu sc2730-fgu.4.auto: get charger status error` ❓.
 - **Dateisystem:** `/dev/mmcblk0p81` (Root) „clean with errors", **nur Inode 8101 = `/var/log/wtmp`** betroffen,
