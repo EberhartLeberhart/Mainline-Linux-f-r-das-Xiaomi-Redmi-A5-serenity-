@@ -105,16 +105,26 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    nach ~5 s Abmeldung Grund 15 (kein Passwort – erwartet). Testaufruf:
    `ZIEL=MeinNetz ./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close`
    Rohzeilen von Kanal 8/9 (`K9 #…`) enthalten volle MACs → Log nur lokal.
-7. Als Nächstes: Deskriptor vor dem Rahmen auf Kanal 9 entschlüsseln (Realme `rx_msg_sc2355.c`/`sprdwl_rx_mh_*`),
-   Senden auf Kanal 8; Namen für Ereignisse 0xf5/0xf9/0xa2 nachtragen.
-8. Danach den Realme-WLAN-Treiber `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
+7. ✅ **`wlan0` über cfg80211** (22.10., PR #7): Lauscher `wlan0=1` (braucht `kanal7=1 datenkanaele=1`).
+   Vorher `insmod /root/rfkill.ko; insmod /root/cfg80211.ko` (aus `~/ums9230-linux/net/…`, gleicher Bau wie der
+   Kernel), `iw` per apt. Test:
+   `redmi 'insmod /root/rfkill.ko; insmod /root/cfg80211.ko; LAUSCHER_PARAM="kanal=8 antworten=1 at=1 alle_oeffnen=1 kanal11=1 kanal12=1 kanal7=1 datenkanaele=1 wlan0=1" redmi-wcntest.sh 3 > /dev/null'`
+   dann `ip link set wlan0 up` und `iw dev wlan0 scan` → 9 Netze inkl. 5 GHz.
+   Empfangsformat Kanal 9: Byte 1 = Versatz Ethernet-Kopf, Byte 2–3 = Länge (siehe STATUS).
+   **Achtung:** `ip link`/`iw`-Ausgaben enthalten volle MACs/BSSIDs → nur gefiltert teilen.
+8. Als Nächstes: Empfang auf Kanal 9 an `wlan0` weitergeben (netif_rx), Senden auf Kanal 8 (`tx_msdu_dscr`),
+   `connect`/`disconnect` als cfg80211-Ops, Schlüssel (`WIFI_CMD_KEY`), dann `wpa_supplicant` → DHCP → SSH über WLAN.
+   Namen für Ereignisse 0xf5/0xf9/0xa2 nachtragen.
+9. Danach den Lauscher in einen sauberen Treiber aufteilen (sipc-Kern + WLAN) `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
 ## Nebenbefunde
 - `redmi-licht.service` hing am 18./19.10. ~24 h im Start und blockierte das Herunterfahren. **22.10. wieder:**
   Herunterfahren hing ~13 min; Journal: `redmi-licht.sh` reagiert nicht auf SIGTERM, **bleibt sogar nach SIGKILL**
   (also im Kernel festgehangen – vermutlich DSI/devmem- oder Touch-Treiber-Zugriff ❓). Nicht das WLAN.
-  Dienst am 22.10. **abgeschaltet** (`systemctl disable`); Ursache später klären.
+  Dienst am 22.10. **abgeschaltet** (`systemctl disable`); Ursache später klären. Am selben Abend hing es noch einmal
+  über **`redmi-taste.service`** (ruft beim Tastendruck `redmi-licht.sh`; auch `systemd-logind` lief in den Zeitablauf,
+  Display blieb dunkel) → ebenfalls abgeschaltet. Bis zur Klärung: keine Licht-/Tastendienste.
   `/etc/redmi/licht.conf` steht auf `START=aus`.
 - Jede Minute `sc27xx-fgu sc2730-fgu.4.auto: get charger status error` ❓.
 - **Dateisystem:** `/dev/mmcblk0p81` (Root) „clean with errors", **nur Inode 8101 = `/var/log/wtmp`** betroffen,

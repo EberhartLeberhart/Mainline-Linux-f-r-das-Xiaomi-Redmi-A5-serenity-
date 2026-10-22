@@ -46,6 +46,7 @@ unverändert wiederholbar bleibt.
 | `kanal11=1` | Kanal 11 (Lebenszeichen) als sbuf, 1 Ring 0x400/0x400 | 19.10. |
 | `kanal12=1` | Kanal 12 (Absturzmeldungen) als sbuf, 1 Ring 0x400/0x400 | 19.10. |
 | `kanal7=1` | Kanal 7 (WLAN-Befehle) als sblock, tx 4×2048, rx 8×2048; Datei `wlan_befehl` | 20.10. |
+| `wlan0=1` | echtes WLAN-Gerät `wlan0` über cfg80211: `ip link set wlan0 up` (Firmware vorbereiten + OPEN), `iw dev wlan0 scan`; braucht `kanal7=1 datenkanaele=1` und geladenes `cfg80211.ko` | 22.10. |
 | `datenkanaele=1` | Kanäle 8 und 9 (WLAN-Daten) als sblock bereitstellen, wenn die Firmware sie nach `open` öffnet; nur Empfang | 21.10. |
 
 Puffer im gemeinsamen Speicher (`0x87240000`, WCN-Sicht `0x240000`):
