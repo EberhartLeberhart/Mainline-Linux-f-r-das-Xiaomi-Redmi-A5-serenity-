@@ -8,11 +8,15 @@
 #
 # Aufruf:  redmi-wlantest.sh                         -> sync_version download_ini get_info open scan close
 #          redmi-wlantest.sh sync_version get_info   -> nur diese Befehle
-#          scan = 2,4 GHz Kanal 1-13, scan5 = zusaetzlich 5 GHz Kanal 36-48
+#          scan = 2,4 GHz Kanal 1-13, scan5 = zusaetzlich 5 GHz Kanal 36-48, regdom = Laenderregeln DE (vor open)
+#          ZIEL=MeinNetz redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close
+#            -> sucht beim Scan das Netz "MeinNetz" und meldet sich dort an (ohne Passwort: nur Anmeldung + EAPOL 1)
 # Das Log enthaelt nach einem Scan die Netznamen (SSID) der Nachbarn: nicht ins Repo.
 
 set -u
 BEFEHLE=${*:-sync_version download_ini get_info open scan close}
+ZIEL=${ZIEL:-}
+case $ZIEL in *"'"*) echo "ZIEL darf kein ' enthalten"; exit 1 ;; esac
 PARAM="kanal=8 antworten=1 at=1 alle_oeffnen=1 kanal11=1 kanal12=1 kanal7=1 datenkanaele=1"
 ORDNER=$HOME/redmi-logs
 mkdir -p "$ORDNER"
@@ -39,11 +43,15 @@ else
 	exit 1
 fi
 
+if [ -n "$ZIEL" ]; then
+	handy "printf '%s' '$ZIEL' > /sys/devices/platform/wcn-lauscher/wlan_ziel" 2>&1 | sed "s/^/   ziel: /"
+fi
 for b in $BEFEHLE; do
 	case $b in
 	download_ini) warte=3 ;;
 	open) warte=5 ;;
 	scan | scan5) warte=12 ;;
+	connect) warte=15 ;;
 	*) warte=2 ;;
 	esac
 	handy "echo $b > /sys/devices/platform/wcn-lauscher/wlan_befehl" 2>&1 | sed "s/^/   $b: /"
@@ -69,6 +77,10 @@ if grep -q "SCAN: " "$LOG"; then
 	grep -oE "SCAN: .*" "$LOG" | sed 's/^SCAN: /   /'
 elif echo "$BEFEHLE" | grep -q scan; then
 	echo "-- Gefundene Netze: keine"
+fi
+if grep -qE "ZIEL: |EAPOL-Key|sende WIFI_CMD_CONNECT" "$LOG"; then
+	echo "-- Verbindungsversuch:"
+	grep -oE "(ZIEL: .*|Kanal [89]: EAPOL-Key.*)" "$LOG" | sed 's/^/   /'
 fi
 if grep -q "GET_INFO: Chip" "$LOG"; then
 	echo "-- Steckbrief:"
