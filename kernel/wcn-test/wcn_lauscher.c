@@ -110,6 +110,14 @@
 #include <linux/etherdevice.h>
 #include <linux/hex.h>
 #include <linux/ctype.h>
+#include <linux/completion.h>
+#include <linux/netdevice.h>
+#if IS_ENABLED(CONFIG_CFG80211)
+#include <net/cfg80211.h>
+#define WL_CFG80211 1
+#else
+#define WL_CFG80211 0
+#endif
 
 #include "wcn_ini.h"
 
@@ -134,6 +142,10 @@ MODULE_PARM_DESC(kanal11, "Kanal 11 (Lebenszeichen) als sbuf bereitstellen (1 Ri
 static bool kanal12;
 module_param(kanal12, bool, 0444);
 MODULE_PARM_DESC(kanal12, "Kanal 12 (Absturzmeldungen) als sbuf bereitstellen (1 Ring, 0x400/0x400); braucht antworten=1");
+
+static bool wlan0;
+module_param(wlan0, bool, 0444);
+MODULE_PARM_DESC(wlan0, "echtes WLAN-Geraet wlan0 ueber cfg80211 anmelden (ip link set wlan0 up = Firmware vorbereiten + OPEN, iw scan); braucht kanal7=1 und datenkanaele=1");
 
 static bool kanal7;
 module_param(kanal7, bool, 0444);
@@ -864,6 +876,11 @@ static const char *wl_ereignis_name(u8 id)
 	}
 }
 
+/* Haken fuer wlan0 (cfg80211), weiter unten */
+static void wl0_antwort(u8 id, s8 st);
+static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen);
+static void wl0_scan_ende(bool abgebrochen);
+
 /* ---- Scan-Ergebnisse (WIFI_EVENT_MGMT_FRAME Typ 4 = Beacon/Probe-Response) ---- */
 static u8 scan_bssid[WL_SCAN_MAX][ETH_ALEN];
 static unsigned int scan_anzahl, scan_rahmen;
@@ -950,6 +967,7 @@ static void scan_rahmen_zeigen(const u8 *d, u32 n)
 	if (flen > n - 12 || flen < 36)	/* 24 Kopf + 8 Zeitstempel + 2 Intervall + 2 Capability */
 		return;
 	scan_rahmen++;
+	wl0_bss(kanal, signal, f, flen);	/* jeder Rahmen an cfg80211 (aktualisiert Signal/IEs) */
 	/* BSSID = addr3 im 802.11-Kopf; doppelte (2,4 und mehrfach empfangen) nur einmal zeigen */
 	for (i = 0; i < scan_anzahl; i++)
 		if (ether_addr_equal(scan_bssid[i], f + 16))
@@ -1011,6 +1029,7 @@ static void wl_ergebnis(const u8 *h, u32 len)
 
 	if (typ == 0) {
 		pr_info(TAG "WLAN-Antwort: %s -> %s\n", wl_befehl_name(id), wl_status_text(id, st));
+		wl0_antwort(id, st);
 	} else if (typ == 1 && id == WIFI_EVENT_MGMT_FRAME) {
 		if (n > WL_HDR)
 			scan_rahmen_zeigen(h + WL_HDR, n - WL_HDR);
@@ -1039,6 +1058,7 @@ static void wl_ergebnis(const u8 *h, u32 len)
 		pr_info(TAG "WLAN-Ereignis: SCAN_DONE -> %s, %u Netze (%u Rahmen)\n",
 			t == 1 ? "fertig" : t == 3 ? "FEHLER" : t == 5 ? "abgebrochen" : "?",
 			scan_anzahl, scan_rahmen);
+		wl0_scan_ende(t != 1);
 	} else if (typ == 1) {
 		pr_info(TAG "WLAN-Ereignis: %s (0x%02x), %u Bytes\n", wl_ereignis_name(id), id, plen);
 	} else {
@@ -1432,12 +1452,15 @@ static int wl_regdom(void)
  * sprdwl_scan(): Suchlauf ohne SSID (wie cfg80211 mit Platzhalter-SSID). 2,4 GHz Kanaele 1-13 als Bitmaske;
  * mit fuenf=true zusaetzlich nur die 5-GHz-Kanaele 36-48 (in Deutschland ohne DFS/Radarpruefung erlaubt).
  */
-static int wl_scan(bool fuenf)
+static int wl_scan_kanaele(u32 maske24, const u16 *k5, u32 n5)
 {
-	static const u16 k5[] = { 36, 40, 44, 48 };
-	u8 buf[WL_HDR + 10 + 2 + sizeof(k5)];
+	u8 buf[WL_HDR + 10 + 2 + 2 * 32];
 	u32 ms = (u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC);
-	u32 plen = WL_HDR + 10 + 2 + (fuenf ? sizeof(k5) : 0), i;
+	u32 plen, i;
+
+	if (n5 > 32)
+		n5 = 32;
+	plen = WL_HDR + 10 + 2 + 2 * n5;
 
 	if (wl_ctx < 0) {
 		pr_warn(TAG "WLAN: SCAN ohne vorheriges OPEN\n");
@@ -1448,17 +1471,22 @@ static int wl_scan(bool fuenf)
 	buf[1] = WIFI_CMD_SCAN;
 	put_unaligned_le16(plen, buf + 2);
 	put_unaligned_le32(ms, buf + 4);
-	put_unaligned_le32(0x1fff, buf + WL_HDR);	/* Kanaele 1-13 */
+	put_unaligned_le32(maske24, buf + WL_HDR);	/* Bit n-1 = Kanal n */
 	/* reserved 0 (ABORT_SCAN_MODE waere 1), ssid_len 0 */
-	if (fuenf) {
-		put_unaligned_le16(ARRAY_SIZE(k5), buf + WL_HDR + 10);
-		for (i = 0; i < ARRAY_SIZE(k5); i++)
-			put_unaligned_le16(k5[i], buf + WL_HDR + 12 + 2 * i);
-	}
+	put_unaligned_le16(n5, buf + WL_HDR + 10);
+	for (i = 0; i < n5; i++)
+		put_unaligned_le16(k5[i], buf + WL_HDR + 12 + 2 * i);
 	scan_anzahl = 0;
 	scan_rahmen = 0;
-	pr_info(TAG "WLAN: sende WIFI_CMD_SCAN (2,4 GHz Kanal 1-13%s)\n", fuenf ? ", 5 GHz 36-48" : "");
+	pr_info(TAG "WLAN: sende WIFI_CMD_SCAN (2,4 GHz Maske 0x%04x, %u Kanaele 5 GHz)\n", maske24, n5);
 	return sb7_senden(buf, plen);
+}
+
+static int wl_scan(bool fuenf)
+{
+	static const u16 k5[] = { 36, 40, 44, 48 };
+
+	return wl_scan_kanaele(0x1fff, k5, fuenf ? ARRAY_SIZE(k5) : 0);
 }
 
 /*
@@ -1543,6 +1571,288 @@ static int wl_disconnect(void)
 	pr_info(TAG "WLAN: sende WIFI_CMD_DISCONNECT\n");
 	return sb7_senden(buf, sizeof(buf));
 }
+
+/*
+ * ---- wlan0: echtes WLAN-Geraet ueber cfg80211 (Aufbau nach Mainline virt_wifi.c) ----
+ * Stand 22.10.: Einschalten (ip link set wlan0 up -> SYNC_VERSION, INI, SET_REGDOM einmalig, dann OPEN),
+ * Ausschalten (CLOSE) und Scan (iw dev wlan0 scan). Senden verwirft noch alles, Verbinden fehlt noch.
+ */
+static DECLARE_COMPLETION(wl_antwort_da);
+static u8 wl_antwort_id;
+static s8 wl_antwort_st;
+static bool __maybe_unused wl0_vorbereitet;	/* SYNC_VERSION/INI/REGDOM nach dem Firmware-Start schon geschickt */
+
+#if WL_CFG80211
+static struct wiphy *wl0_wiphy;
+static struct net_device *wl0_ndev;
+static struct wireless_dev wl0_wdev;
+static struct cfg80211_scan_request *wl0_scan_anf;
+static DEFINE_MUTEX(wl0_scan_lock);
+static struct delayed_work wl0_scan_wache;
+
+#define WL0_K24(n) { .band = NL80211_BAND_2GHZ, .center_freq = 2407 + 5 * (n), .hw_value = (n), .max_power = 20 }
+#define WL0_K5(n)  { .band = NL80211_BAND_5GHZ, .center_freq = 5000 + 5 * (n), .hw_value = (n), .max_power = 20 }
+static struct ieee80211_channel wl0_kanaele24[] = {
+	WL0_K24(1), WL0_K24(2), WL0_K24(3), WL0_K24(4), WL0_K24(5), WL0_K24(6), WL0_K24(7),
+	WL0_K24(8), WL0_K24(9), WL0_K24(10), WL0_K24(11), WL0_K24(12), WL0_K24(13),
+};
+/* vorerst nur 36-48: ohne DFS/Radarpruefung erlaubt; mehr erst mit echter Regulierung im Treiber */
+static struct ieee80211_channel wl0_kanaele5[] = { WL0_K5(36), WL0_K5(40), WL0_K5(44), WL0_K5(48) };
+/* Raten in 100 kbit/s (nur fuer cfg80211; die Firmware waehlt selbst) */
+static struct ieee80211_rate wl0_raten24[] = {
+	{ .bitrate = 10 }, { .bitrate = 20 }, { .bitrate = 55 }, { .bitrate = 110 },
+	{ .bitrate = 60 }, { .bitrate = 90 }, { .bitrate = 120 }, { .bitrate = 180 },
+	{ .bitrate = 240 }, { .bitrate = 360 }, { .bitrate = 480 }, { .bitrate = 540 },
+};
+static struct ieee80211_supported_band wl0_band24 = {
+	.band = NL80211_BAND_2GHZ, .channels = wl0_kanaele24, .n_channels = ARRAY_SIZE(wl0_kanaele24),
+	.bitrates = wl0_raten24, .n_bitrates = ARRAY_SIZE(wl0_raten24),
+};
+static struct ieee80211_supported_band wl0_band5 = {
+	.band = NL80211_BAND_5GHZ, .channels = wl0_kanaele5, .n_channels = ARRAY_SIZE(wl0_kanaele5),
+	.bitrates = wl0_raten24 + 4, .n_bitrates = ARRAY_SIZE(wl0_raten24) - 4,
+};
+#endif
+
+static void wl0_antwort(u8 id, s8 st)
+{
+	wl_antwort_id = id;
+	wl_antwort_st = st;
+	complete(&wl_antwort_da);
+}
+
+/* Befehl schicken und auf seine Antwort warten (Realme sprdwl_cmd_send_recv, vereinfacht) */
+static int __maybe_unused wl_befehl_warten(int (*befehl)(void), u8 id, unsigned int ms)
+{
+	unsigned long ende = jiffies + msecs_to_jiffies(ms);
+	int ret;
+
+	reinit_completion(&wl_antwort_da);
+	ret = befehl();
+	if (ret)
+		return ret;
+	for (;;) {
+		long rest = (long)(ende - jiffies);
+
+		if (rest <= 0 || !wait_for_completion_timeout(&wl_antwort_da, rest)) {
+			pr_warn(TAG "wlan0: keine Antwort auf %s\n", wl_befehl_name(id));
+			return -ETIMEDOUT;
+		}
+		if (wl_antwort_id == id)
+			break;
+		reinit_completion(&wl_antwort_da);	/* Antwort auf etwas anderes - weiter warten */
+	}
+	if (wl_antwort_st < 0) {
+		pr_warn(TAG "wlan0: %s -> %s\n", wl_befehl_name(id), wl_status_text(id, wl_antwort_st));
+		return -EIO;
+	}
+	return 0;
+}
+
+#if WL_CFG80211
+static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen)
+{
+	struct ieee80211_channel *ch;
+	struct cfg80211_bss *bss;
+
+	if (!wl0_wiphy || !wl0_scan_anf)
+		return;
+	ch = ieee80211_get_channel(wl0_wiphy, ieee80211_channel_to_frequency(kanal,
+				   kanal <= 14 ? NL80211_BAND_2GHZ : NL80211_BAND_5GHZ));
+	if (!ch)
+		return;
+	bss = cfg80211_inform_bss_frame(wl0_wiphy, ch, (struct ieee80211_mgmt *)f, flen,
+					(s32)signal * 100, GFP_KERNEL);
+	cfg80211_put_bss(wl0_wiphy, bss);
+}
+
+static void wl0_scan_ende(bool abgebrochen)
+{
+	struct cfg80211_scan_info info = { .aborted = abgebrochen };
+
+	mutex_lock(&wl0_scan_lock);
+	if (wl0_scan_anf) {
+		cancel_delayed_work(&wl0_scan_wache);
+		cfg80211_scan_done(wl0_scan_anf, &info);
+		wl0_scan_anf = NULL;
+		pr_info(TAG "wlan0: Scan an cfg80211 gemeldet (%s)\n", abgebrochen ? "abgebrochen" : "fertig");
+	}
+	mutex_unlock(&wl0_scan_lock);
+}
+
+/* kommt kein SCAN_DONE (Realme: 10 s), Scan als abgebrochen melden, sonst bleibt cfg80211 "busy" */
+static void wl0_scan_wache_fn(struct work_struct *w)
+{
+	pr_warn(TAG "wlan0: kein SCAN_DONE nach 12 s\n");
+	wl0_scan_ende(true);
+}
+
+static int wl0_scan(struct wiphy *wiphy, struct cfg80211_scan_request *anf)
+{
+	u16 k5[32];
+	u32 maske = 0, n5 = 0, i;
+	int ret;
+
+	if (wl_ctx < 0)
+		return -ENETDOWN;
+	for (i = 0; i < anf->n_channels; i++) {
+		u16 k = anf->channels[i]->hw_value;
+
+		if (k >= 1 && k <= 14)
+			maske |= BIT(k - 1);
+		else if (n5 < ARRAY_SIZE(k5))
+			k5[n5++] = k;
+	}
+	mutex_lock(&wl0_scan_lock);
+	if (wl0_scan_anf) {
+		mutex_unlock(&wl0_scan_lock);
+		return -EBUSY;
+	}
+	wl0_scan_anf = anf;
+	mutex_unlock(&wl0_scan_lock);
+	ret = wl_scan_kanaele(maske, k5, n5);
+	if (ret) {
+		mutex_lock(&wl0_scan_lock);
+		wl0_scan_anf = NULL;
+		mutex_unlock(&wl0_scan_lock);
+		return ret;
+	}
+	schedule_delayed_work(&wl0_scan_wache, 12 * HZ);
+	return 0;
+}
+
+static const struct cfg80211_ops wl0_ops = {
+	.scan = wl0_scan,
+};
+
+static int wl0_ndo_open(struct net_device *nd)
+{
+	int ret;
+
+	if (!sb7_bereit) {
+		netdev_warn(nd, "WCN-Firmware laeuft noch nicht (erst redmi-wcntest.sh 3)\n");
+		return -EAGAIN;
+	}
+	if (!wl0_vorbereitet) {
+		ret = wl_befehl_warten(wl_sync_version, WIFI_CMD_SYNC_VERSION, 1000);
+		if (ret)
+			return ret;
+		ret = wl_download_ini();	/* 4 Abschnitte mit Pausen, Antworten laufen nebenher ein */
+		if (ret)
+			return ret;
+		msleep(500);
+		ret = wl_befehl_warten(wl_regdom, WIFI_CMD_SET_REGDOM, 1000);
+		if (ret)
+			return ret;
+		wl0_vorbereitet = true;
+	}
+	ret = wl_befehl_warten(wl_open, WIFI_CMD_OPEN, 2000);
+	if (ret)
+		return ret;
+	if (wl_ctx < 0)
+		return -EIO;
+	netif_carrier_off(nd);		/* noch nicht verbunden */
+	netif_start_queue(nd);
+	netdev_info(nd, "WLAN eingeschaltet (ctx %d)\n", wl_ctx);
+	return 0;
+}
+
+static int wl0_ndo_stop(struct net_device *nd)
+{
+	netif_stop_queue(nd);
+	cancel_delayed_work_sync(&wl0_scan_wache);
+	wl0_scan_ende(true);
+	if (wl_ctx >= 0 && sb7_bereit)
+		wl_befehl_warten(wl_close, WIFI_CMD_CLOSE, 1000);
+	wl_ctx = -1;
+	netdev_info(nd, "WLAN ausgeschaltet\n");
+	return 0;
+}
+
+static netdev_tx_t wl0_ndo_xmit(struct sk_buff *skb, struct net_device *nd)
+{
+	nd->stats.tx_dropped++;		/* Senden ueber Kanal 8 kommt im naechsten Schritt */
+	dev_kfree_skb(skb);
+	return NETDEV_TX_OK;
+}
+
+static const struct net_device_ops wl0_ndo = {
+	.ndo_open = wl0_ndo_open,
+	.ndo_stop = wl0_ndo_stop,
+	.ndo_start_xmit = wl0_ndo_xmit,
+};
+
+static int wl0_anmelden(void)
+{
+	u8 mac[ETH_ALEN];
+	int ret;
+
+	INIT_DELAYED_WORK(&wl0_scan_wache, wl0_scan_wache_fn);
+	wl0_wiphy = wiphy_new(&wl0_ops, 0);
+	if (!wl0_wiphy)
+		return -ENOMEM;
+	set_wiphy_dev(wl0_wiphy, &pdev->dev);
+	wl0_wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION);
+	wl0_wiphy->bands[NL80211_BAND_2GHZ] = &wl0_band24;
+	wl0_wiphy->bands[NL80211_BAND_5GHZ] = &wl0_band5;
+	wl0_wiphy->signal_type = CFG80211_SIGNAL_TYPE_MBM;
+	wl0_wiphy->max_scan_ssids = 1;	/* Firmware-Scan ohne SSID; Platzhalter-SSID von iw ist ok */
+	wl0_wiphy->max_scan_ie_len = 0;
+	wl_mac_holen(mac);
+	memcpy(wl0_wiphy->perm_addr, mac, ETH_ALEN);
+	ret = wiphy_register(wl0_wiphy);
+	if (ret) {
+		wiphy_free(wl0_wiphy);
+		wl0_wiphy = NULL;
+		return ret;
+	}
+	wl0_ndev = alloc_netdev(0, "wlan%d", NET_NAME_ENUM, ether_setup);
+	if (!wl0_ndev) {
+		ret = -ENOMEM;
+		goto weg_wiphy;
+	}
+	wl0_wdev.wiphy = wl0_wiphy;
+	wl0_wdev.netdev = wl0_ndev;
+	wl0_wdev.iftype = NL80211_IFTYPE_STATION;
+	wl0_ndev->ieee80211_ptr = &wl0_wdev;
+	wl0_ndev->netdev_ops = &wl0_ndo;
+	eth_hw_addr_set(wl0_ndev, mac);
+	SET_NETDEV_DEV(wl0_ndev, wiphy_dev(wl0_wiphy));
+	ret = register_netdev(wl0_ndev);
+	if (ret) {
+		free_netdev(wl0_ndev);
+		wl0_ndev = NULL;
+		goto weg_wiphy;
+	}
+	pr_info(TAG "wlan0: angemeldet als %s (cfg80211)\n", wl0_ndev->name);
+	return 0;
+weg_wiphy:
+	wiphy_unregister(wl0_wiphy);
+	wiphy_free(wl0_wiphy);
+	wl0_wiphy = NULL;
+	return ret;
+}
+
+static void wl0_abmelden(void)
+{
+	if (wl0_ndev) {
+		unregister_netdev(wl0_ndev);	/* ruft vorher ndo_stop */
+		free_netdev(wl0_ndev);
+		wl0_ndev = NULL;
+	}
+	if (wl0_wiphy) {
+		cancel_delayed_work_sync(&wl0_scan_wache);
+		wiphy_unregister(wl0_wiphy);
+		wiphy_free(wl0_wiphy);
+		wl0_wiphy = NULL;
+	}
+}
+#else
+static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen) { }
+static void wl0_scan_ende(bool abgebrochen) { }
+static int wl0_anmelden(void) { return -EOPNOTSUPP; }
+static void wl0_abmelden(void) { }
+#endif
 
 /* Antwort auf GET_INFO lesbar ausgeben (MAC nur halb, damit Logs teilbar bleiben) */
 static void wl_info_zeigen(const u8 *h, u32 len)
@@ -2305,6 +2615,7 @@ static void aufraeumen(void)
 {
 	unsigned int i;
 
+	wl0_abmelden();		/* zuerst: ndo_stop schickt noch CLOSE */
 	arbeit_bereit = false;
 	if (chan)
 		mbox_free_channel(chan);
@@ -2386,6 +2697,10 @@ static int __init lauscher_init(void)
 	}
 	if ((kanal7 || kanal11 || kanal12 || datenkanaele) && !antworten) {
 		pr_err(TAG "kanal7/kanal11/kanal12/datenkanaele brauchen antworten=1\n");
+		return -EINVAL;
+	}
+	if (wlan0 && !(kanal7 && datenkanaele)) {
+		pr_err(TAG "wlan0=1 braucht kanal7=1 und datenkanaele=1\n");
 		return -EINVAL;
 	}
 	if (alle_oeffnen && !antworten) {
@@ -2491,6 +2806,12 @@ static int __init lauscher_init(void)
 		pr_info(TAG "Kanal 7 (WLAN-Befehle) wird als sblock bereitgestellt\n");
 	if (datenkanaele)
 		pr_info(TAG "Kanal 8 und 9 (WLAN-Daten) werden als sblock bereitgestellt (nur Empfang)\n");
+	if (wlan0) {
+		ret = wl0_anmelden();
+		if (ret)
+			pr_warn(TAG "wlan0 nicht angemeldet: %d%s\n", ret,
+				WL_CFG80211 ? "" : " (Kernel ohne cfg80211)");
+	}
 	return 0;
 
 fehler:
