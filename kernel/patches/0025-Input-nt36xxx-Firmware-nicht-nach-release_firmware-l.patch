@@ -1,0 +1,87 @@
+From be0778737c8625897967b8e3e2e53f51705b3895 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <EberhartLeberhart@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 18:31:17 +0200
+Subject: [PATCH] Input: nt36xxx: Firmware nicht nach release_firmware() lesen
+
+_nt36xxx_boot_prepare_firmware() las nach release_firmware() noch
+fw_entry->size und fw_entry->data[0] (fuer ein WARN). Die Daten einer
+direkt geladenen Firmware liegen in vmalloc-Speicher; ist der beim
+Lesen schon abgebaut, gibt es einen Oops (Beleg 22.10., zweimal:
+"Unable to handle kernel paging request" in
+nt36xxx_download_firmware+0x460, ldrb auf eine vmalloc-Adresse).
+Weil die Arbeitsfunktion dabei ts->lock haelt, bleibt danach alles
+haengen, was den Touch anfasst (unbind aus redmi-licht.sh,
+systemd-logind) - das Herunterfahren hing deshalb minutenlang.
+
+Groesse jetzt vor der Freigabe kopieren, das WARN entfaellt (es
+verglich nur die eigene Kopie). Ausserdem in den Fehlerpfaden den
+Zeiger nach kfree() zuruecksetzen, sonst haelt der naechste Versuch
+den freigegebenen Puffer fuer gueltig.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/input/touchscreen/nt36xxx_core.c | 20 ++++++++++++++------
+ 1 file changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/input/touchscreen/nt36xxx_core.c b/drivers/input/touchscreen/nt36xxx_core.c
+index 4389822..677ab87 100644
+--- a/drivers/input/touchscreen/nt36xxx_core.c
++++ b/drivers/input/touchscreen/nt36xxx_core.c
+@@ -933,15 +933,17 @@ static int _nt36xxx_boot_prepare_firmware(struct nt36xxx_ts *ts) {
+ 	 *
+ 	 */
+ 	ts->fw_entry.data = data = kmemdup(fw_entry->data, fw_entry->size, GFP_KERNEL | GFP_DMA);
++	ts->fw_entry.size = fw_entry->size;
+ 
++	/*
++	 * Erst nach dem Kopieren der Groesse freigeben und danach fw_entry nicht mehr anfassen:
++	 * vorher wurden fw_entry->size und fw_entry->data[0] nach release_firmware() gelesen.
++	 */
+ 	release_firmware(fw_entry);
+ 	if (!ts->fw_entry.data) {
+ 		dev_err(ts->dev, "memdup fw_data fail\n");
+ 		return -ENOMEM;
+ 	}
+-	ts->fw_entry.size = fw_entry->size;
+-
+-	WARN(ts->fw_entry.data[0] != fw_entry->data[0], "ts->fw_entry.data[0] != fw_entry->data[0]");
+ 
+ 	for (i = (ts->fw_entry.size / 4096); i > 0; i--) {
+ 		if (strncmp(&ts->fw_entry.data[i * 4096 - 3], "NVT", 3) == 0) {
+@@ -957,7 +959,9 @@ static int _nt36xxx_boot_prepare_firmware(struct nt36xxx_ts *ts) {
+ 
+ 	if (fw_need_write_size == 0) {
+ 		dev_err(ts->dev, "fw parsing error\n");
+-		kfree (data);
++		kfree(data);
++		ts->fw_entry.data = NULL;
++		ts->fw_entry.size = 0;
+ 		if (ts->bin_map) {
+ 			kfree(ts->bin_map);
+ 			ts->bin_map = NULL;
+@@ -972,7 +976,9 @@ static int _nt36xxx_boot_prepare_firmware(struct nt36xxx_ts *ts) {
+ 			*(ts->fw_entry.data+(fw_need_write_size - 4096)),
+ 			*(ts->fw_entry.data+(fw_need_write_size - 4096 + 1)));
+ 
+-		kfree (data);
++		kfree(data);
++		ts->fw_entry.data = NULL;
++		ts->fw_entry.size = 0;
+ 		if (ts->bin_map) {
+ 			kfree(ts->bin_map);
+ 			ts->bin_map = NULL;
+@@ -985,7 +991,9 @@ static int _nt36xxx_boot_prepare_firmware(struct nt36xxx_ts *ts) {
+ 	ret = nvt_bin_header_parser(ts->dev, ts->hw_crc, ts->fw_entry.data, ts->fw_entry.size,
+ 			&ts->bin_map, &ts->fw_data.partition, ts->fw_data.ilm_dlm_num);
+ 	if (ret) {
+-		kfree (data);
++		kfree(data);
++		ts->fw_entry.data = NULL;
++		ts->fw_entry.size = 0;
+ 		if(ret != -ENOMEM){
+ 			if (ts->bin_map) {
+ 				kfree(ts->bin_map);
+-- 
+2.43.0
+

@@ -226,7 +226,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 3. Patch 0017 an Codeberg (ums9230-mainline) melden
 4. Akku: Ausschalten mit Kabel bei gekapptem Strom prüfen; später eigener Ladechip-Treiber statt i2cset
 5. Display: Abschalten/Wiedereinschalten im DRM-Treiber reparieren (Diagnose: DCS 0x0A muss 0x9C liefern), dann Schlaf über den Treiber (DPU/DSI aus) und Touch als Panel-Follower; Strom neu messen
-6. Touch: Feinschliff (Wächter-Erkennung im Treiber, Ausrichtung/Mehrfinger prüfen), Treiber-Korrekturen an George Chan melden
+6. Touch: Feinschliff (Wächter-Erkennung im Treiber, Ausrichtung/Mehrfinger prüfen), Treiber-Korrekturen an George Chan melden. **23.10.: Absturz beim Firmware-Laden behoben (Patch 0025, Lesen nach `release_firmware()`) – war die Ursache der Hänger beim Herunterfahren**
 7. **WLAN:** `GET_INFO`, INI-Download (20.10.), `OPEN`/`CLOSE` mit Datenkanälen 8/9 (21.10.) laufen ✅; MAC-Herkunft geklärt (`prodnv:/wifimac.txt`); Scan (2,4 + 5 GHz mit `SET_REGDOM`) und Anmeldung beim Router mit EAPOL auf Kanal 9 laufen ✅ (22.10.); als Nächstes den Deskriptor der Datenblöcke entschlüsseln und den Realme-Treiber `marlin3_sipc` portieren → `wlan0` → Scan. Den sipc-Teil aus `wcn_lauscher.c` später in einen richtigen sipc-Kern überführen (Plan in `kernel/modem-sipc/`)
 8. Danach Bluetooth (Kanal 4, Ringe 11/10) oder Ton (VBC/Codec; Verstärker FS1588 offen); prüfen, ob auch der Audio-Kern über sipc antwortet
 9. Startstufe mit kexec: Lademodus-Schalter, Startmenü, Rückfall auf funktionierenden Kernel
