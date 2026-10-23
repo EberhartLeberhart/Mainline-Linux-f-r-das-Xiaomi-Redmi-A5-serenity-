@@ -5,7 +5,8 @@
 # Nutzung: ~/redmi-build/deploy.sh [vendor_boot-image]
 set -e
 cd ~/redmi-build
-VB=${1:-vendor_boot_ok.img}   # immer der zuletzt belegte Stand aus vendorboot_rezept.sh; Rettung: vendor_boot_usb2.img
+VB=${1:-vendor_boot_drm_ok.img}   # zuletzt belegter Stand (09.10., DRM-Display + Touch); vendor_boot_ok.img (04.10.) hat
+                                  # noch kein Display/Touch im Geraetebaum (23.10. versehentlich benutzt). Rettung: vendor_boot_usb2.img
 
 for f in boot_mainline.img "$VB" misc_b.img; do
     [ -f "$f" ] || { echo "FEHLER: $f fehlt"; exit 1; }

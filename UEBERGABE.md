@@ -124,7 +124,15 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
 ## Nebenbefunde
-- `redmi-licht.service` hing am 18./19.10. ~24 h im Start und blockierte das Herunterfahren. **22.10. wieder:**
+- ✅ **Gelöst 23.10. (Patch 0025):** Ursache der Hänger war ein Fehler im Touch-Treiber: `_nt36xxx_boot_prepare_firmware()`
+  las nach `release_firmware()` noch `fw_entry->size`/`fw_entry->data[0]` → gelegentlich Oops in
+  `nt36xxx_download_firmware+0x460` (Beleg 22.10. zweimal), dabei bleibt `ts->lock` gesperrt → alles, was den Touch
+  anfasst (unbind in `redmi-licht.sh`, `systemd-logind`), hängt im Kernel. Korrektur: Größe vor der Freigabe kopieren,
+  WARN raus, Zeiger in Fehlerpfaden zurücksetzen. Danach Licht-/Tastendienst wieder an, 2 Neustarts zügig, kein Oops,
+  `redmi-licht.sh aus/an` in < 1 s. **An George Chan melden** (PR an `99degree/linux`, englisch, nach weiteren Neustarts).
+  Achtung `deploy.sh`: Standard-vendor_boot ist jetzt `vendor_boot_drm_ok.img` (der alte `vendor_boot_ok.img` vom 04.10. hat
+  kein Display/Touch im DT; nach jedem neuen Kernel-Commit auch `cfg80211.ko`/`rfkill.ko`/Lauscher neu aufs Handy).
+- Verlauf: `redmi-licht.service` hing am 18./19.10. ~24 h im Start und blockierte das Herunterfahren. **22.10. wieder:**
   Herunterfahren hing ~13 min; Journal: `redmi-licht.sh` reagiert nicht auf SIGTERM, **bleibt sogar nach SIGKILL**
   (also im Kernel festgehangen – vermutlich DSI/devmem- oder Touch-Treiber-Zugriff ❓). Nicht das WLAN.
   Dienst am 22.10. **abgeschaltet** (`systemctl disable`); Ursache später klären. Am selben Abend hing es noch einmal
