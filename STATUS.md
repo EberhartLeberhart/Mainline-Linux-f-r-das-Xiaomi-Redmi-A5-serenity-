@@ -221,6 +221,9 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 
 ## Nächste Schritte
 
+Vollständige Liste dessen, was noch fehlt: [FEHLT.md](FEHLT.md).
+
+
 1. LAN: Leistung mit cpufreq neu messen, Dauertest (Stunden), DHCPv6-PD abschalten, Firmware-Flicken klären; Server-Betrieb am Router (statt PC) belegen
 2. USB-Automatik: den einen Fehlschlag nachstellen; `deploy.sh` auch übers LAN ermöglichen
 3. Patch 0017 an Codeberg (ums9230-mainline) melden

@@ -6,7 +6,7 @@
 **Stock OS**: Android 15 Go — Build `A15.0.20.0.VGWMIXM`  
 **Status** (20 Oct 2026): ✅ Bootloader unlocked · ✅ Mainline 7.1 kernel boots cold and warm · ✅ Ubuntu 24.04 runs ·
 ✅ display, touch, battery, USB networking · 🟡 Wi-Fi/Bluetooth firmware already talks to Mainline (first Wi-Fi command answered) ·
-detailed, evidence-based status (German): [STATUS.md](STATUS.md)
+detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is still missing (German checklist): [FEHLT.md](FEHLT.md)
 
 > This is the most complete public documentation of the Xiaomi Redmi A5's internals.
 > Built from hands-on reverse engineering — no leaked schematics, no vendor documentation.
