@@ -880,6 +880,9 @@ static const char *wl_ereignis_name(u8 id)
 static void wl0_antwort(u8 id, s8 st);
 static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen);
 static void wl0_scan_ende(bool abgebrochen);
+static void wl0_verbunden_ereignis(const u8 *d, u32 n);
+static void wl0_getrennt_ereignis(u16 grund);
+static void wl0_rx(u8 kanal, const u8 *b, u32 len);
 
 /* ---- Scan-Ergebnisse (WIFI_EVENT_MGMT_FRAME Typ 4 = Beacon/Probe-Response) ---- */
 static u8 scan_bssid[WL_SCAN_MAX][ETH_ALEN];
@@ -1044,6 +1047,8 @@ static void wl_ergebnis(const u8 *h, u32 len)
 		else
 			pr_info(TAG "WLAN-Ereignis: CONNECT -> fehlgeschlagen (Ergebnis %u, Statuscode des Routers %u)\n",
 				d[0], n >= WL_HDR + 3 ? d[2] : 0);
+		if (n > WL_HDR)
+			wl0_verbunden_ereignis(d, n - WL_HDR);
 	} else if (typ == 1 && id == WIFI_EVENT_DISCONNECT) {
 		u16 grund = n >= WL_HDR + 2 ? get_unaligned_le16(h + WL_HDR) : 0;
 
@@ -1052,6 +1057,7 @@ static void wl_ergebnis(const u8 *h, u32 len)
 			grund == 2 ? " (Anmeldung ungueltig)" :
 			grund == 3 ? " (abgemeldet)" :
 			grund == 6 || grund == 7 ? " (Rahmen ohne gueltige Anmeldung)" : "");
+		wl0_getrennt_ereignis(grund);
 	} else if (typ == 1 && id == WIFI_EVENT_SCAN_DONE) {
 		u8 t = n > WL_HDR ? h[WL_HDR] : 0;
 
@@ -1649,13 +1655,32 @@ static int __maybe_unused wl_befehl_warten(int (*befehl)(void), u8 id, unsigned 
 	return 0;
 }
 
+static const u8 *wl_puffer;
+static u32 wl_puffer_len;
+static int wl_puffer_senden(void)
+{
+	return sb7_senden(wl_puffer, wl_puffer_len);
+}
+
+static int __maybe_unused wl_puffer_warten(const u8 *buf, u32 len, unsigned int ms)
+{
+	wl_puffer = buf;
+	wl_puffer_len = len;
+	return wl_befehl_warten(wl_puffer_senden, buf[1], ms);
+}
+
 #if WL_CFG80211
-static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen)
+enum { WL0_FREI, WL0_VERBINDET, WL0_VERBUNDEN, WL0_TRENNT };
+static int wl0_zustand = WL0_FREI;
+static u8 wl0_bssid[ETH_ALEN];
+static DEFINE_MUTEX(wl0_zustand_lock);
+
+static void wl0_bss_melden(u8 kanal, s8 signal, const u8 *f, u16 flen)
 {
 	struct ieee80211_channel *ch;
 	struct cfg80211_bss *bss;
 
-	if (!wl0_wiphy || !wl0_scan_anf)
+	if (!wl0_wiphy)
 		return;
 	ch = ieee80211_get_channel(wl0_wiphy, ieee80211_channel_to_frequency(kanal,
 				   kanal <= 14 ? NL80211_BAND_2GHZ : NL80211_BAND_5GHZ));
@@ -1664,6 +1689,13 @@ static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen)
 	bss = cfg80211_inform_bss_frame(wl0_wiphy, ch, (struct ieee80211_mgmt *)f, flen,
 					(s32)signal * 100, GFP_KERNEL);
 	cfg80211_put_bss(wl0_wiphy, bss);
+}
+
+/* Scan-Rahmen nur waehrend eines cfg80211-Scans weitergeben */
+static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen)
+{
+	if (wl0_scan_anf)
+		wl0_bss_melden(kanal, signal, f, flen);
 }
 
 static void wl0_scan_ende(bool abgebrochen)
@@ -1721,8 +1753,260 @@ static int wl0_scan(struct wiphy *wiphy, struct cfg80211_scan_request *anf)
 	return 0;
 }
 
+static u8 wl0_cipher(u32 c)
+{
+	switch (c) {
+	case WLAN_CIPHER_SUITE_WEP40: return 1;
+	case WLAN_CIPHER_SUITE_WEP104: return 2;
+	case WLAN_CIPHER_SUITE_TKIP: return 3;
+	case WLAN_CIPHER_SUITE_CCMP: return 4;
+	case WLAN_CIPHER_SUITE_AES_CMAC: return 8;
+	case WLAN_CIPHER_SUITE_GCMP_256: return 9;
+	default: return 0;
+	}
+}
+
+static u8 wl0_akm(u32 a)
+{
+	switch (a) {
+	case WLAN_AKM_SUITE_8021X: return 1;
+	case WLAN_AKM_SUITE_PSK: return 2;
+	case WLAN_AKM_SUITE_FT_8021X: return 3;
+	case WLAN_AKM_SUITE_FT_PSK: return 4;
+	case WLAN_AKM_SUITE_8021X_SHA256: return 5;
+	case WLAN_AKM_SUITE_PSK_SHA256: return 6;
+	case WLAN_AKM_SUITE_SAE: return 8;
+	default: return 0;
+	}
+}
+
+/*
+ * sprdwl_cfg80211_connect(): RSN/WPA-Elemente von wpa_supplicant (sme->ie) als SET_IE ASSOC_REQ,
+ * dann WIFI_CMD_CONNECT. Ergebnis kommt spaeter als Ereignis CONNECT/DISCONNECT.
+ */
+static int wl0_connect(struct wiphy *wiphy, struct net_device *nd, struct cfg80211_connect_params *sme)
+{
+	u8 *buf, *c;
+	u32 wpa = 0;
+	int ret;
+
+	if (wl_ctx < 0)
+		return -ENETDOWN;
+	if (!sme->ssid || !sme->ssid_len || sme->ssid_len > 32 || sme->ie_len > 1024)
+		return -EINVAL;
+	if (sme->key_len)
+		return -EOPNOTSUPP;	/* WEP/statische Schluessel noch nicht */
+	buf = kzalloc(WL_HDR + 3 + 1024, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (sme->ie_len) {
+		buf[0] = 0x10 | ((wl_ctx & 7) << 5);
+		buf[1] = WIFI_CMD_SET_IE;
+		put_unaligned_le16(WL_HDR + 3 + sme->ie_len, buf + 2);
+		put_unaligned_le32((u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC), buf + 4);
+		buf[WL_HDR] = 3;			/* SPRDWL_IE_ASSOC_REQ */
+		put_unaligned_le16(sme->ie_len, buf + WL_HDR + 1);
+		memcpy(buf + WL_HDR + 3, sme->ie, sme->ie_len);
+		ret = wl_puffer_warten(buf, WL_HDR + 3 + sme->ie_len, 1000);
+		if (ret)
+			goto raus;
+	}
+
+	memset(buf, 0, WL_HDR + 82);
+	c = buf + WL_HDR;
+	buf[0] = 0x10 | ((wl_ctx & 7) << 5);
+	buf[1] = WIFI_CMD_CONNECT;
+	put_unaligned_le16(WL_HDR + 82, buf + 2);
+	put_unaligned_le32((u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC), buf + 4);
+	if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_1)
+		wpa = 1 << 0;
+	if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_2)
+		wpa = 1 << 1;
+	if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_3)
+		wpa = 1 << 3;
+	put_unaligned_le32(wpa, c);
+	if (sme->bssid)
+		ether_addr_copy(c + 4, sme->bssid);
+	else if (sme->bssid_hint)
+		ether_addr_copy(c + 4, sme->bssid_hint);
+	if (sme->channel)
+		c[10] = ieee80211_frequency_to_channel(sme->channel->center_freq);
+	else if (sme->channel_hint)
+		c[10] = ieee80211_frequency_to_channel(sme->channel_hint->center_freq);
+	c[11] = sme->auth_type == NL80211_AUTHTYPE_SAE ? 4 :
+		sme->auth_type == NL80211_AUTHTYPE_SHARED_KEY ? 1 : 0;
+	if (sme->crypto.n_ciphers_pairwise && wl0_cipher(sme->crypto.ciphers_pairwise[0]))
+		c[12] = 0x80 | wl0_cipher(sme->crypto.ciphers_pairwise[0]);
+	if (wl0_cipher(sme->crypto.cipher_group))
+		c[13] = 0x80 | wl0_cipher(sme->crypto.cipher_group);
+	if (sme->crypto.n_akm_suites && wl0_akm(sme->crypto.akm_suites[0]))
+		c[14] = 0x80 | wl0_akm(sme->crypto.akm_suites[0]);
+	c[15] = sme->mfp == NL80211_MFP_REQUIRED;
+	c[17] = sme->ssid_len;
+	memcpy(c + 18 + 32, sme->ssid, sme->ssid_len);
+	memcpy(wl0_bssid, c + 4, ETH_ALEN);
+
+	mutex_lock(&wl0_zustand_lock);
+	wl0_zustand = WL0_VERBINDET;
+	mutex_unlock(&wl0_zustand_lock);
+	netdev_info(nd, "verbinde mit \"%*pE\", Kanal %u (WPA 0x%x, paarweise 0x%02x, Gruppe 0x%02x, AKM 0x%02x)\n",
+		    (int)sme->ssid_len, sme->ssid, c[10], wpa, c[12], c[13], c[14]);
+	ret = wl_puffer_warten(buf, WL_HDR + 82, 2000);
+	if (ret) {
+		mutex_lock(&wl0_zustand_lock);
+		wl0_zustand = WL0_FREI;
+		mutex_unlock(&wl0_zustand_lock);
+	}
+raus:
+	kfree(buf);
+	return ret;
+}
+
+static int wl0_disconnect(struct wiphy *wiphy, struct net_device *nd, u16 grund)
+{
+	u8 buf[WL_HDR + 2];
+	bool selbst_melden;
+
+	mutex_lock(&wl0_zustand_lock);
+	if (wl0_zustand == WL0_FREI) {
+		mutex_unlock(&wl0_zustand_lock);
+		return 0;
+	}
+	wl0_zustand = WL0_TRENNT;
+	mutex_unlock(&wl0_zustand_lock);
+	memset(buf, 0, sizeof(buf));
+	buf[0] = 0x10 | ((wl_ctx & 7) << 5);
+	buf[1] = WIFI_CMD_DISCONNECT;
+	put_unaligned_le16(sizeof(buf), buf + 2);
+	put_unaligned_le32((u32)div_u64(ktime_get_ns(), NSEC_PER_MSEC), buf + 4);
+	put_unaligned_le16(grund, buf + WL_HDR);
+	if (wl_ctx >= 0 && sb7_bereit)
+		wl_puffer_warten(buf, sizeof(buf), 2000);
+	msleep(300);			/* Firmware meldet meist noch ein DISCONNECT-Ereignis */
+	mutex_lock(&wl0_zustand_lock);
+	selbst_melden = wl0_zustand == WL0_TRENNT;
+	wl0_zustand = WL0_FREI;
+	mutex_unlock(&wl0_zustand_lock);
+	if (selbst_melden)
+		cfg80211_disconnected(nd, grund, NULL, 0, true, GFP_KERNEL);
+	netif_carrier_off(nd);
+	return 0;
+}
+
+/* Ereignis CONNECT: u8 Status, bssid[6], Kanal, Signal, le16+req_ie, le16+resp_ie, le16+Beacon */
+static void wl0_verbunden_ereignis(const u8 *d, u32 n)
+{
+	const u8 *req = NULL, *resp = NULL, *bea = NULL;
+	u16 req_n = 0, resp_n = 0, bea_n = 0;
+	u32 pos;
+	int zustand;
+
+	if (!wl0_ndev)
+		return;
+	mutex_lock(&wl0_zustand_lock);
+	zustand = wl0_zustand;
+	mutex_unlock(&wl0_zustand_lock);
+	if (zustand != WL0_VERBINDET)
+		return;
+	if (d[0] != 0 || n < 9) {
+		cfg80211_connect_result(wl0_ndev, wl0_bssid, NULL, 0, NULL, 0,
+					n >= 3 && d[2] ? d[2] : WLAN_STATUS_UNSPECIFIED_FAILURE, GFP_KERNEL);
+		mutex_lock(&wl0_zustand_lock);
+		wl0_zustand = WL0_FREI;
+		mutex_unlock(&wl0_zustand_lock);
+		return;
+	}
+	ether_addr_copy(wl0_bssid, d + 1);
+	pos = 9;
+	if (pos + 2 <= n) {
+		req_n = get_unaligned_le16(d + pos);
+		req = d + pos + 2;
+		pos += 2 + req_n;
+	}
+	if (pos + 2 <= n) {
+		resp_n = get_unaligned_le16(d + pos);
+		resp = d + pos + 2;
+		pos += 2 + resp_n;
+	}
+	if (pos + 2 <= n) {
+		bea_n = get_unaligned_le16(d + pos);
+		bea = d + pos + 2;
+		pos += 2 + bea_n;
+	}
+	if (pos > n) {		/* Laengen passen nicht - ohne IEs melden */
+		netdev_warn(wl0_ndev, "CONNECT-Ereignis: IE-Laengen unplausibel (%u > %u)\n", pos, n);
+		req = resp = bea = NULL;
+		req_n = resp_n = bea_n = 0;
+	}
+	if (bea && bea_n >= 36)	/* Beacon des Routers, damit cfg80211 den BSS-Eintrag hat */
+		wl0_bss_melden(d[7], (s8)d[8], bea, bea_n);
+	cfg80211_connect_result(wl0_ndev, wl0_bssid, req, req_n, resp, resp_n,
+				WLAN_STATUS_SUCCESS, GFP_KERNEL);
+	mutex_lock(&wl0_zustand_lock);
+	wl0_zustand = WL0_VERBUNDEN;
+	mutex_unlock(&wl0_zustand_lock);
+	netif_carrier_on(wl0_ndev);
+	netdev_info(wl0_ndev, "verbunden (Kanal %u, %d dBm, IEs %u/%u/%u)\n", d[7], (s8)d[8],
+		    req_n, resp_n, bea_n);
+}
+
+static void wl0_getrennt_ereignis(u16 grund)
+{
+	int zustand;
+
+	if (!wl0_ndev)
+		return;
+	mutex_lock(&wl0_zustand_lock);
+	zustand = wl0_zustand;
+	wl0_zustand = WL0_FREI;
+	mutex_unlock(&wl0_zustand_lock);
+	netif_carrier_off(wl0_ndev);
+	if (zustand == WL0_VERBINDET)
+		cfg80211_connect_result(wl0_ndev, wl0_bssid, NULL, 0, NULL, 0,
+					WLAN_STATUS_UNSPECIFIED_FAILURE, GFP_KERNEL);
+	else if (zustand == WL0_VERBUNDEN || zustand == WL0_TRENNT)
+		cfg80211_disconnected(wl0_ndev, grund, NULL, 0, zustand == WL0_TRENNT, GFP_KERNEL);
+}
+
+/*
+ * Empfangsblock eines Datenkanals: Byte 0 Typ (unten 4 Bit), Byte 1 Versatz des Ethernet-Kopfs,
+ * Byte 2-3 Laenge des Ethernet-Rahmens (belegt 22.10. mit EAPOL: Typ 3, Versatz 54, 113 Bytes).
+ * Vorerst nur Rahmen, die direkt im Block stehen.
+ */
+static void wl0_rx(u8 kanal, const u8 *b, u32 len)
+{
+	struct sk_buff *skb;
+	u32 eoff, elen;
+
+	if (!wl0_ndev || !netif_running(wl0_ndev) || len < 4)
+		return;
+	eoff = b[1];
+	elen = get_unaligned_le16(b + 2);
+	if ((b[0] & 0x0f) != 3 || eoff < 4 || elen < ETH_HLEN || eoff + elen > len) {
+		wl0_ndev->stats.rx_frame_errors++;
+		return;
+	}
+	skb = netdev_alloc_skb_ip_align(wl0_ndev, elen);
+	if (!skb) {
+		wl0_ndev->stats.rx_dropped++;
+		return;
+	}
+	skb_put_data(skb, b + eoff, elen);
+	skb->protocol = eth_type_trans(skb, wl0_ndev);
+	wl0_ndev->stats.rx_packets++;
+	wl0_ndev->stats.rx_bytes += elen;
+	netif_rx(skb);
+}
+
 static const struct cfg80211_ops wl0_ops = {
 	.scan = wl0_scan,
+	.connect = wl0_connect,
+	.disconnect = wl0_disconnect,
+};
+
+static const u32 wl0_ciphers[] = {
+	WLAN_CIPHER_SUITE_CCMP, WLAN_CIPHER_SUITE_TKIP, WLAN_CIPHER_SUITE_AES_CMAC,
 };
 
 static int wl0_ndo_open(struct net_device *nd)
@@ -1797,7 +2081,9 @@ static int wl0_anmelden(void)
 	wl0_wiphy->bands[NL80211_BAND_5GHZ] = &wl0_band5;
 	wl0_wiphy->signal_type = CFG80211_SIGNAL_TYPE_MBM;
 	wl0_wiphy->max_scan_ssids = 1;	/* Firmware-Scan ohne SSID; Platzhalter-SSID von iw ist ok */
-	wl0_wiphy->max_scan_ie_len = 0;
+	wl0_wiphy->max_scan_ie_len = 255;	/* wpa_supplicant haengt IEs an; die Firmware sucht ohne sie */
+	wl0_wiphy->cipher_suites = wl0_ciphers;
+	wl0_wiphy->n_cipher_suites = ARRAY_SIZE(wl0_ciphers);
 	wl_mac_holen(mac);
 	memcpy(wl0_wiphy->perm_addr, mac, ETH_ALEN);
 	ret = wiphy_register(wl0_wiphy);
@@ -1850,6 +2136,9 @@ static void wl0_abmelden(void)
 #else
 static void wl0_bss(u8 kanal, s8 signal, const u8 *f, u16 flen) { }
 static void wl0_scan_ende(bool abgebrochen) { }
+static void wl0_verbunden_ereignis(const u8 *d, u32 n) { }
+static void wl0_getrennt_ereignis(u16 grund) { }
+static void wl0_rx(u8 kanal, const u8 *b, u32 len) { }
 static int wl0_anmelden(void) { return -EOPNOTSUPP; }
 static void wl0_abmelden(void) { }
 #endif
@@ -2027,12 +2316,15 @@ static void sbd_empfangen(struct sbd *d)
 		if (off < sbd_rxblk(d) || off + d->blk > sbd_r_txl(d) || (off - sbd_rxblk(d)) % d->blk ||
 		    len > d->blk) {
 			pr_warn(TAG "Kanal %u: Block %u unplausibel (0x%x, %u Bytes)\n", d->kanal, d->bloecke, addr, len);
-		} else if (d->bloecke <= 20) {
-			pr_info(TAG "Kanal %u: Block %u, %u Bytes\n", d->kanal, d->bloecke, len);
-			sbd_eapol_suchen(d->kanal, smem + off, len);
-			snprintf(kopf, sizeof(kopf), "wcnlausch: K%u #%u ", d->kanal, d->bloecke);
-			print_hex_dump(KERN_INFO, kopf, DUMP_PREFIX_OFFSET, 16, 1, smem + off,
-				       min(len, 48u), false);
+		} else {
+			wl0_rx(d->kanal, smem + off, len);	/* an wlan0, falls angemeldet */
+			if (d->bloecke <= 20) {
+				pr_info(TAG "Kanal %u: Block %u, %u Bytes\n", d->kanal, d->bloecke, len);
+				sbd_eapol_suchen(d->kanal, smem + off, len);
+				snprintf(kopf, sizeof(kopf), "wcnlausch: K%u #%u ", d->kanal, d->bloecke);
+				print_hex_dump(KERN_INFO, kopf, DUMP_PREFIX_OFFSET, 16, 1, smem + off,
+					       min(len, 48u), false);
+			}
 		}
 		sm_wr(r + SH_RX_RD, rd + 1);
 		pwr = sm_rd(p + SH_RX_WR);

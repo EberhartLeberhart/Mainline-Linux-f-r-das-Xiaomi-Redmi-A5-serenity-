@@ -839,7 +839,9 @@ slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_
 - ✅ 22 Oct: 5 GHz works after sending the country rules (`SET_REGDOM`, DE limits from wireless-regdb);
   first association with a WPA2 access point, first EAPOL frame received on data channel 9
 - ✅ 22 Oct: **`wlan0` as a real Linux Wi-Fi device** (cfg80211): `ip link set wlan0 up`, `iw dev wlan0 scan`
-- Next: data path (receive/transmit), `connect` via cfg80211, `wpa_supplicant` → DHCP → SSH over Wi-Fi
+- ✅ 23 Oct: **`wpa_supplicant` connects through the driver** (cfg80211 `connect`), receive path into `wlan0`
+  works: it receives message 1 of the WPA2 4-way handshake
+- Next: transmit path, key installation, then DHCP → SSH over Wi-Fi
 
 **Not working yet**
 - ❌ Wi-Fi data traffic (scan and association work), Bluetooth, audio, GPU, camera

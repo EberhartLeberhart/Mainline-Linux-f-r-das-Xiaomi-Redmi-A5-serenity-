@@ -112,10 +112,15 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    dann `ip link set wlan0 up` und `iw dev wlan0 scan` → 9 Netze inkl. 5 GHz.
    Empfangsformat Kanal 9: Byte 1 = Versatz Ethernet-Kopf, Byte 2–3 = Länge (siehe STATUS).
    **Achtung:** `ip link`/`iw`-Ausgaben enthalten volle MACs/BSSIDs → nur gefiltert teilen.
-8. Als Nächstes: Empfang auf Kanal 9 an `wlan0` weitergeben (netif_rx), Senden auf Kanal 8 (`tx_msdu_dscr`),
-   `connect`/`disconnect` als cfg80211-Ops, Schlüssel (`WIFI_CMD_KEY`), dann `wpa_supplicant` → DHCP → SSH über WLAN.
-   Namen für Ereignisse 0xf5/0xf9/0xa2 nachtragen.
-9. Danach den Lauscher in einen sauberen Treiber aufteilen (sipc-Kern + WLAN) `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
+8. ✅ **Empfang + Verbinden über cfg80211** (23.10., PR #8): `wpa_supplicant` scannt, verbindet und empfängt
+   „RX message 1 of 4-Way Handshake“ über `wlan0`. Passwortdatei ohne Klartext:
+   `ssh -t root@192.168.7.2 'wpa_passphrase MeinNetz | sed "/#psk=/d" > /root/wpa.conf; chmod 600 /root/wpa.conf'`
+   Test: `timeout 30 wpa_supplicant -i wlan0 -D nl80211 -c /root/wpa.conf -d` (Ausgabe filtern: MACs!).
+9. Als Nächstes: **Senden** über einen Datenkanal (Realme `tx_msdu_dscr`, 11 Bytes + Adresse; die Datenpakete liegen bei
+   Realme in einem eigenen Paketspeicher – erst gründlich nachlesen ❓), dann **Schlüssel** (`add_key`/`set_default_key`
+   → `WIFI_CMD_KEY`), dann DHCP → SSH über WLAN. Außerdem: `mgmt_frame_register` (stilllegen der Meldungen),
+   Namen für Ereignisse 0xf5 (`STA_LUT_INDEX`, wird fürs Senden gebraucht ❓)/0xf9/0xa2.
+10. Danach den Lauscher in einen sauberen Treiber aufteilen (sipc-Kern + WLAN) `drivers/unisoc_platform/wlan/marlin3_sipc` portieren → `wlan0` → Scan.
    Der sipc-Teil aus `wcn_lauscher.c` wird dafür zu einem richtigen sipc-Kern (Plan `kernel/modem-sipc/`).
 
 ## Nebenbefunde
@@ -161,7 +166,7 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
 - **Sicherung** aller Partitionen außer `userdata` auf den PC: Skript `redmi-sicherung.sh` (nur lesend, SHA256 auf
   beiden Seiten). Gerätedaten, **nie ins Repo**.
 
-## Anfragen (Entwürfe 22./23.10., noch nicht abgeschickt)
+## Anfragen (am 23.10. abgeschickt, Antworten abwarten)
 - **Bundesnetzagentur** (info@bnetza.de) und **Xiaomi** (service.de@support.mi.com), beide zunächst unter dem
   Pseudonym EberhartLeberhart als formlose Erkundung; für eine verbindliche Auskunft später mit vollem Namen.
 - Kernfrage an die Bundesnetzagentur: Ist das Ersetzen des Betriebssystems bei unveränderter Funk-Firmware eine
