@@ -797,7 +797,7 @@ This approach works because LK always initializes the display, regardless of wha
 
 ## 15. Booting Linux
 
-### What Works (as of 20 October 2026)
+### What Works (as of 22 October 2026)
 
 Every item below is backed by a dated log or measurement in [STATUS.md](STATUS.md) (German).
 Kernel: Linux 7.1.0-rc1 (Codeberg `ums9230` tree + the patches in [`kernel/patches/`](kernel/patches/)),
@@ -834,14 +834,31 @@ slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_
 - ✅ All five SIPC channels the firmware opens are served by a test module ([`kernel/wcn-test/`](kernel/wcn-test/)):
   AT/BT (4), firmware log (5), Wi-Fi commands (7, `sblock`), heartbeat (11), assert (12)
 - ✅ 19 Oct: first AT reply (`Platform Version:WCN_TRUNK_22A_W25.03.4 …`)
-- ✅ 20 Oct: first Wi-Fi command `WIFI_CMD_SYNC_VERSION` answered with status 0
-- Next: `GET_INFO`, calibration INI download, port of the `marlin3_sipc` Wi-Fi driver → `wlan0`
+- ✅ 20 Oct: first Wi-Fi commands answered (`SYNC_VERSION`, `GET_INFO`, calibration INI download)
+- ✅ 21 Oct: Wi-Fi on/off (`OPEN`/`CLOSE`), data channels 8/9 set up, first scan (2.4 GHz)
+- ✅ 22 Oct: 5 GHz works after sending the country rules (`SET_REGDOM`, DE limits from wireless-regdb);
+  first association with a WPA2 access point, first EAPOL frame received on data channel 9
+- ✅ 22 Oct: **`wlan0` as a real Linux Wi-Fi device** (cfg80211): `ip link set wlan0 up`, `iw dev wlan0 scan`
+- Next: data path (receive/transmit), `connect` via cfg80211, `wpa_supplicant` → DHCP → SSH over Wi-Fi
 
 **Not working yet**
-- ❌ Wi-Fi and Bluetooth as usable interfaces, audio, GPU, camera
+- ❌ Wi-Fi data traffic (scan and association work), Bluetooth, audio, GPU, camera
 - ⏸️ LTE: the modem firmware is unsigned, but the part that needs the TEE (trusty) is **deliberately on hold**
   until the legal situation is clear — see [MODEM.md](MODEM.md). Everything else is being prepared
   ([`kernel/modem-sipc/`](kernel/modem-sipc/))
+
+### Planned: Re-locking the Bootloader
+
+The goal is that a finished installation can be **locked again**, so that the phone only boots the
+project's own, signed system. At the very least the installer should offer this as an option.
+Under evaluation (nothing done yet):
+1. a user key in the existing bootloader (similar to `avb_custom_key` on other devices) — whether the
+   Unisoc/Xiaomi bootloader supports this is still unknown ❓
+2. otherwise an own bootloader stage that verifies the kernel against the user's key
+3. combined with encryption of the data partition
+
+Burning own keys into the eFuses is **not** planned (irreversible, and it would likely break the
+vendor-signed parts of the boot chain). Radio firmware stays unchanged in every case.
 
 ### Strategy: Slot B Experiments, Slot A Safety
 

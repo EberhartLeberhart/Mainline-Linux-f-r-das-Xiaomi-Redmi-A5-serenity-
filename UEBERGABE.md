@@ -146,6 +146,11 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   gibt es für arm64, die Mint-eigenen Pakete selbst bauen, PC-spezifische Werkzeuge weglassen). Auf dem Handy eine
   Touch-Oberfläche (z. B. Phosh), am großen Bildschirm Cinnamon – vermutlich über das USB-Netz (VNC/RDP) oder einen
   DisplayLink-Adapter, weil die USB-Buchse wohl kein Bild ausgeben kann ❓.
+- **Bootloader am Ende wieder sperren** (Beschluss 23.10.): Die fertige Installation soll sich wieder sperren
+  lassen, sodass nur noch unser signiertes System startet – mindestens als Option im Installer. Zu prüfen:
+  (1) eigener Schlüssel im vorhandenen Bootloader (wie `avb_custom_key`) ❓, sonst (2) eigene Bootloader-Stufe, die
+  den Kernel gegen den Schlüssel des Nutzers prüft; dazu (3) Verschlüsselung der Datenpartition. **Keine** eigenen
+  Schlüssel in die eFuses (endgültig, würde vermutlich die herstellersignierten Teile brechen).
 
 ## Entscheidungen (21.10.)
 - **Funk-Firmware (WCN, Modem) und Sendeleistung werden nicht verändert.** Wer mehr Leistung will, kauft ein Gerät,
@@ -155,6 +160,16 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   **nach** WLAN – mit dem zweiten Redmi als Testgerät und besserer Kühlung.
 - **Sicherung** aller Partitionen außer `userdata` auf den PC: Skript `redmi-sicherung.sh` (nur lesend, SHA256 auf
   beiden Seiten). Gerätedaten, **nie ins Repo**.
+
+## Anfragen (Entwürfe 22./23.10., noch nicht abgeschickt)
+- **Bundesnetzagentur** (info@bnetza.de) und **Xiaomi** (service.de@support.mi.com), beide zunächst unter dem
+  Pseudonym EberhartLeberhart als formlose Erkundung; für eine verbindliche Auskunft später mit vollem Namen.
+- Kernfrage an die Bundesnetzagentur: Ist das Ersetzen des Betriebssystems bei unveränderter Funk-Firmware eine
+  „wesentliche Veränderung“ (dann wäre man selbst Hersteller)? Dazu: Art. 3 Abs. 3 i RED, eigener Gebrauch im
+  Netz, Weitergabe der Software, Bootloader wieder gesperrt.
+- An Xiaomi: Nutzung der Geräte-Firmware/`modem_control`/TEE-Dienst unter Linux, offizieller Weg zum Sperren mit
+  eigenem Schlüssel, GPL-Kernelquellen für serenity, Dokumentation der Schnittstellen.
+- Vor dem Abschicken entscheiden: Repo-Link in der Xiaomi-Mail ja/nein (`BOOTLOADER_UNLOCK.md` ist öffentlich).
 
 ## Andere Stände (aus dem Repo)
 - Modem: Firmware nicht signiert, trusty antwortet; **trusty-Teil bewusst zurückgestellt** bis zur rechtlichen
