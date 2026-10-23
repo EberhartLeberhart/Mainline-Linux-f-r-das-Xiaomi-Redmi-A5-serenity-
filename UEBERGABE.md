@@ -129,7 +129,8 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   `nt36xxx_download_firmware+0x460` (Beleg 22.10. zweimal), dabei bleibt `ts->lock` gesperrt → alles, was den Touch
   anfasst (unbind in `redmi-licht.sh`, `systemd-logind`), hängt im Kernel. Korrektur: Größe vor der Freigabe kopieren,
   WARN raus, Zeiger in Fehlerpfaden zurücksetzen. Danach Licht-/Tastendienst wieder an, 2 Neustarts zügig, kein Oops,
-  `redmi-licht.sh aus/an` in < 1 s. **An George Chan melden** (PR an `99degree/linux`, englisch, nach weiteren Neustarts).
+  `redmi-licht.sh aus/an` in < 1 s. **Gemeldet 23.10.:** Pull Request https://github.com/99degree/linux/pull/13
+  (Zweig `nt36xxx`, +11/−6, Co-Autor Claude; Georges letzter Commit war vom 18.02.2025 – Antwort abwarten).
   Achtung `deploy.sh`: Standard-vendor_boot ist jetzt `vendor_boot_drm_ok.img` (der alte `vendor_boot_ok.img` vom 04.10. hat
   kein Display/Touch im DT; nach jedem neuen Kernel-Commit auch `cfg80211.ko`/`rfkill.ko`/Lauscher neu aufs Handy).
 - Verlauf: `redmi-licht.service` hing am 18./19.10. ~24 h im Start und blockierte das Herunterfahren. **22.10. wieder:**
