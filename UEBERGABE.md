@@ -202,7 +202,13 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   belegter Stand `vendor_boot_gpu_ok.img` (Standard in `deploy.sh`). `gpu-thermal`: passiv 70 °C, kritisch 110 °C.
 - Module `panfrost.ko`/`gpu-sched.ko` wurden von Hand nach `/lib/modules/$(uname -r)/kernel/drivers/gpu/drm/` gelegt
   + `depmod -a`. **Bei jedem neuen Kernel neu nötig** → nächster Schritt: `deploy.sh` mit `make modules_install`.
-- Offen: OPP-Tabelle (Taktstufen, devfreq) ❓ – Werte erst messen bzw. aus Xiaomis DT als Referenz.
+- 25.10.: PMIC-Regler-Treiber an (`CONFIG_REGULATOR_SC2730=y`; Codeberg hatte ihn, aber aus). Rezept `REGLER=1`
+  (Standard): alle Regler außer `dcdc-gpu` im DT `disabled` + `regulator_ignore_unused` – ohne das schaltet der Kernel
+  nach ~30 s alle Regler ohne `always-on` ab (eMMC!). Belegt: `vendor_boot_regler_ok.img`, `vddgpu` = 1,00 V bei 384 MHz.
+- Referenz Realme (`qogirl6.dtsi`): 384/512/614,4/768/850 MHz bei 0,70/0,75/0,75/0,80/0,80 V, Güteklasse `gpu_bin`.
+  `topdvfs` (Hardware-DVFS) regelt nur CPU/MM/Modem, nicht die GPU → `vddgpu` ist ein normaler Software-Regler.
+- Nächster Schritt: OPP-Tabelle + `mali-supply` im GPU-Knoten → Panfrost-devfreq; erst bei 1,00 V nur 384+512 MHz,
+  dann Stufe für Stufe; Spannung erst senken, wenn geklärt ist, ob `vddgpu` noch etwas anderes versorgt ❓.
 
 ## Andere Stände (aus dem Repo)
 - Modem: Firmware nicht signiert, trusty antwortet; **trusty-Teil bewusst zurückgestellt** bis zur rechtlichen
