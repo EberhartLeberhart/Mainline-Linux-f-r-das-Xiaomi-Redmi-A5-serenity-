@@ -188,6 +188,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | pinctrl-sprd(-ums9230) | ✅ | 02.10.: fest eingebaut, bindet beim Start |
 | sprd-mailbox | ✅ | 02.10.: fest eingebaut, bindet beim Start |
 | sprd-thermal | ✅ | 02.10.: fest eingebaut, 2 Geräte |
+| CPU-Topologie / Kapazität | ✅ | 24.10.: `capacity-dmips-mhz` selbst gemessen (A55 484, A75 1024) und `cpu-map`-Fehler im Codeberg-DT behoben (`cluster1/core6/core7` → `core0/core1`; vorher verwarf der Kernel die cpu-map, große Kerne Kapazität 0). Jetzt 428 ×6 / 1024 ×2, Cluster 0-5 / 6-7. Im `vendorboot_rezept.sh` |
 | i2c-sprd | 🟡 | 04.10.: Bus 2 läuft (mit Alias), aber kein NACK – siehe Ladechip |
 | spi-sprd (SPI-Bus 3) | ✅ | 09.10.: fest eingebaut, PIO (keine DMA im DT). Nebenwirkung des Alias `spi3`: der PMIC-Bus heißt jetzt `spi4.0` statt `spi0.0` – Akku, Uhr, Tasten laufen unverändert ✅ |
 | sprd-dma | ❌ | 56580000: -110, hängt an der Domain `/audio-dsp` (agdsp_pd) |

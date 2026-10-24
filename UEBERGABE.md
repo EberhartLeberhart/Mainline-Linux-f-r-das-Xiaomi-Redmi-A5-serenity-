@@ -185,6 +185,15 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   eigenem Schlüssel, GPL-Kernelquellen für serenity, Dokumentation der Schnittstellen.
 - Vor dem Abschicken entscheiden: Repo-Link in der Xiaomi-Mail ja/nein (`BOOTLOADER_UNLOCK.md` ist öffentlich).
 
+## CPU (24.10.)
+- Kernkapazität und `cpu-map` korrigiert (Rezept, PR #10): 428 ×6 / 1024 ×2, Cluster richtig erkannt.
+- **An Codeberg melden** (`codeberg.org/ums9230-mainline/linux`): cpu-map-Benennung (betrifft vermutlich alle UMS9230-Geräte),
+  gemessene Kapazitätswerte, dazu Patch 0017 (musb) und `sprd,pmic-type` der großen Kerne (Redmi: 0).
+- Neuer belegter vendor_boot: `vendor_boot_rezept.img` vom 24.10. → nach dem Test als `vendor_boot_cpu_ok.img` sichern und
+  in `deploy.sh` als Standard eintragen.
+- Takt/Spannung kommen aus der SML-Firmware (SMC, je Temperatur, Güteklasse `dvfs_bin`); Übertakten bleibt Thema für nach WLAN.
+- Profile (Server/Alltag/Spiele) als `leistung.conf`: Neigung der Automatik (Taktgrenzen, uclamp), nicht feste Takte.
+
 ## Andere Stände (aus dem Repo)
 - Modem: Firmware nicht signiert, trusty antwortet; **trusty-Teil bewusst zurückgestellt** bis zur rechtlichen
   Klärung. Nicht umgehen, auch nicht anbieten. Alles andere (sipc, Gerätebaum, Laden bis vor trusty) darf vorbereitet
