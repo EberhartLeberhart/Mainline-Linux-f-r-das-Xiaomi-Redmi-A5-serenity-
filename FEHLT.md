@@ -13,10 +13,11 @@ Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`).
 
 | Bereich | Stand | Was fehlt |
 |---|---|---|
-| CPU-Kapazität (big.LITTLE) | ❌ | Planer hält alle 8 Kerne für gleich stark (`cpu_capacity` 1024 bei cpu0 und cpu7). T7250 = 6× A55 + 2× A75 (cpu6/7). `capacity-dmips-mhz` fehlt im Gerätebaum (auch bei Codeberg) → Werte aus Xiaomis `dtb_a` holen |
+| CPU-Kapazität (big.LITTLE) | ✅ | 24.10.: selbst gemessen (sysbench, A55 0,498 / A75 1,053 Ereignisse je MHz) → `capacity-dmips-mhz` 484/1024; dazu `cpu-map`-Fehler behoben (cluster1 hieß core6/core7, der Kernel zählt je Cluster ab core0). Ergebnis: Kapazität 428 ×6 / 1024 ×2, Cluster 0-5 und 6-7 erkannt. **An Codeberg melden** |
 | Energiemodell / EAS | ❌ | `/sys/kernel/debug/energy_model` leer; braucht zusätzlich `dynamic-power-coefficient` je Kern (aus Xiaomis DT) |
 | Leerlauf-Stufen | 🟡 | `WFI` und `cpu-pd-lit` vorhanden; Cluster-Stufen und große Kerne prüfen ❓ |
 | devfreq (Speicher/GPU-Takt) | ❌ | `/sys/class/devfreq` leer |
+| Takt/Spannung, Übertakten | ❓ | Tabellen kommen per SMC aus der SML-Firmware (`DVFS_TABLE_UPDATE` je Temperatur, Güteklasse aus eFuse `dvfs_bin`); `boost` = 0, keine Boost-Stufen. Übertakten nur über geänderte SML – Idee für nach WLAN (zweites Redmi, Kühlung). Vom Kernel aus: Taktgrenzen nach unten (Profile Server/Alltag/Spiele), `sprd,voltage-margin` |
 | GPU Mali-G57 | 🟡 | Knoten `gpu@23100000` (`sprd,ums9230-mali`, `arm,mali-valhall-jm`) mit Takten, Reset, Interrupts, Power-Domain `gpu_top` ist im DT, aber `disabled`. Panfrost (=m) kennt `arm,mali-valhall-jm`. Fehlt: Temperaturgrenze `gpu-thermal`, `status = "okay"`, `panfrost.ko` aufs Handy, OPP-Tabelle für Taktstufen ❓, Mesa-Test |
 | Video-Decoder/-Encoder (VSP) | ❓ | Android `sprd_vsp`; in Mainline nichts bekannt |
 | JPEG-Einheit | ❓ | |

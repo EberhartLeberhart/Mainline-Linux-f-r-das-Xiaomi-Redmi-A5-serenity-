@@ -15,6 +15,9 @@ BASIS_DTB=~/redmi-unlock-work/serenity_v12.dtb
 FB_PH=$(fdtget "$BASIS_DTB" /reserved-memory/framebuffer-region@0 phandle 2>/dev/null || echo 109)
 DPU_PH=$(fdtget "$BASIS_DTB" /soc/dpu@31000000 phandle 2>/dev/null || echo 110)
 DSIOUT_PH=107; PANELIN_PH=108
+# 24.10.: Verweise der grossen Kerne fuer die korrigierte cpu-map (aus dem Basis-Geraetebaum, nicht geraten)
+CPU6_PH=$(fdtget "$BASIS_DTB" /cpus/cpu@600 phandle)
+CPU7_PH=$(fdtget "$BASIS_DTB" /cpus/cpu@700 phandle)
 DISP_AN=${DISPLAY_DRM:-1}   # DISPLAY_DRM=0 baut den Stand ohne Display-Treiber (simpledrm wie bisher)
 DISP_ARGS=()
 if [ "$DISP_AN" = 1 ]; then DISP_ARGS=(
@@ -68,6 +71,23 @@ fi
   /cpufreq status okay \
   `# 04.10.: grosse Kerne ueber PMIC-Regler 0 (power.from.extern=0, Xiaomi pmic-type-v2=0) - sonst Haenger` \
   /cpufreq/cluster@1 sprd,pmic-type u:0 \
+  `# 23.10.: Kernkapazitaet fuer den Planer (big.LITTLE), selbst gemessen: sysbench cpu, je 1 Kern auf Hoechsttakt,` \
+  `#   A55 cpu0 802/s bei 1612 MHz = 0,498/MHz, A75 cpu7 1916/s bei 1820 MHz = 1,053/MHz -> 484 : 1024` \
+  `#   (vorher fehlte der Wert, cpu_capacity war ueberall 1024). Beschreibt die Hardware, kein Profil.` \
+  /cpus/cpu@0 capacity-dmips-mhz u:484 \
+  /cpus/cpu@100 capacity-dmips-mhz u:484 \
+  /cpus/cpu@200 capacity-dmips-mhz u:484 \
+  /cpus/cpu@300 capacity-dmips-mhz u:484 \
+  /cpus/cpu@400 capacity-dmips-mhz u:484 \
+  /cpus/cpu@500 capacity-dmips-mhz u:484 \
+  /cpus/cpu@600 capacity-dmips-mhz u:1024 \
+  /cpus/cpu@700 capacity-dmips-mhz u:1024 \
+  `# 24.10.: cpu-map-Fehler im Codeberg-DT: grosse Kerne hiessen cluster1/core6 und core7. Der Kernel zaehlt in jedem` \
+  `#   Cluster ab core0 (arch_topology.c parse_cluster) -> fand in cluster1 nichts, verwarf die cpu-map, die grossen` \
+  `#   Kerne bekamen Kapazitaet 0 (Beleg 23.10.: 1024 x6, 0 x2). Richtig: core0/core1. core6/core7 bleiben stehen` \
+  `#   (vendorboot_dt.sh kann keine Knoten loeschen) und werden nicht mehr gelesen.` \
+  /cpus/cpu-map/cluster1/core0 cpu u:$CPU6_PH \
+  /cpus/cpu-map/cluster1/core1 cpu u:$CPU7_PH \
   `# 04.10.: Lautstaerketasten wie im Xiaomi-Overlay (Lauter: PMIC-EIC 4, Leiser: GPIO 124 invertiert)` \
   $GP phandle u:$GP_PH \
   /gpio-keys/key-volumeup label "Volume Up Key" \
