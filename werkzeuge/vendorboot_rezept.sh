@@ -42,6 +42,33 @@ if [ "$DISP_AN" = 1 ]; then DISP_ARGS=(
   /soc/dsi@31100000/ports/port@1/endpoint phandle u:$DSIOUT_PH \
   /soc/dsi@31100000/ports/port@1/endpoint remote-endpoint u:$PANELIN_PH )
 fi
+# 24.10.: Temperaturgrenzen fuer die GPU-Zone (vorher KEINE: gpu-thermal ohne trips). Aufbau wie cputop0-thermal:
+# passiv 70 °C -> CPU drosseln (GPU hat noch keine Taktstufen; gleicher Chip), kritisch 110 °C -> Abschalten.
+# Hysterese und Kuehlgeraete aus den CPU-Zonen des Basis-Geraetebaums gelesen, nicht geraten.
+TZ=/thermal-zones
+GPU_TRIP_PH=111            # neu; 105-110 sind im Rezept vergeben
+HYST_PASS=$(fdtget "$BASIS_DTB" $TZ/cputop0-thermal/trips/trip-point0 hysteresis)
+HYST_KRIT=$(fdtget "$BASIS_DTB" $TZ/cputop0-thermal/trips/cpu-crit hysteresis)
+KUEHL="$(fdtget -t u "$BASIS_DTB" $TZ/cputop0-thermal/cooling-maps/map0 cooling-device) $(fdtget -t u "$BASIS_DTB" $TZ/cputop1-thermal/cooling-maps/map0 cooling-device)"
+GPUTEMP_ARGS=(
+  $TZ/gpu-thermal/trips/gpu-passiv temperature u:70000 \
+  $TZ/gpu-thermal/trips/gpu-passiv hysteresis u:$HYST_PASS \
+  $TZ/gpu-thermal/trips/gpu-passiv type passive \
+  $TZ/gpu-thermal/trips/gpu-passiv phandle u:$GPU_TRIP_PH \
+  $TZ/gpu-thermal/trips/gpu-krit temperature u:110000 \
+  $TZ/gpu-thermal/trips/gpu-krit hysteresis u:$HYST_KRIT \
+  $TZ/gpu-thermal/trips/gpu-krit type critical \
+  $TZ/gpu-thermal/cooling-maps/map0 trip u:$GPU_TRIP_PH \
+  $TZ/gpu-thermal/cooling-maps/map0 cooling-device "u:$KUEHL" )
+# Schalter: GPU=0 baut den Stand ohne GPU. Seit 24.10. Standard an (Panfrost laedt, Mesa rechnet auf der Mali-G57,
+# glmark2 Score 228; belegt als vendor_boot_gpu_ok.img).
+GPU=${GPU:-1}
+GPU_ARGS=()
+if [ "$GPU" = 1 ]; then GPU_ARGS=(
+  `# 24.10.: Knoten war vollstaendig (Takte gpu/mem/bus, Reset, Power-Domain gpu_top, IRQ 60), nur disabled` \
+  /soc/gpu@23100000 status okay )
+fi
+
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -116,4 +143,6 @@ fi
   /soc/spi@20150000/touchscreen@0 touchscreen-size-x u:720 \
   /soc/spi@20150000/touchscreen@0 touchscreen-size-y u:1640 \
   "${DISP_ARGS[@]}" \
-  "${AKKU_ARGS[@]}"
+  "${AKKU_ARGS[@]}" \
+  "${GPUTEMP_ARGS[@]}" \
+  "${GPU_ARGS[@]}"

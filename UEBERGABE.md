@@ -187,12 +187,22 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
 
 ## CPU (24.10.)
 - Kernkapazität und `cpu-map` korrigiert (Rezept, PR #10): 428 ×6 / 1024 ×2, Cluster richtig erkannt.
-- **An Codeberg melden** (`codeberg.org/ums9230-mainline/linux`): cpu-map-Benennung (betrifft vermutlich alle UMS9230-Geräte),
+- Meldung an Codeberg **zurückgestellt** (kein Konto; wir gehen bewusst einen eigenen Weg, Codeberg/Xiaomi nur als
+  Referenz). Was man melden könnte (`codeberg.org/ums9230-mainline/linux`): cpu-map-Benennung (betrifft vermutlich alle UMS9230-Geräte),
   gemessene Kapazitätswerte, dazu Patch 0017 (musb) und `sprd,pmic-type` der großen Kerne (Redmi: 0).
 - Neuer belegter vendor_boot: `vendor_boot_rezept.img` vom 24.10. → nach dem Test als `vendor_boot_cpu_ok.img` sichern und
   in `deploy.sh` als Standard eintragen.
 - Takt/Spannung kommen aus der SML-Firmware (SMC, je Temperatur, Güteklasse `dvfs_bin`); Übertakten bleibt Thema für nach WLAN.
-- Profile (Server/Alltag/Spiele) als `leistung.conf`: Neigung der Automatik (Taktgrenzen, uclamp), nicht feste Takte.
+- Profile als `leistung.conf`, nach Ziel benannt (`sparsam` / `ausgewogen` / `leistung`) plus Kühlung (`normal` /
+  `kühlkörper`) – auch der Serverbetrieb kann Leistung brauchen. Grundsatz: Automatik (leise im Leerlauf, schnell unter
+  Last), das Profil verschiebt nur ihre Neigung (Taktgrenzen, uclamp), keine festen Takte.
+
+## GPU (24.10.)
+- Mali-G57 MP1 läuft mit Panfrost + Mesa (OpenGL ES 3.1), glmark2 Score 228; Rezept-Schalter `GPU=1` ist Standard,
+  belegter Stand `vendor_boot_gpu_ok.img` (Standard in `deploy.sh`). `gpu-thermal`: passiv 70 °C, kritisch 110 °C.
+- Module `panfrost.ko`/`gpu-sched.ko` wurden von Hand nach `/lib/modules/$(uname -r)/kernel/drivers/gpu/drm/` gelegt
+  + `depmod -a`. **Bei jedem neuen Kernel neu nötig** → nächster Schritt: `deploy.sh` mit `make modules_install`.
+- Offen: OPP-Tabelle (Taktstufen, devfreq) ❓ – Werte erst messen bzw. aus Xiaomis DT als Referenz.
 
 ## Andere Stände (aus dem Repo)
 - Modem: Firmware nicht signiert, trusty antwortet; **trusty-Teil bewusst zurückgestellt** bis zur rechtlichen
