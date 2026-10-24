@@ -69,6 +69,24 @@ if [ "$GPU" = 1 ]; then GPU_ARGS=(
   /soc/gpu@23100000 status okay )
 fi
 
+# 24.10.: PMIC-Regler (SC2730). Ziel: GPU-Spannung dcdc-gpu ablesen, spaeter fuer GPU-Taktstufen (OPP) regeln.
+# Der Treiber (CONFIG_REGULATOR_SC2730, war aus) wird vom PMIC-Treiber per Name angelegt (MFD_CELL_NAME
+# "sc2730-regulator") und findet seine Knoten ueber regulators/<name> (z. B. dcdc-gpu) - kein compatible noetig.
+# VORSICHT: Der Treiber meldet ALLE 32 Regler an. Knoten ohne regulator-always-on (eMMC, USB, WCN, SD ...) wuerde der
+# Kernel nach ~30 s als "unbenutzt" abschalten -> Absturz. Deshalb: alle ausser dcdc-gpu auf disabled (ein Regler ohne
+# DT-Knoten bekommt keine Rechte: weder ab- noch umschalten) und zusaetzlich regulator_ignore_unused.
+# dcdc-gpu bleibt wie im Basis-DT (always-on, 200000-1596875 = ganzer Bereich -> Kernel stellt nichts um, nur lesbar,
+# solange kein Verbraucher eine Spannung verlangt). Beim Laden schreibt der Treiber nur die Schreibschutz-Freigabe.
+# 25.10. belegt (vendor_boot_regler_ok.img): 32 Regler lesbar, nichts abgeschaltet, eMMC/USB/Display/Touch/GPU laufen.
+REGLER=${REGLER:-1}
+REGLER_ARGS=()
+if [ "$REGLER" = 1 ]; then
+  RG=/soc/spi@64200000/pmic@0/regulators
+  REGLER_ARGS=()
+  for r in dcdc-core dcdc-cpu dcdc-gen0 dcdc-gen1 dcdc-mem dcdc-memq dcdc-modem dcdc-sram ldo-avdd12 ldo-avdd18 ldo-vdd18-dcxo ldo-vdd28 ldo-vddcama0 ldo-vddcama1 ldo-vddcamd0 ldo-vddcamd1 ldo-vddcamio ldo-vddcammot ldo-vddemmccore ldo-vddkpled ldo-vddldo0 ldo-vddldo1 ldo-vddldo2 ldo-vddrf18 ldo-vddrf1v25 ldo-vddsdcore ldo-vddsdio ldo-vddsim2 ldo-vddusb33 ldo-vddwcn ldo-vddwifipa; do REGLER_ARGS+=( $RG/$r status disabled ); done
+  export CMDLINE_ZUSATZ="${CMDLINE_ZUSATZ:+$CMDLINE_ZUSATZ }regulator_ignore_unused"
+fi
+
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -145,4 +163,5 @@ fi
   "${DISP_ARGS[@]}" \
   "${AKKU_ARGS[@]}" \
   "${GPUTEMP_ARGS[@]}" \
-  "${GPU_ARGS[@]}"
+  "${GPU_ARGS[@]}" \
+  "${REGLER_ARGS[@]}"
