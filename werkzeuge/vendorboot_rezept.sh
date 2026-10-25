@@ -87,6 +87,29 @@ if [ "$REGLER" = 1 ]; then
   export CMDLINE_ZUSATZ="${CMDLINE_ZUSATZ:+$CMDLINE_ZUSATZ }regulator_ignore_unused"
 fi
 
+# 25.10.: GPU-Taktstufen (OPP) fuer Panfrost-devfreq. Spannung vorerst fuer ALLE Stufen 1,00 V
+# (= Bootloader-Wert; Realme-Referenz braucht hoechstens 0,80 V bei 850 MHz) -> nur der Takt wechselt.
+# Braucht den Kernel-Patch "clk: sprd: composite: Elternwechsel" (sonst teilt gpu-core-clk nur 384 MHz herunter).
+# Takt-Eltern: twpll-384m, twpll-512m, lpll-614m4, twpll-768m, gpll (850 MHz, gemessen 25.10.).
+# Belegt 25.10.: 384+512 MHz (glmark2 307 statt 228, 36 Wechsel, max. 27 °C); alle 5 Stufen: glmark2 460, jede
+#   Stufe mit eigener Quelle, 58 Wechsel, keine Panfrost-Fehler, max. 31 °C -> vendor_boot_opp_ok.img
+# mali-supply = dcdc-gpu (versorgt laut Realme-DT nur die GPU). opp-hz ist 64 Bit -> zwei Zahlen (hoch, niedrig).
+OPP=${OPP:-1}
+OPP_STUFEN=${OPP_STUFEN:-"384000000 512000000 614400000 768000000 850000000"}
+OPP_UV=1000000
+VDDGPU_PH=112; GPU_OPP_PH=113   # neu; 105-111 sind vergeben, Basis-DT endet bei 104 (0x68)
+OPP_ARGS=()
+if [ "$OPP" = 1 ]; then
+  OPP_ARGS=( /soc/spi@64200000/pmic@0/regulators/dcdc-gpu phandle u:$VDDGPU_PH \
+             /gpu-opp-table compatible operating-points-v2 \
+             /gpu-opp-table phandle u:$GPU_OPP_PH )
+  for hz in $OPP_STUFEN; do
+    OPP_ARGS+=( /gpu-opp-table/opp-$hz opp-hz "u:0 $hz" /gpu-opp-table/opp-$hz opp-microvolt u:$OPP_UV )
+  done
+  OPP_ARGS+=( /soc/gpu@23100000 operating-points-v2 u:$GPU_OPP_PH \
+              /soc/gpu@23100000 mali-supply u:$VDDGPU_PH )
+fi
+
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -164,4 +187,5 @@ fi
   "${AKKU_ARGS[@]}" \
   "${GPUTEMP_ARGS[@]}" \
   "${GPU_ARGS[@]}" \
-  "${REGLER_ARGS[@]}"
+  "${REGLER_ARGS[@]}" \
+  "${OPP_ARGS[@]}"

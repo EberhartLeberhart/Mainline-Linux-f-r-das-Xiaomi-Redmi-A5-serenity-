@@ -207,8 +207,16 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   nach ~30 s alle Regler ohne `always-on` ab (eMMC!). Belegt: `vendor_boot_regler_ok.img`, `vddgpu` = 1,00 V bei 384 MHz.
 - Referenz Realme (`qogirl6.dtsi`): 384/512/614,4/768/850 MHz bei 0,70/0,75/0,75/0,80/0,80 V, Güteklasse `gpu_bin`.
   `topdvfs` (Hardware-DVFS) regelt nur CPU/MM/Modem, nicht die GPU → `vddgpu` ist ein normaler Software-Regler.
-- Nächster Schritt: OPP-Tabelle + `mali-supply` im GPU-Knoten → Panfrost-devfreq; erst bei 1,00 V nur 384+512 MHz,
-  dann Stufe für Stufe; Spannung erst senken, wenn geklärt ist, ob `vddgpu` noch etwas anderes versorgt ❓.
+- 25.10.: Taktstufen laufen. Hindernis war der Spreadtrum-Takttyp `composite`: er teilt nur den aktuellen Elterntakt
+  (twpll-384m → 384/192/… MHz) und wechselt nie die Quelle. Patch 0026 fügt `sprd_comp_reparent_ops` hinzu (probiert
+  alle Eltern, nimmt den höchsten Takt ≤ Wunsch) und nutzt ihn **nur** für `gpu-core-clk`. Rezept `OPP=1` (Standard):
+  `/gpu-opp-table` mit 5 Stufen, alle 1,00 V, `mali-supply` = `dcdc-gpu` (phandle 112, Tabelle 113).
+  Messung: 384+512 → glmark2 307; alle 5 → 460 (vorher 228), jede Stufe mit eigener Quelle, keine Panfrost-Fehler,
+  max. 31 °C. Belegt: `vendor_boot_opp_ok.img`.
+- `vddgpu` versorgt laut Realme-DT nur die GPU. Nächster Schritt: Spannung je Stufe auf Android-Werte senken
+  (384 0,70 / 512 0,75 / 614,4 0,75 / 768 0,80 / 850 0,80 V) – erstes echtes Umstellen einer Spannung, eigener Test.
+- Achtung Kernelversion: jeder Kernel-Commit ändert `uname -r` → GPU-Module (panfrost, gpu-sched), cpufreq-Modul und
+  WLAN-Module neu bauen und nach `/lib/modules/<Version>` + `depmod`. Automatik in `deploy.sh` steht noch aus.
 
 ## Andere Stände (aus dem Repo)
 - Modem: Firmware nicht signiert, trusty antwortet; **trusty-Teil bewusst zurückgestellt** bis zur rechtlichen

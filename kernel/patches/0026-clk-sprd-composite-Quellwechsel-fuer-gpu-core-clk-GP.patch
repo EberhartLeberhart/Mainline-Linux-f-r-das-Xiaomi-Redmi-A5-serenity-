@@ -1,0 +1,150 @@
+From c123b766dcd66636487b029e4d45c4397d62ea7b Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 25 Oct 2026 18:16:02 +0100
+Subject: [PATCH] clk: sprd: composite: Quellwechsel fuer gpu-core-clk
+ (GPU-Taktstufen)
+
+Der Spreadtrum-Takttyp composite teilt bei clk_set_rate() nur den
+aktuellen Elterntakt und wechselt nie die Quelle. gpu-core-clk haengt
+an twpll-384m und konnte so nur 384/192/... MHz liefern - die GPU-
+Taktstufen 512/614,4/768/850 MHz (andere PLLs) waren unerreichbar.
+
+Neu: sprd_comp_reparent_ops - probiert alle Eltern, nimmt den hoechsten
+Takt, der den Wunsch nicht uebersteigt. Nur gpu-core-clk nutzt sie
+(SPRD_COMP_CLK_DATA_REPARENT), alle anderen Takte bleiben unveraendert.
+
+Getestet auf Redmi A5 (UMS9230): Panfrost-devfreq schaltet 384 (twpll-
+384m), 512 (twpll-512m), 614,4 (lpll-614m4), 768 (twpll-768m) und
+850 MHz (gpll); glmark2 228 -> 460, keine GPU-Fehler.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/clk/sprd/composite.c   | 57 ++++++++++++++++++++++++++++++++++
+ drivers/clk/sprd/composite.h   | 18 +++++++++++
+ drivers/clk/sprd/ums9230-clk.c |  2 +-
+ 3 files changed, 76 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/clk/sprd/composite.c b/drivers/clk/sprd/composite.c
+index ad6b6383e..f0ec63f57 100644
+--- a/drivers/clk/sprd/composite.c
++++ b/drivers/clk/sprd/composite.c
+@@ -17,6 +17,53 @@ static int sprd_comp_determine_rate(struct clk_hw *hw,
+ 	return divider_determine_rate(hw, req, NULL, cc->div.width, 0);
+ }
+ 
++/*
++ * Like sprd_comp_determine_rate(), but also considers the other parents of
++ * the mux: for every parent the best divider is computed and the parent
++ * giving the highest rate not above the request wins. Ties keep the lower
++ * parent index. Only for clocks that opt in via sprd_comp_reparent_ops
++ * (e.g. a GPU clock whose operating points need different PLLs).
++ */
++static int sprd_comp_determine_rate_reparent(struct clk_hw *hw,
++					     struct clk_rate_request *req)
++{
++	struct sprd_comp *cc = hw_to_sprd_comp(hw);
++	struct clk_rate_request tmp, best = { };
++	unsigned int i, num = clk_hw_get_num_parents(hw);
++	bool found = false;
++
++	for (i = 0; i < num; i++) {
++		struct clk_hw *parent = clk_hw_get_parent_by_index(hw, i);
++
++		if (!parent)
++			continue;
++
++		clk_hw_init_rate_request(hw, &tmp, req->rate);
++		tmp.best_parent_hw = parent;
++		tmp.best_parent_rate = clk_hw_get_rate(parent);
++		if (!tmp.best_parent_rate)
++			continue;
++
++		divider_determine_rate(hw, &tmp, NULL, cc->div.width, 0);
++		if (tmp.rate > req->rate)
++			continue;
++
++		if (!found || tmp.rate > best.rate) {
++			best = tmp;
++			found = true;
++		}
++	}
++
++	if (!found)
++		return sprd_comp_determine_rate(hw, req);
++
++	req->rate = best.rate;
++	req->best_parent_hw = best.best_parent_hw;
++	req->best_parent_rate = best.best_parent_rate;
++
++	return 0;
++}
++
+ static unsigned long sprd_comp_recalc_rate(struct clk_hw *hw,
+ 					  unsigned long parent_rate)
+ {
+@@ -57,3 +104,13 @@ const struct clk_ops sprd_comp_ops = {
+ 	.set_rate	= sprd_comp_set_rate,
+ };
+ EXPORT_SYMBOL_GPL(sprd_comp_ops);
++
++const struct clk_ops sprd_comp_reparent_ops = {
++	.get_parent	= sprd_comp_get_parent,
++	.set_parent	= sprd_comp_set_parent,
++
++	.determine_rate	= sprd_comp_determine_rate_reparent,
++	.recalc_rate	= sprd_comp_recalc_rate,
++	.set_rate	= sprd_comp_set_rate,
++};
++EXPORT_SYMBOL_GPL(sprd_comp_reparent_ops);
+diff --git a/drivers/clk/sprd/composite.h b/drivers/clk/sprd/composite.h
+index 15cec97d2..15aaa4540 100644
+--- a/drivers/clk/sprd/composite.h
++++ b/drivers/clk/sprd/composite.h
+@@ -74,6 +74,23 @@ struct sprd_comp {
+ 					_doffset, _dshift, _dwidth,	\
+ 					_flags)
+ 
++/* Like SPRD_COMP_CLK_DATA, but clk_set_rate() may also switch the parent */
++#define SPRD_COMP_CLK_DATA_REPARENT(_struct, _name, _parent, _reg,	\
++				    _mshift, _mwidth, _dshift, _dwidth,	\
++				    _flags)				\
++	struct sprd_comp _struct = {					\
++		.mux	= _SPRD_MUX_CLK(_mshift, _mwidth, NULL),	\
++		.div	= _SPRD_DIV_CLK(0x0, _dshift, _dwidth),		\
++		.common = {						\
++			.regmap		= NULL,				\
++			.reg		= _reg,				\
++			.hw.init = CLK_HW_INIT_PARENTS_DATA(_name,	\
++					_parent,			\
++					&sprd_comp_reparent_ops,	\
++					_flags),			\
++		}							\
++	}
++
+ static inline struct sprd_comp *hw_to_sprd_comp(const struct clk_hw *hw)
+ {
+ 	struct sprd_clk_common *common = hw_to_sprd_clk_common(hw);
+@@ -82,5 +99,6 @@ static inline struct sprd_comp *hw_to_sprd_comp(const struct clk_hw *hw)
+ }
+ 
+ extern const struct clk_ops sprd_comp_ops;
++extern const struct clk_ops sprd_comp_reparent_ops;
+ 
+ #endif /* _SPRD_COMPOSITE_H_ */
+diff --git a/drivers/clk/sprd/ums9230-clk.c b/drivers/clk/sprd/ums9230-clk.c
+index 88fd9b521..9948fdd6a 100644
+--- a/drivers/clk/sprd/ums9230-clk.c
++++ b/drivers/clk/sprd/ums9230-clk.c
+@@ -1829,7 +1829,7 @@ static const struct clk_parent_data gpu_parents[] = {
+ 	{ .hw = &gpll.common.hw  },
+ };
+ 
+-static SPRD_COMP_CLK_DATA(gpu_core_clk, "gpu-core-clk", gpu_parents,
++static SPRD_COMP_CLK_DATA_REPARENT(gpu_core_clk, "gpu-core-clk", gpu_parents,
+ 			  0x4, 4, 3, 8, 3, 0);
+ 
+ static SPRD_GATE_CLK_HW(gpu_core_gate, "gpu-core-gate", &gpu_core_clk.common.hw,
+-- 
+2.43.0
+
