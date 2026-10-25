@@ -1012,6 +1012,14 @@ r uboot_log uboot_log.bin
 strings uboot_log.bin | less
 ```
 
+## Thanks
+
+**Boot mascot "TuxSwing" (working title).** The idea for a boot mascot — Tux dancing in the style of 1930s jazz cartoons,
+with the project's goat in the background — came from a reader of this project, who suggested it on their own initiative
+(October 2026). The design is still being worked out, including a clean, self-made variant and the question of image
+rights, before anything is published here. It will be shown as the boot splash (Plymouth) once the system is ready for it;
+dancing and music only after the kernel and audio are stable. Thank you! 🐧🐐
+
 ---
 
 *Documentation by EberhartLeberhart — built from hands-on reverse engineering of two Xiaomi Redmi A5 devices.*  
