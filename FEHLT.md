@@ -7,7 +7,8 @@ Zum Abhaken. Belege und Einzelheiten stehen in [STATUS.md](STATUS.md), die Arbei
 Wachhund), Temperaturschutz, Akkuanzeige und Ladegrenze, USB-Gerät und -Host, LAN über USB-Adapter,
 Display (DRM) mit Helligkeit, Touch (Zuordnung geprüft, bis 10 Finger), Tasten, WCN-Kern mit allen
 sipc-Kanälen, `wlan0` mit Scan und Anmeldung (wpa_supplicant empfängt EAPOL 1/4), Krypto-Befehle der
-Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`), GPU Mali-G57 mit Panfrost und Mesa (OpenGL ES 3.1).
+Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`), GPU Mali-G57 mit Panfrost und Mesa (OpenGL ES 3.1),
+Vibrationsmotor.
 
 ## CPU, GPU und Beschleuniger
 
@@ -54,7 +55,6 @@ Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`), GPU Mali-G57 mit Panfrost und
 
 - Sensoren (Lage/Beschleunigung, Helligkeit, Annäherung) – Android lädt `sensorhub.ko`
 - microSD-Kartenleser (zweiter `sdhci`?)
-- Vibrationsmotor (SC2730, Mainline `sc27xx-vibra`)
 - Fingerabdrucksensor (falls verbaut)
 - Kopfhörer-Erkennung, USB-C-Kabelerkennung (`sc27xx_typec`)
 - Akku-Echtheitsprüfung DS28E30 (1-Wire, vermutlich unwichtig)
