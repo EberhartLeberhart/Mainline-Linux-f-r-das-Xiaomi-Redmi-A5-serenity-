@@ -170,6 +170,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | Ladestand speichern + nachkalibrieren | ✅ | 07.10.: Der FGU-Treiber übernimmt nach dem Start den im PMIC gespeicherten Ladestand – gespeichert wird aber nur durch Schreiben nach `capacity` (vorher stand nach jedem Start der Wert vom allerersten Start da). `redmi-akku.sh` speichert jetzt regelmäßig und kalibriert in Ruhe nach (|Strom| ≤ 15 mA für 15 min, Abweichung ≥ 3 Punkte → Ruhespannung über Xiaomis OCV-Tabelle aus dem DT, `calibrate` + `capacity`). Läuft auch im Handy-Modus |
 | I2C-Treiber (i2c-sprd) | 🟡 | 04.10.: meldet **kein NACK** – leere Adressen liefern den zuletzt gelesenen Wert (0x08 überall). Bei Bus-Scans nie auf „antwortet“ vertrauen, immer mehrere Register vergleichen |
 | Tasten | ✅ | 04.10.: Einschalttaste, Lauter, Leiser melden sich (PMIC-EIC + GPIO 124). **Einschalttaste 3 s halten = Herunterfahren** (`redmi-taste.service`), kurzer Druck tut nichts |
+| Vibrationsmotor | ✅ | 25.10.: Mainline-Treiber `sc27xx-vibra` (`CONFIG_INPUT_SC27XX_VIBRA=m`, kennt `sprd,sc2730-vibrator`); Gerät legt der PMIC-Treiber schon an, DT unverändert. Eingabegerät `sc27xx:vibrator` (Force-Feedback), Test `werkzeuge/redmi-vibratest.py [ms]` – Motor läuft |
 | PMIC SC2730 | ✅ | 04.10.: Grundtreiber, ADC (Akkuspannung ~4,42 V, Akkutemperatur ~22 °C, USB 4,86 V, Akku-ID → `bat.id=0`), eFuse, EIC |
 
 ## Temperatur
