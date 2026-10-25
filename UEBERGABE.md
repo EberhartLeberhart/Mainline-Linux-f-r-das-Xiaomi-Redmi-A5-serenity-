@@ -213,8 +213,12 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   `/gpu-opp-table` mit 5 Stufen, alle 1,00 V, `mali-supply` = `dcdc-gpu` (phandle 112, Tabelle 113).
   Messung: 384+512 → glmark2 307; alle 5 → 460 (vorher 228), jede Stufe mit eigener Quelle, keine Panfrost-Fehler,
   max. 31 °C. Belegt: `vendor_boot_opp_ok.img`.
-- `vddgpu` versorgt laut Realme-DT nur die GPU. Nächster Schritt: Spannung je Stufe auf Android-Werte senken
-  (384 0,70 / 512 0,75 / 614,4 0,75 / 768 0,80 / 850 0,80 V) – erstes echtes Umstellen einer Spannung, eigener Test.
+- `vddgpu` versorgt laut Realme-DT nur die GPU. 25.10.: alle Stufen auf **0,85 V** (Rezept `OPP_UV`, Standard 850000),
+  belegt als `vendor_boot_opp850mv_ok.img`: glmark2 452, keine GPU-Fehler. Strommessung auf Akku (Kabel ab, Display aus,
+  Skript `/root/strommessung.sh`): Leerlauf 54/53 mA, GPU-Last 850 MHz 262 → 253 mA. Die GPU (1 Shaderkern) ist ein
+  kleiner Verbraucher, den Großteil unter glmark machen CPU und Speicher. Einzelwerte je Stufe (Android 0,70–0,80 V)
+  bewusst zurückgestellt – erst den Kernel fertig machen.
+- Strom messen geht nur ohne Kabel: am Kabel hält die Ladegrenze den Akku an, der Messchip zeigt ~0 mA.
 - Kernelversion: jeder Kernel-Commit ändert `uname -r` → die Module müssen in den passenden Ordner. Seit 25.10. macht
   das `deploy.sh` selbst: `make modules_install` (gestrippt) → Prüfung gegen `boot_mainline.img` (sonst Abbruch VOR dem
   Schreiben) → `/lib/modules/<Version>` + `depmod`; alte eigene Ordner (`-g<Hash>`) bis auf neu, laufend und einen

@@ -5,7 +5,8 @@
 # Nutzung: ~/redmi-build/deploy.sh [vendor_boot-image]
 set -e
 cd ~/redmi-build
-VB=${1:-vendor_boot_opp_ok.img}   # zuletzt belegter Stand (25.10., Display + Touch + CPU + GPU mit Taktstufen 384-850 MHz +
+VB=${1:-vendor_boot_opp850mv_ok.img}   # zuletzt belegter Stand (25.10., wie opp_ok, GPU-Spannung 0,85 V statt 1,00 V; davor opp_ok:
+                                  # Display + Touch + CPU + GPU mit Taktstufen 384-850 MHz +
                                   # PMIC-Regler; braucht Patch 0026 + CONFIG_REGULATOR_SC2730=y; davor vendor_boot_regler_ok.img); vendor_boot_ok.img (04.10.) hat
                                   # noch kein Display/Touch im Geraetebaum (23.10. versehentlich benutzt). Rettung: vendor_boot_usb2.img
 
