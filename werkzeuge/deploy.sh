@@ -27,6 +27,36 @@ if [ -f "$KO" ]; then
     fi
 fi
 
+# 25.10.: ALLE Kernel-Module (=m) automatisch mitliefern - vorher einzeln von Hand (/root, /lib/modules), nach jedem
+# Kernel-Commit fehlten sie (neue Version = neuer Modulordner). make modules_install legt sie genau so ab, wie der Kernel
+# sie sucht (/lib/modules/<Version>/...); danach depmod auf dem Handy. Bricht VOR dem Schreiben ab, wenn etwas nicht passt.
+# Ausschalten: MODULE=0 ~/redmi-build/deploy.sh
+K=~/ums9230-linux
+MODDIR=~/redmi-build/module
+if [ "${MODULE:-1}" = 1 ]; then
+    rm -rf "$MODDIR"
+    make -s -C "$K" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH="$MODDIR" INSTALL_MOD_STRIP=1 \
+        modules_install > /dev/null || { echo "FEHLER: modules_install - erst 'make modules' im Kernelbaum"; exit 1; }
+    [ -d "$MODDIR/lib/modules/$kver" ] || { echo "FEHLER: Module sind fuer $(ls "$MODDIR/lib/modules"), Kernel ist $kver - neu bauen"; exit 1; }
+    rm -f "$MODDIR/lib/modules/$kver/build" "$MODDIR/lib/modules/$kver/source"   # Verweise auf den PC-Quellbaum
+    echo ">>> Module fuer $kver: $(find "$MODDIR/lib/modules/$kver" -name '*.ko*' | wc -l) Stueck, $(du -sh "$MODDIR/lib/modules/$kver" | cut -f1)"
+    tar -C "$MODDIR/lib/modules" -czf - "$kver" | ssh root@192.168.7.2 "set -e
+        rm -rf /lib/modules/$kver.neu && mkdir /lib/modules/$kver.neu
+        tar -xzf - -C /lib/modules/$kver.neu
+        rm -rf /lib/modules/$kver && mv /lib/modules/$kver.neu/$kver /lib/modules/$kver && rmdir /lib/modules/$kver.neu
+        depmod -a $kver
+        # Aufraeumen: NUR eigene Kernel-Ordner (Name endet auf -g<12 Hex>[-dirty], nicht z. B. -generic) bis auf
+        # neuen, laufenden und einen weiteren loeschen
+        laeuft=\$(uname -r); weitere=0
+        for v in \$(ls -t /lib/modules/ | grep -E -- '-g[0-9a-f]{12}(-dirty)?\$'); do
+            d=/lib/modules/\$v
+            [ \"\$v\" = \"$kver\" ] || [ \"\$v\" = \"\$laeuft\" ] && continue
+            weitere=\$((weitere+1)); [ \$weitere -le 1 ] && continue
+            echo \">>> alter Modulordner geloescht: \$v\"; rm -rf \"\$d\"
+        done
+        echo \">>> Module installiert: /lib/modules/$kver\""
+fi
+
 echo ">>> kopiere boot_mainline.img + $VB + misc_b.img"
 scp -q boot_mainline.img "$VB" misc_b.img root@192.168.7.2:/tmp/
 ssh root@192.168.7.2 "dd if=/tmp/boot_mainline.img of=/dev/disk/by-partlabel/boot_b bs=1M status=none && \

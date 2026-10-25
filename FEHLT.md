@@ -36,7 +36,7 @@ Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`), GPU Mali-G57 mit Panfrost und
 | Ladechip | nur per `i2cset`; drei mögliche Chips (SGM41513 getestet, SC89601, UPM6922 nicht) |
 | Start | `redmi-boot-ok.service` markiert fest Slot b; Bootlogo (`logo_b`) wirkt nicht |
 | PMIC-Regler (SC2730) | 25.10.: Treiber an (`CONFIG_REGULATOR_SC2730=y`, legt der PMIC-Treiber per Name an), alle 32 Regler mit Spannung lesbar. Zum Schutz alle außer `dcdc-gpu` im DT `disabled` + `regulator_ignore_unused` (sonst schaltet der Kernel 19 Regler ohne `always-on` ab, u. a. eMMC). Später: Verbraucher (eMMC, SD, WCN, USB) richtig an ihre Regler binden, dann Schutz lockern |
-| Module | bisher einzeln von Hand kopiert (`/root`, `/usr/local/lib/redmi`); geplant: `deploy.sh` mit `make modules_install` → `/lib/modules/<Version>` + `depmod`, alte Ordner bis auf zwei aufräumen |
+| Module | ✅ 25.10.: `deploy.sh` liefert alle Module mit (`modules_install` → `/lib/modules/<Version>` + `depmod`, räumt alte auf). Offen: cpufreq-Sonderweg (`/usr/local/lib/redmi`) und `wcn_lauscher.ko` (außerhalb des Baums, `/root`) vereinheitlichen |
 
 ## Fehlt (❌)
 

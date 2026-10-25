@@ -215,8 +215,12 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   max. 31 °C. Belegt: `vendor_boot_opp_ok.img`.
 - `vddgpu` versorgt laut Realme-DT nur die GPU. Nächster Schritt: Spannung je Stufe auf Android-Werte senken
   (384 0,70 / 512 0,75 / 614,4 0,75 / 768 0,80 / 850 0,80 V) – erstes echtes Umstellen einer Spannung, eigener Test.
-- Achtung Kernelversion: jeder Kernel-Commit ändert `uname -r` → GPU-Module (panfrost, gpu-sched), cpufreq-Modul und
-  WLAN-Module neu bauen und nach `/lib/modules/<Version>` + `depmod`. Automatik in `deploy.sh` steht noch aus.
+- Kernelversion: jeder Kernel-Commit ändert `uname -r` → die Module müssen in den passenden Ordner. Seit 25.10. macht
+  das `deploy.sh` selbst: `make modules_install` (gestrippt) → Prüfung gegen `boot_mainline.img` (sonst Abbruch VOR dem
+  Schreiben) → `/lib/modules/<Version>` + `depmod`; alte eigene Ordner (`-g<Hash>`) bis auf neu, laufend und einen
+  weiteren werden gelöscht. Abschalten mit `MODULE=0`. Beleg: 849 Module, 48 MB; nach dem Start laden von selbst nur
+  panfrost/gpu_sched, cfg80211/rfkill, fuse, dm_mod, sha256 (+ cpufreq über den Dienst), keine Fehler.
+  Vorher immer `make Image modules` bauen. Das cpufreq-Modul liegt zusätzlich in `/usr/local/lib/redmi` (Dienst, blacklist).
 
 ## Andere Stände (aus dem Repo)
 - Modem: Firmware nicht signiert, trusty antwortet; **trusty-Teil bewusst zurückgestellt** bis zur rechtlichen
