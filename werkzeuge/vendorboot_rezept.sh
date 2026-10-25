@@ -96,7 +96,10 @@ fi
 # mali-supply = dcdc-gpu (versorgt laut Realme-DT nur die GPU). opp-hz ist 64 Bit -> zwei Zahlen (hoch, niedrig).
 OPP=${OPP:-1}
 OPP_STUFEN=${OPP_STUFEN:-"384000000 512000000 614400000 768000000 850000000"}
-OPP_UV=1000000
+# 25.10.: 0,85 V fuer alle Stufen (50 mV ueber Androids Hoechstwert 0,80 V bei 850 MHz). Belegt: glmark2 452, keine
+#   GPU-Fehler; Akkustrom unter GPU-Last 262 -> 253 mA (Leerlauf unveraendert 53 mA, Display aus) -> vendor_boot_opp850mv_ok.img
+#   Einzelwerte je Stufe (Android 0,70-0,80 V) bewusst zurueckgestellt: nur wenige mA Nutzen, weniger Reserve.
+OPP_UV=${OPP_UV:-850000}
 VDDGPU_PH=112; GPU_OPP_PH=113   # neu; 105-111 sind vergeben, Basis-DT endet bei 104 (0x68)
 OPP_ARGS=()
 if [ "$OPP" = 1 ]; then
