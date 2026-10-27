@@ -8,7 +8,7 @@ Wachhund), Temperaturschutz, Akkuanzeige und Ladegrenze, USB-Gerät und -Host, L
 Display (DRM) mit Helligkeit, Touch (Zuordnung geprüft, bis 10 Finger), Tasten, WCN-Kern mit allen
 sipc-Kanälen, `wlan0` mit Scan und Anmeldung (wpa_supplicant empfängt EAPOL 1/4), Krypto-Befehle der
 Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`), GPU Mali-G57 mit Panfrost und Mesa (OpenGL ES 3.1),
-Vibrationsmotor.
+Vibrationsmotor, microSD-Kartenleser.
 
 ## CPU, GPU und Beschleuniger
 
@@ -35,6 +35,7 @@ Vibrationsmotor.
 | USB | Rollenwechsel: ein seltener Fehlschlag; Gadget-MAC wechselt bei jedem Start |
 | i2c-sprd | meldet kein NACK |
 | Ladechip | nur per `i2cset`; drei mögliche Chips (SGM41513 getestet, SC89601, UPM6922 nicht) |
+| microSD | 27.10.: läuft (High Speed, 20,8 MB/s lesend). Fehlt: UHS-Modi (SDR50/104, 1,8-V-Signalpegel) für mehr Tempo ❓; Idee für später: System auf SD-Karte (Root auf `mmcblk1`), mit kexec-Startmenü wählbar |
 | Start | `redmi-boot-ok.service` markiert fest Slot b; Bootlogo (`logo_b`) wirkt nicht |
 | PMIC-Regler (SC2730) | 25.10.: Treiber an (`CONFIG_REGULATOR_SC2730=y`, legt der PMIC-Treiber per Name an), alle 32 Regler mit Spannung lesbar. Zum Schutz alle außer `dcdc-gpu` im DT `disabled` + `regulator_ignore_unused` (sonst schaltet der Kernel 19 Regler ohne `always-on` ab, u. a. eMMC). Später: Verbraucher (eMMC, SD, WCN, USB) richtig an ihre Regler binden, dann Schutz lockern |
 | Module | ✅ 25.10.: `deploy.sh` liefert alle Module mit (`modules_install` → `/lib/modules/<Version>` + `depmod`, räumt alte auf). Offen: cpufreq-Sonderweg (`/usr/local/lib/redmi`) und `wcn_lauscher.ko` (außerhalb des Baums, `/root`) vereinheitlichen |
@@ -54,7 +55,6 @@ Vibrationsmotor.
 ## Noch nicht untersucht (❓)
 
 - Sensoren (Lage/Beschleunigung, Helligkeit, Annäherung) – Android lädt `sensorhub.ko`
-- microSD-Kartenleser (zweiter `sdhci`?)
 - Fingerabdrucksensor (falls verbaut)
 - Kopfhörer-Erkennung, USB-C-Kabelerkennung (`sc27xx_typec`)
 - Akku-Echtheitsprüfung DS28E30 (1-Wire, vermutlich unwichtig)
