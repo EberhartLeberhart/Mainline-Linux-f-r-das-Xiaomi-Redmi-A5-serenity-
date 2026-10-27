@@ -233,3 +233,13 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   formulieren.
 - `kernel/modem-sipc/`: Plan für den sipc-Port (smem → sipc → smsg → sbuf → sblock), Vorlage mu300-linux.
 - Ziel/Motivation: Redmi A5 als günstiges, offenes Linux-Multitool (Anregung: Flipper One), plus Server.
+
+## microSD (27.10.)
+- Kartenleser `mmc@201a0000` läuft (Rezept `SD=1`, Standard): Werte aus Xiaomis Original-DT (`serenity_stock.dts`) und
+  Overlay (`dtbo/overlay_0.dts`, fragment@36). Die beiden SD-Regler sind die einzige Ausnahme von der Regler-Sperre und
+  fest auf 3,0 V. Beleg `vendor_boot_sd_ok.img`: 128-GB-SDXC, 20,8 MB/s lesend, Ein-/Ausstecken erkannt.
+- ❓ Kurz nach dem Start zeigte die cd-Leitung einmal `hi` ohne Karte; im Betrieb stimmt sie (raus `lo`, rein `hi`).
+  Beobachten.
+- Später: UHS (SDR50/104, braucht Umschalten von `vddsdio` auf 1,8 V → dann min/max 1,8–3,0 V); Root-Dateisystem auf
+  SD-Karte und Auswahl über das kexec-Startmenü (Idee des Nutzers, „von SD-Karte booten“).
+

@@ -79,11 +79,14 @@ fi
 # solange kein Verbraucher eine Spannung verlangt). Beim Laden schreibt der Treiber nur die Schreibschutz-Freigabe.
 # 25.10. belegt (vendor_boot_regler_ok.img): 32 Regler lesbar, nichts abgeschaltet, eMMC/USB/Display/Touch/GPU laufen.
 REGLER=${REGLER:-1}
+SD=${SD:-1}   # Schalter fuer den SD-Kartenleser (unten); gibt dafuer ldo-vddsdcore/ldo-vddsdio frei
 REGLER_ARGS=()
 if [ "$REGLER" = 1 ]; then
   RG=/soc/spi@64200000/pmic@0/regulators
   REGLER_ARGS=()
-  for r in dcdc-core dcdc-cpu dcdc-gen0 dcdc-gen1 dcdc-mem dcdc-memq dcdc-modem dcdc-sram ldo-avdd12 ldo-avdd18 ldo-vdd18-dcxo ldo-vdd28 ldo-vddcama0 ldo-vddcama1 ldo-vddcamd0 ldo-vddcamd1 ldo-vddcamio ldo-vddcammot ldo-vddemmccore ldo-vddkpled ldo-vddldo0 ldo-vddldo1 ldo-vddldo2 ldo-vddrf18 ldo-vddrf1v25 ldo-vddsdcore ldo-vddsdio ldo-vddsim2 ldo-vddusb33 ldo-vddwcn ldo-vddwifipa; do REGLER_ARGS+=( $RG/$r status disabled ); done
+  for r in dcdc-core dcdc-cpu dcdc-gen0 dcdc-gen1 dcdc-mem dcdc-memq dcdc-modem dcdc-sram ldo-avdd12 ldo-avdd18 ldo-vdd18-dcxo ldo-vdd28 ldo-vddcama0 ldo-vddcama1 ldo-vddcamd0 ldo-vddcamd1 ldo-vddcamio ldo-vddcammot ldo-vddemmccore ldo-vddkpled ldo-vddldo0 ldo-vddldo1 ldo-vddldo2 ldo-vddrf18 ldo-vddrf1v25 ldo-vddsdcore ldo-vddsdio ldo-vddsim2 ldo-vddusb33 ldo-vddwcn ldo-vddwifipa; do
+    [ "$SD" = 1 ] && { [ $r = ldo-vddsdcore ] || [ $r = ldo-vddsdio ]; } && continue
+    REGLER_ARGS+=( $RG/$r status disabled ); done
   export CMDLINE_ZUSATZ="${CMDLINE_ZUSATZ:+$CMDLINE_ZUSATZ }regulator_ignore_unused"
 fi
 
@@ -111,6 +114,38 @@ if [ "$OPP" = 1 ]; then
   done
   OPP_ARGS+=( /soc/gpu@23100000 operating-points-v2 u:$GPU_OPP_PH \
               /soc/gpu@23100000 mali-supply u:$VDDGPU_PH )
+fi
+
+# 27.10.: microSD-Kartenleser = mmc@201a0000 (Xiaomi "sdio_sd", alias mmc1). Werte aus Xiaomis Original-DT
+#   (serenity_stock.dts) und Overlay (dtbo overlay_0, fragment@36): Karte-steckt-Leitung eic_sync 35 aktiv-high,
+#   Versorgung vmmc = ldo-vddsdcore, vqmmc = ldo-vddsdio, beide 3,0 V (voltage-ranges 3000), 4 Bit,
+#   phy-delay legacy/highspeed wie Xiaomi. UHS (sdr50/104, Umschalten auf 1,8 V) bewusst NOCH NICHT.
+#   Die beiden Regler werden auf genau 3,0 V festgelegt (min = max): steht schon so im Register, der Kernel darf
+#   sie nur ein-/ausschalten, nicht verstellen.
+#   Belegt 27.10. (vendor_boot_sd_ok.img): SDXC 128 GB "high speed", Partitionen gelesen, 20,8 MB/s lesend (nahe am
+#   Hoechstwert von High Speed, ~25 MB/s); Herausziehen/Einstecken erkannt (cd lo = keine Karte, hi = Karte).
+#   no-sdio/no-mmc sind reine Schalter ohne Wert: "u:" ohne Zahl schreibt eine leere Eigenschaft (sonst warnt der Kernel).
+EIC_SYNC_PH=114; SDCORE_PH=115; SDIO_PH=116   # neu; 105-113 sind vergeben
+SD_ARGS=()
+if [ "$SD" = 1 ]; then
+  RG=/soc/spi@64200000/pmic@0/regulators
+  SD_ARGS=(
+    /soc/gpio@641000c0 phandle u:$EIC_SYNC_PH \
+    $RG/ldo-vddsdcore phandle u:$SDCORE_PH \
+    $RG/ldo-vddsdcore regulator-min-microvolt u:3000000 \
+    $RG/ldo-vddsdcore regulator-max-microvolt u:3000000 \
+    $RG/ldo-vddsdio phandle u:$SDIO_PH \
+    $RG/ldo-vddsdio regulator-min-microvolt u:3000000 \
+    $RG/ldo-vddsdio regulator-max-microvolt u:3000000 \
+    /soc/mmc@201a0000 vmmc-supply u:$SDCORE_PH \
+    /soc/mmc@201a0000 vqmmc-supply u:$SDIO_PH \
+    /soc/mmc@201a0000 bus-width u:4 \
+    /soc/mmc@201a0000 cd-gpios "u:$EIC_SYNC_PH 35 0" \
+    /soc/mmc@201a0000 sprd,phy-delay-legacy "u:0x7f 0x1a 0x9a 0x9a" \
+    /soc/mmc@201a0000 sprd,phy-delay-sd-highspeed "u:0x7f 0x1a 0x9a 0x9a" \
+    /soc/mmc@201a0000 no-sdio u: \
+    /soc/mmc@201a0000 no-mmc u: \
+    /soc/mmc@201a0000 status okay )
 fi
 
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
@@ -191,4 +226,5 @@ fi
   "${GPUTEMP_ARGS[@]}" \
   "${GPU_ARGS[@]}" \
   "${REGLER_ARGS[@]}" \
-  "${OPP_ARGS[@]}"
+  "${OPP_ARGS[@]}" \
+  "${SD_ARGS[@]}"
