@@ -1,0 +1,110 @@
+From 10785784cbeccc2ac6adac29aed194dcb22fc0fd Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Wed, 28 Oct 2026 18:20:17 +0100
+Subject: [PATCH] Input: nt36xxx: Waechter-Absturz erkennen und Firmware
+ wirklich neu laden
+
+- Das Absturzmuster der Firmware (0xFD/0xFE/0x77) steht in den Ereignis-
+  Bytes 1..6 wie bei Novateks nvt_wdt_fw_recovery(); Byte 0 gehoert nicht
+  dazu (wie bei den Koordinaten, ppos = 6 * i + 1). Bisher wurde nur
+  point[0] geprueft, ein Absturz wurde nie erkannt. Gemessen auf dem
+  Redmi A5 (NT36528): "ff fd fd fd fd fd fd fd".
+- Bei der Wiederherstellung DOWNLOAD_COMPLETE zuruecksetzen (wie in
+  nt36xxx_internal_pm_resume()), sonst bricht der Download sofort ab;
+  Wartezeit 100 ms statt 40000 Ticks.
+- devm_pm_runtime_enable(): beim Abmelden wieder aus, kein "Unbalanced
+  pm_runtime_enable!" beim Neu-Anmelden.
+- Ungenutzte Variable press_id entfernt (W=1-Warnung).
+
+Getestet: Panel-Schlaf per DCS ohne Abmelden -> Alarm erkannt, 0,45 s
+spaeter "Touch IC fw loaded ok", danach keine Interrupts mehr, evtest
+487 Positionen in 6 s.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/input/touchscreen/nt36xxx_core.c | 34 ++++++++++++++++--------
+ 1 file changed, 23 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/input/touchscreen/nt36xxx_core.c b/drivers/input/touchscreen/nt36xxx_core.c
+index 677ab87c8..eb11081d7 100644
+--- a/drivers/input/touchscreen/nt36xxx_core.c
++++ b/drivers/input/touchscreen/nt36xxx_core.c
+@@ -536,7 +536,6 @@ static void nt36xxx_report(struct nt36xxx_ts *ts)
+ 	u8 point[POINT_DATA_LEN + 1] = { 0 };
+ 	unsigned int ppos = 0;
+ 	int i, ret, finger_cnt = 0;
+-	uint8_t press_id[TOUCH_MAX_FINGER_NUM] = {0};
+ 
+ 	if (ts->status & NT36XXX_STATUS_SUSPEND)
+ 		return;
+@@ -549,12 +548,20 @@ static void nt36xxx_report(struct nt36xxx_ts *ts)
+ 		goto xfer_error;
+ 	}
+ 
+-	/* wdt recovery and esd check */
+-	for (i = 0; i < 7; i++) {
+-		if ((point[i] != 0xFD) && (point[i] != 0xFE) && (point[i] != 0x77)) {
++	/*
++	 * Waechter (WDT) / ESD: nach einem Absturz meldet die Firmware in den Ereignis-Bytes 1..6
++	 * nur noch 0xFD/0xFE/0x77 (Novatek nvt_wdt_fw_recovery prueft genau diese Bytes). Byte 0
++	 * gehoert nicht dazu - wie bei den Koordinaten (ppos = 6 * i + 1). Vorher wurde nur point[0]
++	 * geprueft, ein Absturz (z. B. nach Panel-Schlaf) wurde nie erkannt.
++	 */
++	for (i = 1; i < 7; i++) {
++		if ((point[i] != 0xFD) && (point[i] != 0xFE) && (point[i] != 0x77))
+ 			break;
+-		}
+-
++	}
++	if (i == 7) {
++		dev_warn_ratelimited(ts->dev,
++				     "Waechter-Alarm (%*ph) - Firmware wird neu geladen\n",
++				     8, point);
+ 		mutex_lock(&ts->lock);
+ 		ts->status |= NT36XXX_STATUS_DOWNLOAD_RECOVER;
+ 		mutex_unlock(&ts->lock);
+@@ -594,8 +601,6 @@ static void nt36xxx_report(struct nt36xxx_ts *ts)
+ 			if (obj->z == 0)
+ 				obj->z = 1;
+ 
+-			press_id[input_id - 1] = 1;
+-
+ 			input_mt_slot(input, input_id - 1);
+ 			input_mt_report_slot_state(input,
+ 						   MT_TOOL_FINGER, true);
+@@ -636,13 +641,17 @@ static irqreturn_t nt36xxx_irq_handler(int irq, void *dev_id)
+ 
+ exit:
+ 	if (ts->status & NT36XXX_STATUS_DOWNLOAD_RECOVER) {
++		/*
++		 * DOWNLOAD_COMPLETE zuruecksetzen, sonst bricht nt36xxx_download_firmware() sofort ab
++		 * (wie in nt36xxx_internal_pm_resume()); vorher wurde nach einem Absturz nie neu geladen.
++		 */
+ 		mutex_lock(&ts->lock);
+-		ts->status &= ~NT36XXX_STATUS_DOWNLOAD_RECOVER;
++		ts->status &= ~(NT36XXX_STATUS_DOWNLOAD_RECOVER | NT36XXX_STATUS_DOWNLOAD_COMPLETE);
+ 		mutex_unlock(&ts->lock);
+ 		/* TODO: other builtin eeprom model might have another reset
+ 		 * approach other than download, might add here afterward */
+ 		if (ts->fw_name)
+-			schedule_delayed_work(&ts->work, 40000);
++			schedule_delayed_work(&ts->work, msecs_to_jiffies(100));
+ 	}
+ 
+ 	return IRQ_HANDLED;
+@@ -1400,7 +1409,10 @@ int nt36xxx_probe(struct device *dev, int irq, const struct input_id *id,
+ 		ts->panel_follower.funcs = &nt36xxx_panel_follower_funcs;
+ 		devm_drm_panel_add_follower(dev, &ts->panel_follower);
+ 	} else {
+-		pm_runtime_enable(dev);
++		/* devm: beim Abmelden wieder aus (sonst "Unbalanced pm_runtime_enable!" beim Neu-Anmelden) */
++		ret = devm_pm_runtime_enable(dev);
++		if (ret)
++			return ret;
+ 	}
+ 
+ 	/* have to make sure this is first time schedule work, if devm_drm_panel_add_follower
+-- 
+2.43.0
+
