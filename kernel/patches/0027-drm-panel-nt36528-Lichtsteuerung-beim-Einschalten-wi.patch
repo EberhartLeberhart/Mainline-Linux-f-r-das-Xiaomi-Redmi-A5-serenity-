@@ -1,0 +1,52 @@
+From 54d86886c583d04244eca45368827aa4ca468d39 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Wed, 28 Oct 2026 17:42:45 +0100
+Subject: [PATCH] drm/panel: nt36528: Lichtsteuerung beim Einschalten wieder
+ setzen (0x53)
+
+nt36528_off() schaltet wie Xiaomis sleep-in-command die Helligkeits-
+steuerung mit 0x53 00 ab, nt36528_on() setzte sie nie wieder. Nach einem
+Aus/An ueber den DRM-Treiber war das Panel deshalb wach (DCS 0x0a = 0x9c),
+aber dunkel (0x54 = 0x00). Der Bootloader setzt 0x53 = 0x2c (BCTRL | DD |
+BL); jetzt setzt nt36528_on() denselben Wert nach Display-On.
+
+Getestet auf Redmi A5: fb-blank/unblank -> Bild kommt von selbst zurueck,
+0x0a/0x54 vorher und nachher 0x9c/0x2c.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+index 026cfb85a..57d596443 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36528.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -23,6 +23,8 @@
+ #include <drm/drm_panel.h>
+ #include <drm/drm_probe_helper.h>
+ 
++#include <video/mipi_display.h>
++
+ #define NT36528_HELL_MAX	4095
+ #define NT36528_HELL_START	500
+ 
+@@ -65,6 +67,14 @@ static int nt36528_on(struct nt36528_panel *ctx)
+ 	mipi_dsi_dcs_set_display_on_multi(&dsi_ctx);
+ 	mipi_dsi_msleep(&dsi_ctx, 20);
+ 
++	/*
++	 * Helligkeitssteuerung wieder einschalten: nt36528_off() schaltet sie wie Xiaomis
++	 * sleep-in-command mit 0x53 00 ab. Beim Start setzt der Bootloader 0x53 = 0x2c
++	 * (BCTRL | DD | BL, gelesen per DCS 0x54), ohne diesen Befehl blieb das Panel nach
++	 * einem Aus/An ueber den Treiber zwar wach (0x0a = 0x9c), aber dunkel (Beleg 27.10.).
++	 */
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, 0x2c);
++
+ 	return dsi_ctx.accum_err;
+ }
+ 
+-- 
+2.43.0
+

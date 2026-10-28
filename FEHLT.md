@@ -30,7 +30,7 @@ Vibrationsmotor, microSD-Kartenleser.
 | Bereich | Was fehlt |
 |---|---|
 | WLAN | Senden über einen Datenkanal, Schlüssel (`WIFI_CMD_KEY`), DHCP → SSH; Lauscher in sauberen Treiber aufteilen (sipc-Kern + WLAN) |
-| Display-Schlaf | Ab-/Anschalten über den DRM-Treiber bringt das Panel nicht wieder an; Umweg über direkte DSI-Befehle |
+| Display-Schlaf | 28.10.: Aus/An über den DRM-Treiber **geht** (Patch 0027: `0x53 = 0x2c` beim Einschalten; vorher Panel wach, Licht aus). Fehlt: `redmi-licht.sh` auf Schlaf über den Treiber umstellen (DPU/DSI aus), Strom neu messen, Touch als Panel-Follower |
 | Touch | Wächter-Signal ein Byte zu früh geprüft (lädt nicht selbst neu); als Panel-Follower ans Display koppeln |
 | USB | Rollenwechsel: ein seltener Fehlschlag; Gadget-MAC wechselt bei jedem Start |
 | i2c-sprd | meldet kein NACK |
