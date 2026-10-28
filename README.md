@@ -1020,11 +1020,11 @@ images with their own notice per folder in `bilder/`. Vendor firmware and device
 
 ## Thanks
 
-**Boot mascot "TuxSwing" (working title).** The idea for a boot mascot — Tux dancing in the style of 1930s jazz cartoons,
-with the project's goat in the background — came from a reader of this project, who suggested it on their own initiative
-(October 2026). The design is still being worked out, including a clean, self-made variant and the question of image
-rights, before anything is published here. It will be shown as the boot splash (Plymouth) once the system is ready for it;
-dancing and music only after the kernel and audio are stable. Thank you! 🐧🐐
+**Boot mascot "TuxSwing"** ([bilder/tuxswing/](bilder/tuxswing/), CC BY 4.0 or GPL-2.0-only, by TuxSwing).
+Tux dancing in the style of 1930s jazz cartoons, with a little chalk goat on the wall as a nod to the project mascot –
+an idea a reader of this project proposed and designed on their own initiative (October 2026), including a careful
+check of image rights (Tux by Larry Ewing, made with The GIMP – see the folder's README). It will be shown as the boot
+splash (Plymouth) once the system is ready for it; dancing and music only after the kernel and audio are stable. Thank you! 🐧🐐
 
 ---
 
