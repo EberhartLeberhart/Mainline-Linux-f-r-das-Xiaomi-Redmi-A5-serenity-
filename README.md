@@ -1012,6 +1012,12 @@ r uboot_log uboot_log.bin
 strings uboot_log.bin | less
 ```
 
+## License
+
+Open source, split by content type (details: [LIZENZEN.md](LIZENZEN.md)):
+kernel patches and tools **GPL-2.0-only** ([LICENSE](LICENSE)), documentation **CC BY-SA 4.0**,
+images with their own notice per folder in `bilder/`. Vendor firmware and device data are **not** included.
+
 ## Thanks
 
 **Boot mascot "TuxSwing" (working title).** The idea for a boot mascot — Tux dancing in the style of 1930s jazz cartoons,

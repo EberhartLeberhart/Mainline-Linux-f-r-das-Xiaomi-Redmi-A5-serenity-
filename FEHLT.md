@@ -55,11 +55,11 @@ Vibrationsmotor, microSD-Kartenleser.
 ## Noch nicht untersucht (❓)
 
 - Sensoren (Lage/Beschleunigung, Helligkeit, Annäherung) – Android lädt `sensorhub.ko`
-- Fingerabdrucksensor (falls verbaut)
+- Fingerabdrucksensor: **verbaut** (seitlich), Overlay kennt Goodix und Silead (Reset ap_gpio 121, IRQ ap_gpio 29) – ganz hinten, siehe `ideen/fingerabdruck-profilometer.md`
 - Kopfhörer-Erkennung, USB-C-Kabelerkennung (`sc27xx_typec`)
 - Akku-Echtheitsprüfung DS28E30 (1-Wire, vermutlich unwichtig)
 
 ## Danach (kein Kernel)
 
-kexec-Startmenü mit Rückfall, Lademodus-Anzeige (Ziege + Akkustand), Bootloader wieder sperren mit
+kexec-Startmenü mit Rückfall (optional, getrennt, ohne Funk – `startmenue/`), Updates als Paket mit A/B-Rückfall, Lademodus-Anzeige (Ziege + Akkustand), Bootloader wieder sperren mit
 eigenem Schlüssel, dann Oberfläche, Installer und Abbilder.

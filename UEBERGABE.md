@@ -14,6 +14,9 @@ Diese Datei ist für den nächsten Chat. Erst lesen, dann STATUS.md und TREIBER_
 - Prüfzahlen (z. B. `grep -c`) vorher **selbst nachzählen**, nicht schätzen.
 - **Nie veröffentlichen:** NV-Backups, Firmware (Xiaomi/Novatek/WCN), uboot_log-Dumps, SSH-Schlüssel, Seriennummer, `~/redmi-android` (privat). GitHub-Token nur im Cache. `github_update.sh` committet nicht selbst und hat eine Sicherheitsprüfung.
   ❓ Die Firmware-Logs `wcntest_*_wcnlog.bin` vor einem Commit erst ansehen (enthalten u. a. RF-Kalibrierspuren).
+- **Erst den Chip fragen (seit 27.10.):** bevor wir an einem Baustein herumprobieren, seinen Zustand abfragen –
+  genormte Status-/ID-Register (z. B. MIPI-DCS 0x0A/0x54/0xDA–0xDC, siehe `werkzeuge/redmi-dcsfrage.sh`) oder was der
+  Treiber selbst liest –, dann ändern, dann wieder abfragen. So wurde der Display-Fehler gefunden (Panel wach, Licht aus).
 - Register nie blind lesen (fremde regmap-Listen/WCN-Seite `0x51…` können einen „synchronous external abort" auslösen).
   Gemeinsamen Speicher lesen über `wcn_ram_btwf` ist ungefährlich.
 
@@ -242,4 +245,11 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
   Beobachten.
 - Später: UHS (SDR50/104, braucht Umschalten von `vddsdio` auf 1,8 V → dann min/max 1,8–3,0 V); Root-Dateisystem auf
   SD-Karte und Auswahl über das kexec-Startmenü (Idee des Nutzers, „von SD-Karte booten“).
+
+## Ideen und Pläne (28.10.)
+- Startmenü („BIOS“) mit Booten von eMMC/microSD/USB-Stick per kexec: **optional, nicht Standard**, getrennt vom
+  Hauptkernel und **ohne Funkfunktionen** → [startmenue/README.md](startmenue/README.md).
+- Kernel-Updates als signiertes Paket mit A/B-Rückfall → [ideen/updates-als-paket.md](ideen/updates-als-paket.md).
+- Fingerabdrucksensor (verbaut, seitlich) als Mini-3D-Scanner → [ideen/fingerabdruck-profilometer.md](ideen/fingerabdruck-profilometer.md).
+- Lizenzen: [LIZENZEN.md](LIZENZEN.md) (Kernel/Werkzeuge GPL-2.0-only, Doku CC BY-SA 4.0, Bilder je Ordner).
 
