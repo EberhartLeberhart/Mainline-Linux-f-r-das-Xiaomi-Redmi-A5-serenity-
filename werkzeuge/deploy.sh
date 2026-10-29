@@ -5,7 +5,8 @@
 # Nutzung: ~/redmi-build/deploy.sh [vendor_boot-image]
 set -e
 cd ~/redmi-build
-VB=${1:-vendor_boot_sd_ok.img}   # zuletzt belegter Stand (27.10., wie opp850mv_ok + microSD-Kartenleser;
+VB=${1:-vendor_boot_folger_ok.img}   # zuletzt belegter Stand (29.10., wie sd_ok + Touch als Panel-Follower, Patch 0029;
+                                  # davor sd_ok (27.10.): wie opp850mv_ok + microSD-Kartenleser;
                                   # davor opp850mv_ok: wie opp_ok, GPU-Spannung 0,85 V statt 1,00 V; davor opp_ok:
                                   # Display + Touch + CPU + GPU mit Taktstufen 384-850 MHz +
                                   # PMIC-Regler; braucht Patch 0026 + CONFIG_REGULATOR_SC2730=y; davor vendor_boot_regler_ok.img); vendor_boot_ok.img (04.10.) hat

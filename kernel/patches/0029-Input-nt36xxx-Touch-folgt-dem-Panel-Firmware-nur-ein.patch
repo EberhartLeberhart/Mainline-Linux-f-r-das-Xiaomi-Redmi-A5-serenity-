@@ -1,0 +1,83 @@
+From b82dc713ca3b3501d1d2dd8dcd8658a359448502 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Thu, 29 Oct 2026 18:27:53 +0100
+Subject: [PATCH] Input: nt36xxx: Touch folgt dem Panel, Firmware nur einmal
+ neu laden
+
+- Rueckgabe von devm_drm_panel_add_follower pruefen (sonst kein Warten
+  auf das Panel)
+- panel_prepared: erst Neuladen planen, dann Interrupt wieder zulassen;
+  Waechter ignoriert den Puffer, solange ein Neuladen ansteht (vorher
+  loeste der alte Pufferinhalt aus der Schlafphase ein zweites Laden aus)
+- Beleg 29.10.: fb-blank/unblank -> kein Alarm, genau ein "fw loaded ok",
+  Panel 0x9C/0x2C, evtest 827 Positionen in 6 s
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/input/touchscreen/nt36xxx_core.c | 32 ++++++++++++++++++------
+ 1 file changed, 25 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/input/touchscreen/nt36xxx_core.c b/drivers/input/touchscreen/nt36xxx_core.c
+index eb11081d7..1e3d85f31 100644
+--- a/drivers/input/touchscreen/nt36xxx_core.c
++++ b/drivers/input/touchscreen/nt36xxx_core.c
+@@ -559,6 +559,13 @@ static void nt36xxx_report(struct nt36xxx_ts *ts)
+ 			break;
+ 	}
+ 	if (i == 7) {
++		/*
++		 * Neuladen schon geplant oder im Gange (DOWNLOAD_COMPLETE geloescht, z. B. durch
++		 * panel_prepared() beim Aufwachen des Panels): alten Pufferinhalt nicht als neuen
++		 * Absturz werten, sonst wird die Firmware doppelt geladen (Beleg 29.10.2026).
++		 */
++		if (!(ts->status & NT36XXX_STATUS_DOWNLOAD_COMPLETE))
++			goto xfer_error;
+ 		dev_warn_ratelimited(ts->dev,
+ 				     "Waechter-Alarm (%*ph) - Firmware wird neu geladen\n",
+ 				     8, point);
+@@ -1407,7 +1414,13 @@ int nt36xxx_probe(struct device *dev, int irq, const struct input_id *id,
+ 
+ 	if (drm_is_panel_follower(dev)) {
+ 		ts->panel_follower.funcs = &nt36xxx_panel_follower_funcs;
+-		devm_drm_panel_add_follower(dev, &ts->panel_follower);
++		/*
++		 * Rueckgabe pruefen: ist das Panel noch nicht angemeldet, kommt -EPROBE_DEFER -
++		 * bisher ignoriert, dann folgte der Touch dem Panel nie (Redmi A5, 29.10.2026).
++		 */
++		ret = devm_drm_panel_add_follower(dev, &ts->panel_follower);
++		if (ret)
++			return dev_err_probe(dev, ret, "Panel-Follower nicht angemeldet\n");
+ 	} else {
+ 		/* devm: beim Abmelden wieder aus (sonst "Unbalanced pm_runtime_enable!" beim Neu-Anmelden) */
+ 		ret = devm_pm_runtime_enable(dev);
+@@ -1513,15 +1526,20 @@ EXPORT_GPL_SIMPLE_DEV_PM_OPS(nt36xxx_pm_ops,
+ static int panel_prepared(struct drm_panel_follower *follower)
+ {
+ 	struct nt36xxx_ts *ts = container_of(follower, struct nt36xxx_ts, panel_follower);
++	bool war_im_schlaf = ts->status & NT36XXX_STATUS_SUSPEND;
++	int ret;
+ 
+-	if (ts->status & NT36XXX_STATUS_SUSPEND)
++	/*
++	 * Erst Neuladen planen (loescht SUSPEND und DOWNLOAD_COMPLETE), dann den Interrupt wieder
++	 * zulassen - sonst wertet nt36xxx_report() den alten Pufferinhalt aus der Schlafphase als
++	 * neuen Absturz und laedt die Firmware ein zweites Mal (Beleg 29.10.2026).
++	 */
++	ret = nt36xxx_internal_pm_resume(ts->dev);
++
++	if (war_im_schlaf)
+ 		enable_irq(ts->irq);
+ 
+-	/* supposed to clear the flag here, but leave to internal_pm_resume
+-	 * for greater purpose, then clear flag as:
+-	 * ts->status &= ~NT36XXX_STATUS_SUSPEND;
+-	 */
+-	return nt36xxx_internal_pm_resume(ts->dev);
++	return ret;
+ }
+ 
+ static int panel_unpreparing(struct drm_panel_follower *follower)
+-- 
+2.43.0
+
