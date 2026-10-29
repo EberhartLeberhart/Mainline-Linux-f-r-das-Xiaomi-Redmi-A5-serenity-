@@ -148,6 +148,20 @@ if [ "$SD" = 1 ]; then
     /soc/mmc@201a0000 status okay )
 fi
 
+# 29.10.: Touch als Panel-Follower: der Touch-Treiber schlaeft und wacht automatisch mit dem Panel (DRM-Kern ruft
+#   panel_unpreparing/panel_prepared), statt dass redmi-licht.sh ihn ab- und anmeldet. Dafuer bekommt der
+#   Touch-Knoten eine Eigenschaft "panel" mit Verweis auf den Panel-Knoten (der dafuer eine phandle braucht).
+#   Braucht Patch 0029 (Touch-Treiber prueft die Rueckgabe von devm_drm_panel_add_follower, sonst kein Warten auf das Panel).
+#   Beleg 29.10.: fb-blank/unblank -> Firmware genau einmal neu geladen, kein Waechter-Alarm, Panel 0x9C/0x2C, evtest 827.
+#   Standard seit 29.10. (Ergebnis = vendor_boot_folger_ok.img); ausschalten: TOUCHFOLGER=0
+TOUCHFOLGER=${TOUCHFOLGER:-1}
+PANEL_PH=117   # neu; 105-116 sind vergeben
+FOLGER_ARGS=()
+if [ "$TOUCHFOLGER" = 1 ]; then FOLGER_ARGS=(
+  /soc/dsi@31100000/panel@0 phandle u:$PANEL_PH \
+  /soc/spi@20150000/touchscreen@0 panel u:$PANEL_PH )
+fi
+
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -227,4 +241,5 @@ fi
   "${GPU_ARGS[@]}" \
   "${REGLER_ARGS[@]}" \
   "${OPP_ARGS[@]}" \
-  "${SD_ARGS[@]}"
+  "${SD_ARGS[@]}" \
+  "${FOLGER_ARGS[@]}"
