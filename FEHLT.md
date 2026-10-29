@@ -30,8 +30,8 @@ Vibrationsmotor, microSD-Kartenleser.
 | Bereich | Was fehlt |
 |---|---|
 | WLAN | Senden über einen Datenkanal, Schlüssel (`WIFI_CMD_KEY`), DHCP → SSH; Lauscher in sauberen Treiber aufteilen (sipc-Kern + WLAN) |
-| Display-Schlaf | 28.10.: Aus/An über den DRM-Treiber **geht** (Patch 0027: `0x53 = 0x2c` beim Einschalten; vorher Panel wach, Licht aus). Fehlt: `redmi-licht.sh` auf Schlaf über den Treiber umstellen (DPU/DSI aus), Strom neu messen; Touch folgt dem Panel seit 29.10. ✅ |
-| Touch | 28.10.: Wächter-Erkennung + Selbst-Neuladen ✅, Runtime-PM beim Abmelden ✅ (Patch 0028). 29.10.: als Panel-Follower ans Display gekoppelt ✅ (Patch 0029, DT `panel`). Fehlt: `redmi-licht.sh` ohne Ab-/Anmelden (Schlaf über den Treiber) |
+| Display-Schlaf | 29.10.: `redmi-licht.sh` schläft über den Treiber (fb-blank, DSI+DPU aus, Touch folgt) ✅ – Akku: Schlaf 43 mA statt 60 mA (DCS-Weg). Fehlt: Panel vollständig in Kernel-Hand (Reset ap_gpio 50, avdd/avee 135/136, Einschaltfolge statt Bootloader-Zustand) |
+| Touch | 28.10.: Wächter-Erkennung + Selbst-Neuladen ✅, Runtime-PM beim Abmelden ✅ (Patch 0028). 29.10.: als Panel-Follower ans Display gekoppelt ✅ (Patch 0029, DT `panel`). `redmi-licht.sh` meldet ihn nicht mehr ab ✅ |
 | USB | Rollenwechsel: ein seltener Fehlschlag; Gadget-MAC wechselt bei jedem Start |
 | i2c-sprd | meldet kein NACK |
 | Ladechip | nur per `i2cset`; drei mögliche Chips (SGM41513 getestet, SC89601, UPM6922 nicht) |
