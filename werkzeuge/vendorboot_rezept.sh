@@ -177,6 +177,22 @@ if [ "$PANELKERNEL" = 1 ]; then PANELK_ARGS=(
   /soc/dsi@31100000/panel@0 avee-gpios "u:$GP_PH 136 0" )
 fi
 
+# 31.10.: GPU als Kuehlgeraet in gpu-thermal. Panfrost legt das Kuehlgeraet selbst an (devfreq-23100000.gpu, Stufen
+#   0-4, abgefragt 31.10.), gpu-thermal verwies aber nur auf die CPUs. Dafuer braucht der GPU-Knoten eine phandle und
+#   #cooling-cells = 2; map1 nimmt denselben passiven Grenzwert (70 °C) wie map0, Stufen ganz (0xffffffff = min/max).
+#   Braucht GPU=1, OPP=1 (ohne Taktstufen gibt es nichts zu drosseln).
+#   Beleg 31.10.: gpu-thermal hat 3 Kuehlgeraete (2x CPU + GPU); emul_temp 75 °C -> GPU-Stufe 1 (max_freq 850 -> 768 MHz)
+#   und CPU-Stufe 1, nach Freigabe wieder 0 / 850 MHz. Standard seit 31.10. (vendor_boot_gpukuehl_ok.img); aus: GPUKUEHL=0
+GPUKUEHL=${GPUKUEHL:-1}
+GPU_PH=118   # neu; 105-117 sind vergeben
+GPUKUEHL_ARGS=()
+if [ "$GPUKUEHL" = 1 ]; then GPUKUEHL_ARGS=(
+  /soc/gpu@23100000 phandle u:$GPU_PH \
+  /soc/gpu@23100000 "#cooling-cells" u:2 \
+  $TZ/gpu-thermal/cooling-maps/map1 trip u:$GPU_TRIP_PH \
+  $TZ/gpu-thermal/cooling-maps/map1 cooling-device "u:$GPU_PH 4294967295 4294967295" )
+fi
+
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -258,4 +274,5 @@ fi
   "${OPP_ARGS[@]}" \
   "${SD_ARGS[@]}" \
   "${FOLGER_ARGS[@]}" \
-  "${PANELK_ARGS[@]}"
+  "${PANELK_ARGS[@]}" \
+  "${GPUKUEHL_ARGS[@]}"
