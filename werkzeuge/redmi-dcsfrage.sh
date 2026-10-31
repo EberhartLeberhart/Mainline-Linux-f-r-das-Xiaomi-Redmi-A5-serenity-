@@ -13,6 +13,12 @@ D=0x31100000
 rd(){ busybox devmem $((D + $1)); }
 wr(){ busybox devmem $((D + $1)) 32 $2; }
 command -v busybox >/dev/null || { echo "busybox fehlt"; exit 1; }
+# 31.10.: nicht fragen, wenn der Display-Treiber das Panel abgeschaltet hat (fb-blank): dann sind DSI und Panel aus,
+# die Antwort waere bedeutungslos (Beleg 31.10.: Werte im Schlaf gelesen) und das Register-Lesen unnoetig riskant.
+FB=/sys/class/graphics/fb0/blank
+if [ -r $FB ] && [ "$(cat $FB 2>/dev/null)" != 0 ] && [ "${TROTZDEM:-0}" != 1 ]; then
+    echo "Display ist ueber den Treiber abgeschaltet (fb0/blank = $(cat $FB)) - erst wecken (redmi-licht.sh an)"; exit 1
+fi
 
 frage(){   # $1 = DCS-Befehl -> gibt erstes Antwortbyte aus oder "keine Antwort"
     local c=$(( $1 )) n=0 s

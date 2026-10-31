@@ -1,0 +1,310 @@
+From ac4ce6af3dceebe7a15bd3be2477a73a1e639919 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 31 Oct 2026 20:25:14 +0100
+Subject: [PATCH] drm/panel: nt36528: Panel selbst hochfahren (Reset,
+ avdd/avee, Init-Befehle)
+
+- optionale reset-, avdd- und avee-gpios (beim Uebernehmen GPIOD_ASIS, nichts
+  umschalten); Einschalten: avdd, 20 ms, avee, 20 ms, Xiaomis reset-on-sequence,
+  107 Init-Befehle aus sprd,initial-command, Sleep-Out/Display-On; Ausschalten:
+  Reset bleibt oben, avee/avdd aus
+- ohne die Leitungen im DT wie bisher (Bootloader-Zustand uebernehmen)
+- Annahme "Xiaomi schickt keine Init-Befehle" war falsch: nach einem Reset ohne
+  sie lief das Panel mit Werkswerten (dunkler, regelte herunter)
+- Beleg 31.10.: Leitungen angefordert, im Schlaf avdd/avee 0, wach 0x9C/0x2C,
+  Touch ok; Akku an 142 mA, Schlaf 41 mA
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 214 ++++++++++++++++--
+ 1 file changed, 197 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+index 57d596443..f32129275 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36528.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -5,18 +5,25 @@
+  * Aufbau nach panel-chipone-icnl9916-720x1600.c (Otto Pflueger). Werte aus dem Xiaomi-Geraetebaum
+  * (Panel_C3Z_42_02_0a_vid): 4 Spuren, RGB888, Video Burst, 1195,2 Mbit/s je Spur, LP 20 MHz,
+  * Pixeltakt 199,2 MHz; Helligkeit per DCS 0x51 mit 12 Bit (max 0xfff, Standard 500).
+- * Xiaomi schickt KEINE Init-Befehle - das Panel bringt seine Einstellungen selbst mit (OTP).
+  * Einschalten = Sleep-Out (0x11) + 120 ms + Display-On (0x29), Ausschalten = 0x28 + 0x10.
+  *
+- * Reset bewusst optional: Display und Touch sind ein Chip, ein Panel-Reset setzt auch den Touch
+- * zurueck. Ohne Reset-Leitung im DT wird das vom Bootloader eingerichtete Panel uebernommen.
++ * Versorgung und Reset (31.10.2026): Stehen avdd-, avee- und reset-gpios im DT (Xiaomi/Unisoc:
++ * ap_gpio 135, 136, 50, aktiv-high), faehrt der Treiber das Panel selbst hoch: avdd, 20 ms, avee,
++ * 20 ms (sprd,power-gpio-delay), Reset-Folge, Xiaomis Init-Befehle (sprd,initial-command), Sleep-Out,
++ * Display-On - und schaltet beim Ausschalten avee/avdd wieder ab (Reset bleibt oben wie bei Xiaomi,
++ * sprd,reset-off-sequence = <1 5>). Ohne diese Leitungen im DT wird wie bisher das vom Bootloader
++ * eingerichtete Panel uebernommen (keine Init-Befehle, kein Reset).
++ * Die Init-Befehle schickt sonst der Bootloader; nach einem Reset ohne sie lief das Panel mit
++ * Werkswerten (dunkler, regelte langsam herunter; Beleg 31.10.).
++ * Display und Touch sind ein Chip: Ein Reset setzt auch den Touch zurueck, der als Panel-Follower
++ * danach seine Firmware neu laedt.
+  */
+ 
+ #include <linux/backlight.h>
+ #include <linux/delay.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
+-#include <linux/reset.h>
+ 
+ #include <drm/drm_mipi_dsi.h>
+ #include <drm/drm_modes.h>
+@@ -31,7 +38,9 @@
+ struct nt36528_panel {
+ 	struct drm_panel panel;
+ 	struct mipi_dsi_device *dsi;
+-	struct reset_control *reset;	/* optional */
++	struct gpio_desc *reset;	/* optional, im DT aktiv-low: 1 = Panel im Reset */
++	struct gpio_desc *avdd;		/* optional */
++	struct gpio_desc *avee;		/* optional */
+ 	bool an;			/* Panel eingeschaltet -> DSI-Befehle erlaubt */
+ };
+ 
+@@ -40,23 +49,182 @@ static inline struct nt36528_panel *to_nt36528_panel(struct drm_panel *panel)
+ 	return container_of(panel, struct nt36528_panel, panel);
+ }
+ 
+-/* Xiaomi reset-on-sequence: hoch 10 ms, tief 5, hoch 5, tief 5, hoch 20 */
++/* Versorgung: avdd, 20 ms, avee, 20 ms (sprd,power-gpio-delay = 20) */
++static void nt36528_strom_an(struct nt36528_panel *ctx)
++{
++	if (ctx->avdd) {
++		gpiod_direction_output(ctx->avdd, 1);
++		msleep(20);
++	}
++	if (ctx->avee) {
++		gpiod_direction_output(ctx->avee, 1);
++		msleep(20);
++	}
++}
++
++/* umgekehrt; Reset bleibt oben (sprd,reset-off-sequence = <1 5>) */
++static void nt36528_strom_aus(struct nt36528_panel *ctx)
++{
++	if (ctx->reset) {
++		gpiod_direction_output(ctx->reset, 0);
++		usleep_range(5000, 6000);
++	}
++	if (ctx->avee) {
++		gpiod_direction_output(ctx->avee, 0);
++		msleep(20);
++	}
++	if (ctx->avdd)
++		gpiod_direction_output(ctx->avdd, 0);
++}
++
++/*
++ * Xiaomi reset-on-sequence <1 10 0 5 1 5 0 5 1 20> (Pegel an der Leitung, Wartezeit in ms):
++ * hoch 10 ms, tief 5, hoch 5, tief 5, hoch 20. Die Leitung ist im DT aktiv-low, daher
++ * entspricht "hoch" dem Wert 0 (nicht im Reset).
++ */
+ static void nt36528_reset(struct nt36528_panel *ctx)
+ {
+ 	if (!ctx->reset)
+ 		return;
+-	reset_control_deassert(ctx->reset);
++	gpiod_direction_output(ctx->reset, 0);
+ 	usleep_range(10000, 11000);
+-	reset_control_assert(ctx->reset);
++	gpiod_set_value_cansleep(ctx->reset, 1);
+ 	usleep_range(5000, 6000);
+-	reset_control_deassert(ctx->reset);
++	gpiod_set_value_cansleep(ctx->reset, 0);
+ 	usleep_range(5000, 6000);
+-	reset_control_assert(ctx->reset);
++	gpiod_set_value_cansleep(ctx->reset, 1);
+ 	usleep_range(5000, 6000);
+-	reset_control_deassert(ctx->reset);
++	gpiod_set_value_cansleep(ctx->reset, 0);
+ 	msleep(20);
+ }
+ 
++/*
++ * Xiaomi sprd,initial-command (Panel_C3Z_42_02_0a_vid) Befehl 1-107, alle als "Generic Write"
++ * (Typ 0x23); Befehl 108/109 (Sleep-Out/Display-On) kommen aus nt36528_on().
++ */
++static int nt36528_init(struct nt36528_panel *ctx)
++{
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
++
++	/* Seite 0x23: vermutlich Licht-PWM/CABC-Kurven */
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xff, 0x23);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xfb, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x00, 0x80);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x05, 0x27);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x07, 0x00);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x08, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x09, 0x00);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x11, 0x00);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x12, 0xb9);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x15, 0xe3);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x16, 0x14);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x8d, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x10, 0x00);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x2a, 0x3f);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x30, 0xff);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x31, 0xfe);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x32, 0xfd);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x33, 0xfc);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x34, 0xfa);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x35, 0xf8);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x36, 0xf7);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x37, 0xf3);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x38, 0xf0);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x39, 0xee);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x3a, 0xec);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x3b, 0xea);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x3d, 0xe9);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x3f, 0xe7);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x40, 0xe6);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x41, 0xe5);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x45, 0xff);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x46, 0xfd);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x47, 0xfb);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x48, 0xf7);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x49, 0xf3);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x4a, 0xeb);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x4b, 0xe3);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x4c, 0xb3);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x4d, 0xb0);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x4e, 0xaf);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x4f, 0xae);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x50, 0xac);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x51, 0xab);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x52, 0xaa);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x53, 0x65);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x54, 0x63);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x58, 0xff);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x59, 0xfd);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x5a, 0xfc);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x5b, 0xf9);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x5c, 0xf6);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x5d, 0xf2);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x5e, 0xeb);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x5f, 0xdd);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x60, 0xd9);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x61, 0xcd);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x62, 0xc9);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x63, 0xc6);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x64, 0xc2);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x65, 0xbe);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x66, 0xb2);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x67, 0xb0);
++	/* Seite 0x24: Herstellerwerte */
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xff, 0x24);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xfb, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x37, 0xaa);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x3a, 0x02);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x3b, 0xbf);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x5a, 0x52);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xaf, 0x16);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xb1, 0x16);
++	/* Seite 0x27: Herstellerwerte */
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xff, 0x27);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xfb, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x78, 0x88);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x79, 0x0f);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x7c, 0x10);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x7d, 0x49);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x83, 0x14);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x84, 0x12);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x93, 0xa7);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xc4, 0x02);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xc5, 0xbf);
++	/* Seite 0x27: Herstellerwerte */
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xff, 0x27);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xfb, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x96, 0x09);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x97, 0x10);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x98, 0x88);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x9d, 0x35);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xa9, 0x3c);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xad, 0x37);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xb4, 0x90);
++	/* Seite 0x27: Herstellerwerte */
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xff, 0x27);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xfb, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xd0, 0x31);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xd1, 0x25);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xd2, 0x30);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xd4, 0x08);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xde, 0xc3);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xdf, 0x02);
++	/* Seite 0x2a: Herstellerwerte */
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xff, 0x2a);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xfb, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x1e, 0x0f);
++	/* zurueck auf Seite 0x10 (normale DCS-Befehle): Licht 0, Steuerbits 0x24, 0x68, CABC aus */
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xff, 0x10);
++	mipi_dsi_msleep(&dsi_ctx, 1);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xfb, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x51, 0x00, 0x00);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x53, 0x24);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x68, 0x02, 0x01);
++	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x55, 0x00);
++
++	return dsi_ctx.accum_err;
++}
++
+ static int nt36528_on(struct nt36528_panel *ctx)
+ {
+ 	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
+@@ -98,13 +266,16 @@ static int nt36528_prepare(struct drm_panel *panel)
+ 	struct nt36528_panel *ctx = to_nt36528_panel(panel);
+ 	int ret;
+ 
++	nt36528_strom_an(ctx);
+ 	nt36528_reset(ctx);
+ 
+-	ret = nt36528_on(ctx);
++	/* Init-Befehle nur nach einem echten Reset, sonst gelten die Werte des Bootloaders weiter */
++	ret = ctx->reset ? nt36528_init(ctx) : 0;
++	if (ret >= 0)
++		ret = nt36528_on(ctx);
+ 	if (ret < 0) {
+ 		dev_err(&ctx->dsi->dev, "Panel einschalten fehlgeschlagen: %d\n", ret);
+-		if (ctx->reset)
+-			reset_control_assert(ctx->reset);
++		nt36528_strom_aus(ctx);
+ 		return ret;
+ 	}
+ 	ctx->an = true;
+@@ -127,8 +298,7 @@ static int nt36528_unprepare(struct drm_panel *panel)
+ 	if (ret < 0)
+ 		dev_err(&ctx->dsi->dev, "Panel ausschalten fehlgeschlagen: %d\n", ret);
+ 
+-	if (ctx->reset)
+-		reset_control_assert(ctx->reset);
++	nt36528_strom_aus(ctx);
+ 
+ 	return 0;
+ }
+@@ -212,9 +382,19 @@ static int nt36528_probe(struct mipi_dsi_device *dsi)
+ 	if (!ctx)
+ 		return -ENOMEM;
+ 
+-	ctx->reset = devm_reset_control_get_optional_shared(dev, NULL);
++	/* GPIOD_ASIS: beim Uebernehmen nichts umschalten, der Bootloader hat alles an gelassen */
++	ctx->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_ASIS);
+ 	if (IS_ERR(ctx->reset))
+ 		return dev_err_probe(dev, PTR_ERR(ctx->reset), "Reset-Leitung nicht verfuegbar\n");
++	ctx->avdd = devm_gpiod_get_optional(dev, "avdd", GPIOD_ASIS);
++	if (IS_ERR(ctx->avdd))
++		return dev_err_probe(dev, PTR_ERR(ctx->avdd), "avdd-Leitung nicht verfuegbar\n");
++	ctx->avee = devm_gpiod_get_optional(dev, "avee", GPIOD_ASIS);
++	if (IS_ERR(ctx->avee))
++		return dev_err_probe(dev, PTR_ERR(ctx->avee), "avee-Leitung nicht verfuegbar\n");
++	if (ctx->reset)
++		dev_info(dev, "Panel in Kernel-Hand: Versorgung %s, Reset und Init-Befehle durch den Treiber\n",
++			 ctx->avdd && ctx->avee ? "avdd/avee" : "unvollstaendig");
+ 
+ 	ctx->dsi = dsi;
+ 	mipi_dsi_set_drvdata(dsi, ctx);
+-- 
+2.43.0
+

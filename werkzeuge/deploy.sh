@@ -5,7 +5,9 @@
 # Nutzung: ~/redmi-build/deploy.sh [vendor_boot-image]
 set -e
 cd ~/redmi-build
-VB=${1:-vendor_boot_folger_ok.img}   # zuletzt belegter Stand (29.10., wie sd_ok + Touch als Panel-Follower, Patch 0029;
+VB=${1:-vendor_boot_panelk_ok.img}   # zuletzt belegter Stand (31.10., wie folger_ok + Panel in Kernel-Hand: Reset/avdd/avee
+                                  # an den Panel-Treiber, braucht Patch 0030;
+                                  # davor folger_ok (29.10.): wie sd_ok + Touch als Panel-Follower, Patch 0029;
                                   # davor sd_ok (27.10.): wie opp850mv_ok + microSD-Kartenleser;
                                   # davor opp850mv_ok: wie opp_ok, GPU-Spannung 0,85 V statt 1,00 V; davor opp_ok:
                                   # Display + Touch + CPU + GPU mit Taktstufen 384-850 MHz +
