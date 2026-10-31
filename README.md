@@ -797,7 +797,7 @@ This approach works because LK always initializes the display, regardless of wha
 
 ## 15. Booting Linux
 
-### What Works (as of 22 October 2026)
+### What Works (as of 31 October 2026)
 
 Every item below is backed by a dated log or measurement in [STATUS.md](STATUS.md) (German).
 Kernel: Linux 7.1.0-rc1 (Codeberg `ums9230` tree + the patches in [`kernel/patches/`](kernel/patches/)),
@@ -809,7 +809,8 @@ slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_
 - ✅ All 8 CPU cores, CPU frequency scaling (cpufreq, as a module) with deep idle on all cores
   (fix: `sprd,pmic-type = 0` for the big cluster, as in Xiaomi's device tree)
 - ✅ Power off and reboot via the SC2730 PMIC, PMIC watchdog handled, real-time clock
-- 🟡 Thermal zones: passive and critical trip points work; the GPU zone has no limit yet
+- ✅ Thermal zones: passive (70 °C) and critical (110 °C) trip points on all 11 zones; the GPU zone throttles
+  both CPU clusters and the GPU itself
 - ✅ eMMC; Ubuntu 24.04 Server (aarch64) runs from the `userdata` partition
 
 **Connectivity**
@@ -821,13 +822,20 @@ slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_
 **Power**
 - ✅ Battery gauge (SC2730 FGU): voltage, charge level, current, battery temperature
 - ✅ Charger chip SGM41513 controlled over I²C; charge-limit service for server use (e.g. 75–80 %)
-- ✅ Idle consumption ~51 mA with the panel asleep
+- ✅ Idle consumption ~41 mA with the display off (panel supply switched off by the kernel)
 
 **Display and input**
 - ✅ DRM display driver (DPU/DSI) with an own panel driver for the NT36528 (720×1640), brightness via DCS
-- ✅ Touchscreen (NT36528 TDDI over SPI, based on the `nt36xxx_spi` RFC driver plus NT36528 support)
-- ✅ Power and volume buttons
-- 🟡 Panel off/on through the DRM driver does not wake the panel yet (workaround: direct DCS sleep)
+- ✅ The kernel powers the panel up itself (reset, avdd/avee, the vendor's init sequence) instead of relying on
+  the bootloader state; display off/on through the driver; ESD check every 3 s like the vendor driver
+- ✅ Touchscreen (NT36528 TDDI over SPI, based on the `nt36xxx_spi` RFC driver plus NT36528 support);
+  follows the panel (sleeps and wakes with it) and reloads its firmware by itself after a crash
+- ✅ Power and volume buttons, vibration motor (force feedback)
+
+**GPU and storage**
+- ✅ GPU Mali-G57 with Panfrost and Mesa: OpenGL ES 3.1, frequency scaling 384–850 MHz at 0.85 V,
+  hardware-accelerated rendering to the display (glmark2 on the panel, 60 FPS with vsync)
+- ✅ microSD card reader (SDXC, high speed, ~21 MB/s read)
 
 **Wireless (in progress)**
 - ✅ The integrated WCN core (Wi-Fi/Bluetooth/FM/GNSS) boots from Mainline with its own, unsigned firmware
@@ -844,7 +852,8 @@ slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_
 - Next: transmit path, key installation, then DHCP → SSH over Wi-Fi
 
 **Not working yet**
-- ❌ Wi-Fi data traffic (scan and association work), Bluetooth, audio, GPU, camera
+- ❌ Wi-Fi data traffic (scan and association work), Bluetooth, audio, camera
+- ❌ Vulkan on the GPU (Mesa's panvk does not support the Mali-G57 yet) and hardware video decoding (no driver)
 - ⏸️ LTE: the modem firmware is unsigned, but the part that needs the TEE (trusty) is **deliberately on hold**
   until the legal situation is clear — see [MODEM.md](MODEM.md). Everything else is being prepared
   ([`kernel/modem-sipc/`](kernel/modem-sipc/))

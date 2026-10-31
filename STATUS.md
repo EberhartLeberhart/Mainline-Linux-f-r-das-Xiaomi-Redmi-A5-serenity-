@@ -1,6 +1,6 @@
 # Redmi A5 (serenity) – Hardware-Status
 
-Stand: 20.10.2026 · Kernel 7.1.0-rc1-g99c0890089ba #78 (Slot b) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig`
+Stand: 31.10.2026 · Kernel 7.1.0-rc1-gf751341e65e2 (Slot b, Patches bis 0031) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig`
 
 ## Regeln
 
@@ -179,7 +179,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | Bereich | Status | Beleg / Notiz |
 |---|---|---|
 | Temperatursensoren | ✅ | 02.10.: 11 Zonen starten von selbst (`NVMEM_RMEM=y`), 25–26 °C |
-| Überhitzungsschutz | 🟡 | 10 Zonen: passive 70 °C, critical 110 °C. **critical wirkt** (Abschaltung über den neuen Poweroff), **passive wirkt** (04.10.: 2 Kühlgeräte, 4 Zonen verbunden, Test mit vorgetäuschter Temperatur). 24.10.: `gpu-thermal` hat jetzt auch Grenzen (passiv 70 °C → beide CPU-Cluster, kritisch 110 °C) – alle 11 Zonen geschützt |
+| Überhitzungsschutz | ✅ | 10 Zonen: passive 70 °C, critical 110 °C. **critical wirkt** (Abschaltung über den neuen Poweroff), **passive wirkt** (04.10.: 2 Kühlgeräte, 4 Zonen verbunden, Test mit vorgetäuschter Temperatur). 24.10.: `gpu-thermal` hat jetzt auch Grenzen (passiv 70 °C → beide CPU-Cluster, kritisch 110 °C) – alle 11 Zonen geschützt. 31.10.: **GPU auch als Kühlgerät** (Rezept `GPUKUEHL`): `gpu-thermal` hat 3 Kühlgeräte (2× CPU + GPU); vorgetäuschte 75 °C → GPU 850 → 768 MHz und CPU gedrosselt, danach zurück |
 
 ## Treiber
 
@@ -218,7 +218,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | WLAN / Bluetooth / FM / GPS (Marlin3) | 🟡 | **23.10.: `wpa_supplicant` meldet sich über `wlan0` an und empfängt Nachricht 1 des Schlüsselaustauschs** ✅; 22.10.: `wlan0` mit `iw scan` ✅ (WPA2, `CONNECT` ok, EAPOL Nachricht 1 auf Kanal 9 empfangen; ohne Passwort, daher danach Abmeldung Grund 15). 5 GHz geht mit `SET_REGDOM` ✅. 21.10.: erster WLAN-Scan ✅. WLAN ein- und ausschalten ✅ (`OPEN`/`CLOSE`, Datenkanäle 8/9 aufgebaut). 20.10.: `SYNC_VERSION`, `GET_INFO`, `DOWNLOAD_INI` ✅ (Chip `0x2355`, 5 GHz, WPA3), siehe Abschnitt oben. 19.10.: alle fünf sipc-Kanäle (4, 5, 7, 11, 12) bedient, erste AT-Antwort ✅. 09.10.: WCN-Kern startet ✅ – Testtreiber `kernel/wcn-test` (Stufe 3): Firmware `wcnmodem.bin` (aus `odm_a/firmware`, **nicht signiert**, läuft ohne trusty und ohne Speichersperre) nach `0x87000000`, Einschaltfolge nach Realme `wcn_poweron_device()` → `0xF0F0F0FF` nach ~520–540 ms. Sauber abschalten und ohne Neustart wieder starten ✅ (09.10.). Verbrauch mit schlafendem WCN-Kern nicht messbar höher (< ~2 mA). Offen: WLAN-Treiber `marlin3_sipc` portieren → `wlan0`; Bluetooth (Kanal 4, Ringe 11/10), FM (Ringe 14/13). Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
 | FM-Senden | ❓ | Behauptung aus altem Chat, **nicht belegt** |
 | Mobilfunk | ❌ 🟡 | Ziel: Ersatz-Internet. 10.10.: Modem-Firmware (`l_modem` MECP-Container, `l_ldsp`, `l_gdsp`) **ohne `DHTB`-Signatur** ✅, Ladeplan aus dem Container gelesen, Modem-Speicher im Mainline-DT schon reserviert. Siehe [MODEM.md](MODEM.md) |
-| GPU (Mali-G57) | ✅ | 24.10.: Panfrost läuft (`id 0x9091`, 1 Shaderkern, 384 MHz), Mesa „Mali-G57 (Panfrost)“, OpenGL ES 3.1, glmark2 Score 228 bei 26–28 °C; lädt nach Neustart von selbst (Module in `/lib/modules` + `depmod`). 25.10.: `vddgpu` lesbar, 1,00 V bei 384 MHz (Bootloader-Wert; Android: 0,70 V). 25.10.: **Taktstufen 384–850 MHz** über devfreq (Patch 0026: `gpu-core-clk` wechselt die Quelle), glmark2 460, max. 31 °C. 25.10.: GPU-Spannung 0,85 V (stabil); Akkustrom GPU-Last 262 → 253 mA, Leerlauf 53 mA bei Display aus. Siehe [FEHLT.md](FEHLT.md) |
+| GPU (Mali-G57) | ✅ | 24.10.: Panfrost läuft (`id 0x9091`, 1 Shaderkern, 384 MHz), Mesa „Mali-G57 (Panfrost)“, OpenGL ES 3.1, glmark2 Score 228 bei 26–28 °C; lädt nach Neustart von selbst (Module in `/lib/modules` + `depmod`). 25.10.: `vddgpu` lesbar, 1,00 V bei 384 MHz (Bootloader-Wert; Android: 0,70 V). 25.10.: **Taktstufen 384–850 MHz** über devfreq (Patch 0026: `gpu-core-clk` wechselt die Quelle), glmark2 460, max. 31 °C. 25.10.: GPU-Spannung 0,85 V (stabil); Akkustrom GPU-Last 262 → 253 mA, Leerlauf 53 mA bei Display aus. **31.10.: Beschleunigung aufs Display** ohne Umweg (Mesa 25.2 findet zu `sprd` selbst panfrost): `glmark2-es2-drm` auf dem Display, Score 723 (2 Szenen); mit `--swap-mode fifo` genau 60 FPS, DPU-Interrupt ~60/s (VBlank stimmt). GPU drosselt bei 70 °C (Kühlgerät). **Nicht möglich:** Vulkan (panvk in Mesa 25.2: „Mali-G57 not supported“, auch mit `PAN_I_WANT_A_BROKEN_VULKAN_DRIVER=1` – nur `llvmpipe`); Video-Dekodierung (kein Knoten im Mainline-Gerätebaum, kein Treiber – bewusst nicht verfolgt). Siehe [FEHLT.md](FEHLT.md) |
 | Ton | ❌ 🟡 | 09.10.: **Quellcode gefunden** (Realme C33) für die ganze Kette sipc → audio-sipc/-mem/-pipe → VBC v4 + MCDT → Codec SC2730 → Soundkarte; alle Adressen im Xiaomi-Gerätebaum identisch (VBC `0x56480000`, MCDT `0x56490000`, Codec-Dig `0x56750000`, Audio-DMA `0x56580000`). Lücke: Lautsprecher-Verstärker FourSemi FS1588 (I2C `0x20220000`/`0x34`) ohne Quellcode. Siehe [TREIBER_QUELLEN.md](TREIBER_QUELLEN.md) |
 | Kamera | ❌ | später |
 
