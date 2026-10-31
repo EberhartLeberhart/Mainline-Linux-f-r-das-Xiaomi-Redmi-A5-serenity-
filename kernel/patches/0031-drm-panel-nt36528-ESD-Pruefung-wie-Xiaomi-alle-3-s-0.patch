@@ -1,0 +1,179 @@
+From f751341e65e2c3ea6c5905b39e7c2389447bd4db Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 31 Oct 2026 20:53:21 +0100
+Subject: [PATCH] drm/panel: nt36528: ESD-Pruefung wie Xiaomi (alle 3 s 0x0A =
+ 0x9c)
+
+- bei eingeschaltetem Panel alle 3000 ms DCS 0x0A lesen (sprd,esd-check-*);
+  weicht der Wert ab oder kommt keine Antwort: Reset, Init-Befehle,
+  Einschalten, Helligkeit nachschicken
+- nur mit Reset-Leitung, im Schlaf aus; Sperre zwischen prepare/unprepare,
+  Pruefung und Helligkeitsbefehlen
+- Beleg 31.10.: Panel per DCS 0x28/0x10 am Treiber vorbei schlafen gelegt ->
+  nach 0,25 s erkannt, 0,28 s spaeter wieder 0x9c/0x2c, Touch ueber seinen
+  Waechter neu geladen, evtest ok
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 78 +++++++++++++++++--
+ 1 file changed, 73 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+index f32129275..ef36b7e88 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36528.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -24,6 +24,8 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/workqueue.h>
+ 
+ #include <drm/drm_mipi_dsi.h>
+ #include <drm/drm_modes.h>
+@@ -34,6 +36,9 @@
+ 
+ #define NT36528_HELL_MAX	4095
+ #define NT36528_HELL_START	500
++/* Xiaomi sprd,esd-check-*: alle 3000 ms Register 0x0A lesen, erwartet 0x9c */
++#define NT36528_ESD_MS		3000
++#define NT36528_ESD_OK		0x9c
+ 
+ struct nt36528_panel {
+ 	struct drm_panel panel;
+@@ -42,6 +47,8 @@ struct nt36528_panel {
+ 	struct gpio_desc *avdd;		/* optional */
+ 	struct gpio_desc *avee;		/* optional */
+ 	bool an;			/* Panel eingeschaltet -> DSI-Befehle erlaubt */
++	struct mutex lock;		/* prepare/unprepare gegen die ESD-Pruefung */
++	struct delayed_work esd;	/* nur mit Reset-Leitung (sonst kein Neuaufsetzen moeglich) */
+ };
+ 
+ static inline struct nt36528_panel *to_nt36528_panel(struct drm_panel *panel)
+@@ -261,9 +268,8 @@ static int nt36528_off(struct nt36528_panel *ctx)
+ 	return dsi_ctx.accum_err;
+ }
+ 
+-static int nt36528_prepare(struct drm_panel *panel)
++static int nt36528_hochfahren(struct nt36528_panel *ctx)
+ {
+-	struct nt36528_panel *ctx = to_nt36528_panel(panel);
+ 	int ret;
+ 
+ 	nt36528_strom_an(ctx);
+@@ -288,21 +294,78 @@ static int nt36528_prepare(struct drm_panel *panel)
+ 	return 0;
+ }
+ 
++static int nt36528_prepare(struct drm_panel *panel)
++{
++	struct nt36528_panel *ctx = to_nt36528_panel(panel);
++	int ret;
++
++	mutex_lock(&ctx->lock);
++	ret = nt36528_hochfahren(ctx);
++	mutex_unlock(&ctx->lock);
++
++	if (!ret && ctx->reset)
++		schedule_delayed_work(&ctx->esd, msecs_to_jiffies(NT36528_ESD_MS));
++
++	return ret;
++}
++
+ static int nt36528_unprepare(struct drm_panel *panel)
+ {
+ 	struct nt36528_panel *ctx = to_nt36528_panel(panel);
+ 	int ret;
+ 
++	cancel_delayed_work_sync(&ctx->esd);
++
++	mutex_lock(&ctx->lock);
+ 	ctx->an = false;
+ 	ret = nt36528_off(ctx);
+ 	if (ret < 0)
+ 		dev_err(&ctx->dsi->dev, "Panel ausschalten fehlgeschlagen: %d\n", ret);
+ 
+ 	nt36528_strom_aus(ctx);
++	mutex_unlock(&ctx->lock);
+ 
+ 	return 0;
+ }
+ 
++/*
++ * ESD-Pruefung wie Xiaomi (esd-check-mode 3, Register 0x0A = 0x9c): Meldet das Panel etwas anderes
++ * oder antwortet nicht, wird es mit der vollen Folge neu aufgesetzt (Versorgung bleibt an, Reset +
++ * Init-Befehle + Einschalten). Der Touch (gleicher Chip) faellt dabei mit und laedt seine Firmware
++ * ueber die eigene Waechter-Erkennung neu.
++ */
++static void nt36528_esd_pruefen(struct work_struct *work)
++{
++	struct nt36528_panel *ctx = container_of(to_delayed_work(work), struct nt36528_panel, esd);
++	struct device *dev = &ctx->dsi->dev;
++	u8 modus = 0;
++	int ret;
++
++	mutex_lock(&ctx->lock);
++	if (!ctx->an) {
++		mutex_unlock(&ctx->lock);
++		return;
++	}
++
++	ret = mipi_dsi_dcs_get_power_mode(ctx->dsi, &modus);
++	if (ret < 0 || modus != NT36528_ESD_OK) {
++		if (ret < 0)
++			dev_warn(dev, "ESD-Pruefung: Panel antwortet nicht (%d) - setze neu auf\n", ret);
++		else
++			dev_warn(dev, "ESD-Pruefung: 0x0a = 0x%02x statt 0x%02x - setze neu auf\n",
++				 modus, NT36528_ESD_OK);
++		ctx->an = false;
++		ret = nt36528_hochfahren(ctx);
++		if (ret < 0)
++			dev_err(dev, "ESD-Pruefung: Neuaufsetzen fehlgeschlagen (%d)\n", ret);
++		else
++			dev_info(dev, "ESD-Pruefung: Panel wieder da\n");
++	}
++	mutex_unlock(&ctx->lock);
++
++	schedule_delayed_work(&ctx->esd, msecs_to_jiffies(NT36528_ESD_MS));
++}
++
+ /*
+  * Xiaomi timing0 (native-mode, 60 Hz): 199,2 MHz, h 720+24+4+80 = 828, v 1640+2336+2+32 = 4010.
+  * timing1 (90 Hz) und timing2 (120 Hz) unterscheiden sich nur in vfront-porch (999 / 331).
+@@ -347,10 +410,10 @@ static int nt36528_bl_update_status(struct backlight_device *bl)
+ 	 * (Beleg 09.10.: systemd-backlight beim Start -> NULL-Zeiger in sprd_dsi_host_transfer).
+ 	 * Der Wert bleibt in bl->props gespeichert und wird in prepare() nachgeschickt.
+ 	 */
+-	if (!ctx->an)
+-		return 0;
++	mutex_lock(&ctx->lock);	/* nicht mitten in eine ESD-Abfrage oder ein Neuaufsetzen senden */
++	ret = ctx->an ? mipi_dsi_dcs_set_display_brightness_large(ctx->dsi, hell) : 0;
++	mutex_unlock(&ctx->lock);
+ 
+-	ret = mipi_dsi_dcs_set_display_brightness_large(ctx->dsi, hell);
+ 	return ret < 0 ? ret : 0;
+ }
+ 
+@@ -398,6 +461,10 @@ static int nt36528_probe(struct mipi_dsi_device *dsi)
+ 
+ 	ctx->dsi = dsi;
+ 	mipi_dsi_set_drvdata(dsi, ctx);
++	ret = devm_mutex_init(dev, &ctx->lock);
++	if (ret)
++		return ret;
++	INIT_DELAYED_WORK(&ctx->esd, nt36528_esd_pruefen);
+ 
+ 	dsi->lanes = 4;
+ 	dsi->format = MIPI_DSI_FMT_RGB888;
+@@ -430,6 +497,7 @@ static void nt36528_remove(struct mipi_dsi_device *dsi)
+ 	struct nt36528_panel *ctx = mipi_dsi_get_drvdata(dsi);
+ 	int ret;
+ 
++	cancel_delayed_work_sync(&ctx->esd);
+ 	ret = mipi_dsi_detach(dsi);
+ 	if (ret < 0)
+ 		dev_err(&dsi->dev, "Trennen vom DSI-Host fehlgeschlagen: %d\n", ret);
+-- 
+2.43.0
+
