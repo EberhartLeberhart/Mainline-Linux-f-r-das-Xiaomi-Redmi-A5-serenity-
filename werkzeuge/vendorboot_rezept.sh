@@ -162,6 +162,21 @@ if [ "$TOUCHFOLGER" = 1 ]; then FOLGER_ARGS=(
   /soc/spi@20150000/touchscreen@0 panel u:$PANEL_PH )
 fi
 
+# 31.10.: Panel in Kernel-Hand: Der Panel-Treiber (Patch 0030) bekommt Reset (ap_gpio 50), avdd (135) und avee (136)
+#   und faehrt das Panel selbst hoch (Versorgung, Reset-Folge, Xiaomis Init-Befehle) bzw. schaltet die Versorgung im
+#   Schlaf ab. Pegel vom Bootloader (31.10. gelesen): alle drei Ausgang, 1. Xiaomi/Unisoc-DT: aktiv-high; Reset hier
+#   als aktiv-low (Flag 1) eingetragen, damit "1" fuer den Treiber "im Reset" bedeutet.
+#   Ohne Patch 0030 bleibt der Schalter wirkungslos (alter Treiber kennt die Eigenschaften nicht).
+#   Beleg 31.10.: Leitungen vom Treiber angefordert, im Schlaf avdd/avee 0, Panel 0x9C/0x2C, Touch ok; Akku: an 142 mA
+#   (normal hell), Schlaf 41 mA. Standard seit 31.10. (Ergebnis = vendor_boot_panelk_ok.img); ausschalten: PANELKERNEL=0
+PANELKERNEL=${PANELKERNEL:-1}
+PANELK_ARGS=()
+if [ "$PANELKERNEL" = 1 ]; then PANELK_ARGS=(
+  /soc/dsi@31100000/panel@0 reset-gpios "u:$GP_PH 50 1" \
+  /soc/dsi@31100000/panel@0 avdd-gpios "u:$GP_PH 135 0" \
+  /soc/dsi@31100000/panel@0 avee-gpios "u:$GP_PH 136 0" )
+fi
+
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -242,4 +257,5 @@ fi
   "${REGLER_ARGS[@]}" \
   "${OPP_ARGS[@]}" \
   "${SD_ARGS[@]}" \
-  "${FOLGER_ARGS[@]}"
+  "${FOLGER_ARGS[@]}" \
+  "${PANELK_ARGS[@]}"
