@@ -13,7 +13,8 @@ Diese Datei ist für den nächsten Chat. Erst lesen, dann STATUS.md und TREIBER_
 - Vor dem Ausliefern selbst bauen, wenn möglich (Linux v7.1-rc1 + aarch64-Cross-Compiler, `W=1`).
 - Prüfzahlen (z. B. `grep -c`) vorher **selbst nachzählen**, nicht schätzen.
 - **Nie veröffentlichen:** NV-Backups, Firmware (Xiaomi/Novatek/WCN), uboot_log-Dumps, SSH-Schlüssel, Seriennummer, `~/redmi-android` (privat). GitHub-Token nur im Cache. `github_update.sh` committet nicht selbst und hat eine Sicherheitsprüfung.
-  ❓ Die Firmware-Logs `wcntest_*_wcnlog.bin` vor einem Commit erst ansehen (enthalten u. a. RF-Kalibrierspuren).
+  Die Firmware-Logs `wcntest_*_wcnlog.bin` (Binärspuren mit RF-Kalibrierung) gehören nicht ins Repo: 01.11. entfernt
+  (lagen seit 09.10. drin; Prüfung: keine MAC, Seriennummer, SSID), `.gitignore` verhindert neue.
 - **Erst den Chip fragen (seit 27.10.):** bevor wir an einem Baustein herumprobieren, seinen Zustand abfragen –
   genormte Status-/ID-Register (z. B. MIPI-DCS 0x0A/0x54/0xDA–0xDC, siehe `werkzeuge/redmi-dcsfrage.sh`) oder was der
   Treiber selbst liest –, dann ändern, dann wieder abfragen. So wurde der Display-Fehler gefunden (Panel wach, Licht aus).
