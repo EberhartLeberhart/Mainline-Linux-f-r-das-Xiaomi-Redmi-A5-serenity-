@@ -29,7 +29,7 @@ Vibrationsmotor, microSD-Kartenleser.
 
 | Bereich | Was fehlt |
 |---|---|
-| WLAN | Senden über einen Datenkanal, Schlüssel (`WIFI_CMD_KEY`), DHCP → SSH; Lauscher in sauberen Treiber aufteilen (sipc-Kern + WLAN) |
+| WLAN | 01.11.: **läuft** mit Ottos Treibern (Scan, WPA2, DHCP, SSH über WLAN). Fehlt: Treiber übernimmt die MAC der Firmware (sonst kommt EAPOL nicht an); Rundrufe (ARP) kommen nicht an ❓; Autostart (Lade-Sperre `sprd_wcn` auf dem Handy aufheben, `wpa_supplicant`/networkd-Dienst); `WCN=1` als Standard; Kernel-Optionen in die defconfig des Kernel-Baums; Bluetooth (`BT_SPRDSIPC`) |
 | Display-Schlaf | 29.10.: `redmi-licht.sh` schläft über den Treiber (fb-blank, DSI+DPU aus, Touch folgt) ✅ – Akku: Schlaf 43 mA statt 60 mA (DCS-Weg). 31.10.: **Panel vollständig in Kernel-Hand** ✅ (Patch 0030: Reset/avdd/avee, Xiaomis Init-Befehle; Schlaf mit Versorgung aus 41 mA). ESD-Prüfung wie Xiaomi ✅ (Patch 0031, alle 3 s `0x0A = 0x9C`, sonst neu aufsetzen). Ungeklärt: `fb0/blank = 4` nach dem Start mit alter licht-Fassung ❓ |
 | Touch | 28.10.: Wächter-Erkennung + Selbst-Neuladen ✅, Runtime-PM beim Abmelden ✅ (Patch 0028). 29.10.: als Panel-Follower ans Display gekoppelt ✅ (Patch 0029, DT `panel`). `redmi-licht.sh` meldet ihn nicht mehr ab ✅ |
 | USB | Rollenwechsel: ein seltener Fehlschlag; Gadget-MAC wechselt bei jedem Start |

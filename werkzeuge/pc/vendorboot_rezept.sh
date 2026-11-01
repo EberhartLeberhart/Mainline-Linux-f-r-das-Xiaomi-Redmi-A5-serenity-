@@ -80,12 +80,14 @@ fi
 # 25.10. belegt (vendor_boot_regler_ok.img): 32 Regler lesbar, nichts abgeschaltet, eMMC/USB/Display/Touch/GPU laufen.
 REGLER=${REGLER:-1}
 SD=${SD:-1}   # Schalter fuer den SD-Kartenleser (unten); gibt dafuer ldo-vddsdcore/ldo-vddsdio frei
+WCN=${WCN:-0} # Schalter fuer den WCN-Kern (unten); gibt dafuer ldo-vddwcn/ldo-vddwifipa/ldo-vddsim2 frei
 REGLER_ARGS=()
 if [ "$REGLER" = 1 ]; then
   RG=/soc/spi@64200000/pmic@0/regulators
   REGLER_ARGS=()
   for r in dcdc-core dcdc-cpu dcdc-gen0 dcdc-gen1 dcdc-mem dcdc-memq dcdc-modem dcdc-sram ldo-avdd12 ldo-avdd18 ldo-vdd18-dcxo ldo-vdd28 ldo-vddcama0 ldo-vddcama1 ldo-vddcamd0 ldo-vddcamd1 ldo-vddcamio ldo-vddcammot ldo-vddemmccore ldo-vddkpled ldo-vddldo0 ldo-vddldo1 ldo-vddldo2 ldo-vddrf18 ldo-vddrf1v25 ldo-vddsdcore ldo-vddsdio ldo-vddsim2 ldo-vddusb33 ldo-vddwcn ldo-vddwifipa; do
     [ "$SD" = 1 ] && { [ $r = ldo-vddsdcore ] || [ $r = ldo-vddsdio ]; } && continue
+    [ "$WCN" = 1 ] && { [ $r = ldo-vddwcn ] || [ $r = ldo-vddwifipa ] || [ $r = ldo-vddsim2 ]; } && continue
     REGLER_ARGS+=( $RG/$r status disabled ); done
   export CMDLINE_ZUSATZ="${CMDLINE_ZUSATZ:+$CMDLINE_ZUSATZ }regulator_ignore_unused"
 fi
@@ -193,6 +195,36 @@ if [ "$GPUKUEHL" = 1 ]; then GPUKUEHL_ARGS=(
   $TZ/gpu-thermal/cooling-maps/map1 cooling-device "u:$GPU_PH 4294967295 4294967295" )
 fi
 
+# 01.11.: WCN-Kern (WLAN/BT) mit Otto Pfluegers Treibern aus dem Codeberg-Baum (sprd_wcn remoteproc, sprd_sipc rpmsg,
+#   sc23xx_wlan) statt unseres Test-Lauschers. Knoten /wcn (ums9230.dtsi) ist vollstaendig, nur disabled; Vorbild fuer
+#   das Einschalten: ums9230-reeder-s19mps.dts (enable 118, reset 117 aktiv-low, Regler vdd/vddwifipa/dcxo1v8).
+#   GPIOs = Xiaomi merlion-chip-en (118) / merlion-rst (117).
+#   VORSICHT Spannungen: sprd_wcn schaltet die Regler nur EIN, stellt sie nicht. Der Bootloader laesst dcxo1v8 (vddsim2)
+#   auf 3,0 V und vddwcn auf 0,9 V (Beleg wcntest Stufe 0, 09.10.). Noetig sind 1,8 V / 1,2 V / 3,3 V (Realme, wcntest
+#   Stufe 1). Deshalb min = max: der Kernel stellt die Spannung beim Anmelden des Reglers ein, solange er noch aus ist.
+#   Raster: vddwcn 900 + n*15 mV (1200 = n 20), vddsim2/vddwifipa 1200 + n*10 mV (1800 = 60, 3300 = 210).
+VDDWCN_PH=119; VDDWIFIPA_PH=120; DCXO_PH=121   # neu; 105-118 sind vergeben
+WCN_ARGS=()
+if [ "$WCN" = 1 ]; then
+  RG=/soc/spi@64200000/pmic@0/regulators
+  WCN_ARGS=(
+    $RG/ldo-vddwcn phandle u:$VDDWCN_PH \
+    $RG/ldo-vddwcn regulator-min-microvolt u:1200000 \
+    $RG/ldo-vddwcn regulator-max-microvolt u:1200000 \
+    $RG/ldo-vddwifipa phandle u:$VDDWIFIPA_PH \
+    $RG/ldo-vddwifipa regulator-min-microvolt u:3300000 \
+    $RG/ldo-vddwifipa regulator-max-microvolt u:3300000 \
+    $RG/ldo-vddsim2 phandle u:$DCXO_PH \
+    $RG/ldo-vddsim2 regulator-min-microvolt u:1800000 \
+    $RG/ldo-vddsim2 regulator-max-microvolt u:1800000 \
+    /wcn enable-gpios "u:$GP_PH 118 0" \
+    /wcn reset-gpios "u:$GP_PH 117 1" \
+    /wcn vdd-supply u:$VDDWCN_PH \
+    /wcn vddwifipa-supply u:$VDDWIFIPA_PH \
+    /wcn dcxo1v8-supply u:$DCXO_PH \
+    /wcn status okay )
+fi
+
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
 AKKU=${AKKU:-1}
 AKKU_ARGS=()
@@ -275,4 +307,5 @@ fi
   "${SD_ARGS[@]}" \
   "${FOLGER_ARGS[@]}" \
   "${PANELK_ARGS[@]}" \
-  "${GPUKUEHL_ARGS[@]}"
+  "${GPUKUEHL_ARGS[@]}" \
+  "${WCN_ARGS[@]}"

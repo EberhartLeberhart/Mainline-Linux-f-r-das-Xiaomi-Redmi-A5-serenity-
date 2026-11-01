@@ -120,7 +120,13 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    „RX message 1 of 4-Way Handshake“ über `wlan0`. Passwortdatei ohne Klartext:
    `ssh -t root@192.168.7.2 'wpa_passphrase MeinNetz | sed "/#psk=/d" > /root/wpa.conf; chmod 600 /root/wpa.conf'`
    Test: `timeout 30 wpa_supplicant -i wlan0 -D nl80211 -c /root/wpa.conf -d` (Ausgabe filtern: MACs!).
-9. Als Nächstes: **Senden** über einen Datenkanal (Realme `tx_msdu_dscr`, 11 Bytes + Adresse; die Datenpakete liegen bei
+9. ✅ **01.11.: Senden gelöst – mit Otto Pflügers fertigem Treiberstapel** statt des Lauschers (siehe STATUS). Ablauf heute:
+   Kernel-Optionen `RPMSG_SPRD_SIPC`, `SPRD_WCN_REMOTEPROC`, `SC23XX_SIPC` (=m; Modem/pmsys ausdrücklich aus), Rezept `WCN=1`,
+   auf dem Handy `/lib/firmware/sprd/wcnmodem.bin` + `sprd/wifi_board_config.bin` (aus der INI per `wcn_ini_bin.ko`, beide nur
+   lokal), Lade-Sperre `/etc/modprobe.d/wcn-erst-von-hand.conf` (für den ersten Start; `modprobe sprd_wcn` von Hand).
+   Offen: MAC (Firmware ≠ `wlan0`), Rundrufe, Autostart, Bluetooth. Vorbild für Korrekturen: beebonos Fassung
+   (github.com/beebono/linux-mainline-sprd, Zweig `rg-rotate`, z. B. EAPOL über den Befehlskanal, MAC aus der Chip-Kennung).
+   *Alter Plan (Lauscher), überholt:* **Senden** über einen Datenkanal (Realme `tx_msdu_dscr`, 11 Bytes + Adresse; die Datenpakete liegen bei
    Realme in einem eigenen Paketspeicher – erst gründlich nachlesen ❓), dann **Schlüssel** (`add_key`/`set_default_key`
    → `WIFI_CMD_KEY`), dann DHCP → SSH über WLAN. Außerdem: `mgmt_frame_register` (stilllegen der Meldungen),
    Namen für Ereignisse 0xf5 (`STA_LUT_INDEX`, wird fürs Senden gebraucht ❓)/0xf9/0xa2.
