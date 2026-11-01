@@ -1,4 +1,4 @@
-# Was im Kernel noch fehlt (Stand 24.10.2026)
+# Was im Kernel noch fehlt (Stand 01.11.2026)
 
 Zum Abhaken. Belege und Einzelheiten stehen in [STATUS.md](STATUS.md), die Arbeitsreihenfolge in
 [UEBERGABE.md](UEBERGABE.md). Zeichen: 🟡 angefangen · ❌ fehlt · ❓ noch nicht untersucht.
@@ -58,6 +58,18 @@ Vibrationsmotor, microSD-Kartenleser.
 - Fingerabdrucksensor: **verbaut** (seitlich), Overlay kennt Goodix und Silead (Reset ap_gpio 121, IRQ ap_gpio 29) – ganz hinten, siehe `ideen/fingerabdruck-profilometer.md`
 - Kopfhörer-Erkennung, USB-C-Kabelerkennung (`sc27xx_typec`)
 - Akku-Echtheitsprüfung DS28E30 (1-Wire, vermutlich unwichtig)
+
+## Spätere Verbesserungen (bewusst zurückgestellt, 01.11.)
+
+Läuft schon, könnte aber besser werden – kommt in ein späteres Update, nicht jetzt:
+
+- **microSD schneller (UHS-I, SDR50/104):** braucht umschaltbare Signalspannung 3,0 ↔ 1,8 V (`ldo-vddsdio`, bisher bewusst
+  fest 3,0 V). Vorbild: RG Rotate (UMS512) läuft mit SDR104.
+- **Fingerabdrucksensor:** siehe oben und `ideen/fingerabdruck-profilometer.md`.
+- **GPU-Feinschliff:** `gpu-mem`-Takt (fest 384 MHz) und Güteklasse `gpu_bin` (eFuse) für Spannungen je Stufe.
+- **Suspend (echter Tiefschlaf):** für einen Server nicht nötig, für einen Handy-Modus schon. Bekannte Stolpersteine aus dem
+  RG-Rotate-Projekt (gleicher PMIC SC2730): Akkuanzeige braucht `power-supplies` zum Ladechip, `sc27xx_wdt` ohne
+  Schlaf-Routinen, musb-Weck-Interrupt. Quelle: [rg-rotate-linux, DEVICE-BRINGUP.md](https://github.com/beebono/rg-rotate-linux/blob/main/DEVICE-BRINGUP.md)
 
 ## Danach (kein Kernel)
 
