@@ -10,7 +10,7 @@ schreiben, zurücklesen, wiederherstellen. Startet nichts.
 Für Stufe 2 vorher (Dateien bleiben auf dem Handy, nicht ins Repo):
 ```
 # am PC: Startcode aus der vendor-Partition
-python3 werkzeuge/pmsys_bootcode.py /mnt/vendor/etc/modem_sp_info.xml pmsys_bootcode.bin
+python3 werkzeuge/analyse/pmsys_bootcode.py /mnt/vendor/etc/modem_sp_info.xml pmsys_bootcode.bin
 scp pmsys_bootcode.bin root@192.168.7.2:/lib/firmware/
 # am Handy: pm_sys-Partition als Firmware-Datei
 dd if=/dev/disk/by-partlabel/pm_sys_a of=/lib/firmware/pm_sys.bin

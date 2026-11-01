@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # pmsys_bootcode.py - Startcode des Hilfskerns pmsys aus Android-Konfiguration ziehen (fuer modem_starttest Stufe 2).
 #
-#   python3 werkzeuge/pmsys_bootcode.py /mnt/vendor/etc/modem_sp_info.xml pmsys_bootcode.bin
+#   python3 werkzeuge/analyse/pmsys_bootcode.py /mnt/vendor/etc/modem_sp_info.xml pmsys_bootcode.bin
 #   scp pmsys_bootcode.bin root@192.168.7.2:/lib/firmware/
 #
 # Liest das Attribut bootcode="..." des Eintrags pm_sys_bootcode (Liste von 32-Bit-Woertern) und schreibt sie
