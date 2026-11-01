@@ -4,7 +4,7 @@
 # Aufbau wie 08.10.: Handy im Hub mit Einspeisung, LAN-Kabel des Adapters direkt am PC,
 # NetworkManager-Verbindung "redmi-lan" (geteilt, 10.42.0.1) -> Handy 10.42.0.27.
 #
-#   Start:   systemd-inhibit --what=sleep:idle bash werkzeuge/lan-dauertest.sh
+#   Start:   systemd-inhibit --what=sleep:idle bash werkzeuge/tests/lan-dauertest.sh
 #            (oder mit nohup ... & im Hintergrund; systemd-inhibit verhindert, dass der PC einschlaeft)
 #   Ende:    Strg+C - die Zusammenfassung steht am Ende des Protokolls
 #

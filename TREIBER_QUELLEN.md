@@ -31,7 +31,7 @@ Modulen, zum Beispiel `bsp/modules/kernel5.15/audio/sprd/dai/vbc/v4/vbc-phy-v4.c
 
 ## Abgleich mit dem Redmi A5
 
-Belegt am 09.10. mit `werkzeuge/ko_steckbrief.sh` (Kennungen in Xiaomis `.ko`) und `werkzeuge/dt_vergleich.py`
+Belegt am 09.10. mit `werkzeuge/analyse/ko_steckbrief.sh` (Kennungen in Xiaomis `.ko`) und `werkzeuge/analyse/dt_vergleich.py`
 (Xiaomi-Gerätebaum + dtbo-Overlay gegen die Realme-Dateien).
 
 ### Ton
@@ -99,7 +99,7 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
 - **Nächster Versuch:** WCN-Kern ohne sipc starten (Firmware aus `wcnmodem` nach `0x87000000`, Einschaltfolge nach
   `wcn_integrate_boot.c`) und prüfen, ob er sich über die Mailbox meldet (Interrupt-Zähler). Klärt nebenbei die trusty-Frage.
 - **Testtreiber geschrieben (09.10. abends):** `kernel/wcn-test/wcn_starttest.c` (Out-of-tree-Modul, baut ohne Warnung gegen
-  Linux 7.1-rc1 arm64 mit `redmi_a5_defconfig`; am Handy **noch nicht getestet** ❓), Aufruf über `werkzeuge/redmi-wcntest.sh <Stufe>`.
+  Linux 7.1-rc1 arm64 mit `redmi_a5_defconfig`; am Handy **noch nicht getestet** ❓), Aufruf über `werkzeuge/tests/redmi-wcntest.sh <Stufe>`.
   Stufen, eine pro Start: 0 nur lesen · 1 Strom · 2 WCN-System an · 3 Firmware + CPU-Start, warten auf `0xF0F0F0FF`.
   Ablauf 1:1 nach Realme `wcn_proc_native_start()` → `wcn_poweron_device()`, von einem zweiten Durchgang gegen die Quelle geprüft
   (Adressen, Werte, Reihenfolge, Sync-Offsets, Magics). Erkenntnisse beim Lesen der Quelle:

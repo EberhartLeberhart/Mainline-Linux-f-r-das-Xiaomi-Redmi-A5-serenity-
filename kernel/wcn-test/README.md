@@ -104,11 +104,11 @@ die Firmware liest und wendet ihn an (Pfadverlust 2,4/5 GHz), die 1 ist kein Feh
 Belegt 21.10.: beide Status 0; nach `open` öffnet die Firmware die Kanäle 8 und 9, nach `close` schaltet sie ab.
 
 Zu jeder Antwort schreibt der Lauscher eine Klartextzeile, z. B. `WLAN-Antwort: OPEN -> ok`
-(Fehlercodes als Text). Die ganze Kette mit Übersicht macht das PC-Skript `werkzeuge/redmi-wlantest.sh`
+(Fehlercodes als Text). Die ganze Kette mit Übersicht macht das PC-Skript `werkzeuge/tests/redmi-wlantest.sh`
 (Handy vorher neu starten):
 ```
-./werkzeuge/redmi-wlantest.sh                       # sync_version download_ini get_info open scan close
-./werkzeuge/redmi-wlantest.sh sync_version get_info # nur diese
+./werkzeuge/tests/redmi-wlantest.sh                       # sync_version download_ini get_info open scan close
+./werkzeuge/tests/redmi-wlantest.sh sync_version get_info # nur diese
 ```
 Belegt 21.10.: Kanäle 4, 5, 7, 8, 9, 11, 12 bereit, alle acht Antworten „ok“.
 
@@ -119,8 +119,8 @@ Belegt 21.10.: Kanäle 4, 5, 7, 8, 9, 11, 12 bereit, alle acht Antworten „ok�
 Belegt 21.10.: 7 Netze auf 2,4 GHz; 5 GHz wird abgefragt, liefert aber noch nichts ❓.
 **Logs mit Scan-Ergebnissen enthalten die Netznamen der Nachbarn – nicht ins Repo.**
 ```
-./werkzeuge/redmi-wlantest.sh                                                   # ... open scan close
-./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info open scan5 close
+./werkzeuge/tests/redmi-wlantest.sh                                                   # ... open scan close
+./werkzeuge/tests/redmi-wlantest.sh sync_version download_ini get_info open scan5 close
 ```
 
 `regdom` schickt `WIFI_CMD_SET_REGDOM` (Nr. 2) mit den DE-Regeln aus der wireless-regdb (gesetzliche Grenzen,
@@ -136,7 +136,7 @@ echo disconnect > /sys/devices/platform/wcn-lauscher/wlan_befehl
 ```
 Nur WPA2-PSK mit CCMP. Belegt 22.10.: `CONNECT -> VERBUNDEN`, viermal `Kanal 9: EAPOL-Key … Nachricht 1
 vom Router`, dann `DISCONNECT -> Grund 15`. Mit dem Skript:
-`ZIEL=MeinNetz ./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close`
+`ZIEL=MeinNetz ./werkzeuge/tests/redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close`
 
 Hinweis: Im Firmware-Log blendet der Lauscher MAC-Adressen zur Hälfte aus (`d0:c1:bf:xx:xx:xx`).
 Das Firmware-Log (`wcn_log`, `*_wcnlog.bin`) enthält Spuren der RF-Kalibrierung – vor dem

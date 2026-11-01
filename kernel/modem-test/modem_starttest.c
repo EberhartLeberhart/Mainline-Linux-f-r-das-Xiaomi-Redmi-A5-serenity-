@@ -29,7 +29,7 @@
  *
  * Stufe 2: pmsys (Hilfskern, Cortex-M) STARTEN - noch nicht das Modem. Wie modem_sp_info.xml:
  *  /lib/firmware/pm_sys.bin (Partition pm_sys_a) nach 0x88040000, /lib/firmware/pmsys_bootcode.bin
- *  (aus dem bootcode-Attribut der XML, werkzeuge/pmsys_bootcode.py) nach 0x62010000, dann corereset
+ *  (aus dem bootcode-Attribut der XML, werkzeuge/analyse/pmsys_bootcode.py) nach 0x62010000, dann corereset
  *  AON 0x8c Bit 0 loeschen (soc_modem_start; andere Bits von modem@0 sind ungueltig). Danach 5 s
  *  beobachten: aendert sich der pmsys-sipc-Bereich 0x6500a400 bzw. das Bit? Bricht ab, wenn pmsys
  *  schon laeuft (Bit geloescht), ausser trotzdem=1. Firmware-Dateien bleiben auf dem Handy.

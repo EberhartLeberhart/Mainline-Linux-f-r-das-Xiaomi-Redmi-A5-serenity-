@@ -16,7 +16,7 @@ Diese Datei ist für den nächsten Chat. Erst lesen, dann STATUS.md und TREIBER_
   Die Firmware-Logs `wcntest_*_wcnlog.bin` (Binärspuren mit RF-Kalibrierung) gehören nicht ins Repo: 01.11. entfernt
   (lagen seit 09.10. drin; Prüfung: keine MAC, Seriennummer, SSID), `.gitignore` verhindert neue.
 - **Erst den Chip fragen (seit 27.10.):** bevor wir an einem Baustein herumprobieren, seinen Zustand abfragen –
-  genormte Status-/ID-Register (z. B. MIPI-DCS 0x0A/0x54/0xDA–0xDC, siehe `werkzeuge/redmi-dcsfrage.sh`) oder was der
+  genormte Status-/ID-Register (z. B. MIPI-DCS 0x0A/0x54/0xDA–0xDC, siehe `werkzeuge/handy/redmi-dcsfrage.sh`) oder was der
   Treiber selbst liest –, dann ändern, dann wieder abfragen. So wurde der Display-Fehler gefunden (Panel wach, Licht aus).
 - Register nie blind lesen (fremde regmap-Listen/WCN-Seite `0x51…` können einen „synchronous external abort" auslösen).
   Gemeinsamen Speicher lesen über `wcn_ram_btwf` ist ungefährlich.
@@ -94,7 +94,7 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    volle MAC nie veröffentlichen.
 3. ✅ **WLAN ein/aus** (21.10., PR #4): `open` → Status 0, ctx_id 0 (Antwort ohne Nutzdaten, ctx steht im Kopf),
    Firmware stellt auf Station und öffnet die **Datenkanäle 8 und 9** (Lauscher `datenkanaele=1`, nur Empfang).
-   `close` → Status 0, Firmware fährt sauber herunter. Ganze Kette mit Übersicht: `werkzeuge/redmi-wlantest.sh`
+   `close` → Status 0, Firmware fährt sauber herunter. Ganze Kette mit Übersicht: `werkzeuge/tests/redmi-wlantest.sh`
    (Handy vorher neu starten; Log in `~/redmi-logs/`, MAC halb ausgeblendet).
 4. ✅ **Erster Scan** (21.10., PR #5): `scan` (2,4 GHz 1–13) / `scan5` (+ 5 GHz 36–48). Ergebnisse als Ereignis
    `MGMT_FRAME` 0x83 (Typ 4) auf Kanal 7, Ende `SCAN_DONE` 0x82. 7 Netze auf 2,4 GHz, Sicherheit richtig erkannt.
@@ -107,7 +107,7 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
 6. ✅ **Erste Anmeldung beim Router** (22.10., PR #6): `echo -n MeinNetz > wlan_ziel` (SSID des eigenen Netzes), dann `scan`, `connect`.
    `SET_IE` (RSN) + `CONNECT` → Ereignis CONNECT verbunden, **EAPOL Nachricht 1 auf Kanal 9** (Versatz 66 im Block),
    nach ~5 s Abmeldung Grund 15 (kein Passwort – erwartet). Testaufruf:
-   `ZIEL=MeinNetz ./werkzeuge/redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close`
+   `ZIEL=MeinNetz ./werkzeuge/tests/redmi-wlantest.sh sync_version download_ini get_info regdom open scan connect disconnect close`
    Rohzeilen von Kanal 8/9 (`K9 #…`) enthalten volle MACs → Log nur lokal.
 7. ✅ **`wlan0` über cfg80211** (22.10., PR #7): Lauscher `wlan0=1` (braucht `kanal7=1 datenkanaele=1`).
    Vorher `insmod /root/rfkill.ko; insmod /root/cfg80211.ko` (aus `~/ums9230-linux/net/…`, gleicher Bau wie der
