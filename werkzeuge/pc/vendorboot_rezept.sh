@@ -204,6 +204,12 @@ fi
 #   Stufe 1). Deshalb min = max: der Kernel stellt die Spannung beim Anmelden des Reglers ein, solange er noch aus ist.
 #   Raster: vddwcn 900 + n*15 mV (1200 = n 20), vddsim2/vddwifipa 1200 + n*10 mV (1800 = 60, 3300 = 210).
 VDDWCN_PH=119; VDDWIFIPA_PH=120; DCXO_PH=121   # neu; 105-118 sind vergeben
+# 04.11.: feste WLAN-MAC aus der Chip-Kennung (UID). Ottos nvmem-Geraet fuer den eFuse-Spiegel beginnt bei 0x65014c04,
+#   Androids uid-start@5c / uid-end@58 (qogirl6.dtsi, cache_efuse 0x65014c00) liegen darin also bei 0x58 / 0x54.
+#   Abgefragt 04.11.: beide Felder belegt und stabil. Der WLAN-Treiber (Patch "MAC-Ersatzkette") liest sie ueber
+#   nvmem-cells am Kanal-7-Knoten und leitet daraus eine feste, lokal verwaltete MAC ab (wie beebono, UMS512).
+UIDSTART_PH=122; UIDEND_PH=123   # neu; 105-121 sind vergeben
+NVL=/reserved-memory/nvmem@65014c00/nvmem-layout
 WCN_ARGS=()
 if [ "$WCN" = 1 ]; then
   RG=/soc/spi@64200000/pmic@0/regulators
@@ -222,7 +228,15 @@ if [ "$WCN" = 1 ]; then
     /wcn vdd-supply u:$VDDWCN_PH \
     /wcn vddwifipa-supply u:$VDDWIFIPA_PH \
     /wcn dcxo1v8-supply u:$DCXO_PH \
-    /wcn status okay )
+    /wcn status okay \
+    $NVL/uid-start@58 reg "u:0x58 4" \
+    $NVL/uid-start@58 phandle u:$UIDSTART_PH \
+    $NVL/uid-end@54 reg "u:0x54 4" \
+    $NVL/uid-end@54 phandle u:$UIDEND_PH \
+    /wcn/btwf/sipc/channel@7 nvmem-cells "u:$UIDSTART_PH $UIDEND_PH" \
+    /wcn/btwf/sipc/channel@7 nvmem-cell-names "sl:uid-start uid-end" )
+  # Schutz: das nvmem-Layout muss im Basis-Geraetebaum schon existieren (sonst entstuende ein loser neuer Knoten)
+  fdtget -l "$BASIS_DTB" $NVL >/dev/null 2>&1 || { echo "FEHLER: $NVL fehlt im Basis-Geraetebaum"; exit 1; }
 fi
 
 # Schalter: AKKU=0 baut den Stand ohne Akkuanzeige (vor dem 04.10.-Akku-Schritt)
