@@ -1,6 +1,6 @@
 # Out-of-tree-Modul, gegen den eigenen Redmi-A5-Kernel bauen:
 #   make KDIR=~/ums9230-linux   (Standard, sonst Pfad zum eigenen Kernel-Baum)
-obj-m += wcn_starttest.o wcn_lauscher.o
+obj-m += wcn_starttest.o wcn_lauscher.o wcn_ini_bin.o
 
 KDIR ?= $(HOME)/ums9230-linux
 ARCH ?= arm64
