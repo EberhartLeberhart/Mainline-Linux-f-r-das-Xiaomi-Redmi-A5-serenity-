@@ -32,18 +32,21 @@ fi
 cp "$BASE" $W/neu.dtb
 while [ $# -gt 0 ]; do
     knoten=$1; eig=$2; wert=$3; shift 3
-    # Zahlen (u32) mit "u:" davor, z.B. u:0 - sonst wird der Wert als Text geschrieben
-    case "$wert" in u:*) typ=u; wert=${wert#u:} ;; *) typ=s ;; esac
+    # Zahlen (u32) mit "u:" davor, z.B. u:0 - sonst wird der Wert als Text geschrieben.
+    # Textliste mit "sl:" davor, Woerter durch Leerzeichen getrennt (z. B. nvmem-cell-names), 04.11.
+    case "$wert" in u:*) typ=u; wert=${wert#u:} ;; sl:*) typ=sl; wert=${wert#sl:} ;; *) typ=s ;; esac
     # fdtput liest Zahlen nur dezimal - 0x38 wuerde still zu 0! Deshalb hier umrechnen.
     [ $typ = u ] && wert=$(for n in $wert; do printf "%d " "$n"; done)
     # fehlender Knoten wird angelegt - steht dann deutlich in der Ausgabe und im Vergleich
     if ! fdtget -p $W/neu.dtb "$knoten" >/dev/null 2>&1; then
         fdtput -p -c $W/neu.dtb "$knoten" && echo ">>> NEUER Knoten angelegt: $knoten"
     fi
-    vorher=$(fdtget -t $typ $W/neu.dtb "$knoten" "$eig" 2>/dev/null || echo "(nicht gesetzt)")
+    t=$typ; [ $t = sl ] && t=s
+    vorher=$(fdtget -t $t $W/neu.dtb "$knoten" "$eig" 2>/dev/null || echo "(nicht gesetzt)")
     if [ $typ = u ]; then fdtput -t u $W/neu.dtb "$knoten" "$eig" $wert   # mehrere Zahlen erlaubt
+    elif [ $typ = sl ]; then fdtput -t s $W/neu.dtb "$knoten" "$eig" $wert   # jedes Wort ein eigener Text
     else fdtput -t s $W/neu.dtb "$knoten" "$eig" "$wert"; fi              # Text mit Leerzeichen bleibt ein Text
-    echo ">>> $knoten $eig: $vorher -> $(fdtget -t $typ $W/neu.dtb "$knoten" "$eig")"
+    echo ">>> $knoten $eig: $vorher -> $(fdtget -t $t $W/neu.dtb "$knoten" "$eig")"
 done
 
 # 3) Gegenprobe: ausser den Aenderungen ist alles gleich
