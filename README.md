@@ -4,11 +4,13 @@
 **Model**: 25028RN03A (Global)  
 **SoC**: Unisoc T7250 / UMS9230E (`sharkl5pro` family)  
 **Stock OS**: Android 15 Go — Build `A15.0.20.0.VGWMIXM`  
-**Status** (20 Oct 2026): ✅ Bootloader unlocked · ✅ Mainline 7.1 kernel boots cold and warm · ✅ Ubuntu 24.04 runs ·
-✅ display, touch, battery, USB networking · 🟡 Wi-Fi/Bluetooth firmware already talks to Mainline (first Wi-Fi command answered) ·
+**Status** (5 Nov 2026): ✅ Bootloader unlocked · ✅ Mainline 7.1 kernel boots cold and warm · ✅ Ubuntu 24.04 runs ·
+✅ display, touch, GPU, battery, USB networking · ✅ Wi-Fi (WPA2, SSH over Wi-Fi) · ❌ Bluetooth, audio, camera ·
 detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is still missing (German checklist): [FEHLT.md](FEHLT.md)
 
 **Build and install it yourself:** [BUILDING.md](BUILDING.md) (English, step by step from a clean PC).
+
+> Hardware overview for everyone (and editable by everyone): the [project wiki](https://github.com/EberhartLeberhart/Mainline-Linux-f-r-das-Xiaomi-Redmi-A5-serenity-/wiki).
 
 > This is the most complete public documentation of the Xiaomi Redmi A5's internals.
 > Built from hands-on reverse engineering — no leaked schematics, no vendor documentation.
@@ -799,7 +801,7 @@ This approach works because LK always initializes the display, regardless of wha
 
 ## 15. Booting Linux
 
-### What Works (as of 31 October 2026)
+### What Works (as of 5 November 2026)
 
 Every item below is backed by a dated log or measurement in [STATUS.md](STATUS.md) (German).
 Kernel: Linux 7.1.0-rc1 (Codeberg `ums9230` tree + the patches in [`kernel/patches/`](kernel/patches/)),
@@ -839,22 +841,18 @@ slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_
   hardware-accelerated rendering to the display (glmark2 on the panel, 60 FPS with vsync)
 - ✅ microSD card reader (SDXC, high speed, ~21 MB/s read)
 
-**Wireless (in progress)**
-- ✅ The integrated WCN core (Wi-Fi/Bluetooth/FM/GNSS) boots from Mainline with its own, unsigned firmware
-- ✅ All five SIPC channels the firmware opens are served by a test module ([`kernel/wcn-test/`](kernel/wcn-test/)):
-  AT/BT (4), firmware log (5), Wi-Fi commands (7, `sblock`), heartbeat (11), assert (12)
-- ✅ 19 Oct: first AT reply (`Platform Version:WCN_TRUNK_22A_W25.03.4 …`)
-- ✅ 20 Oct: first Wi-Fi commands answered (`SYNC_VERSION`, `GET_INFO`, calibration INI download)
-- ✅ 21 Oct: Wi-Fi on/off (`OPEN`/`CLOSE`), data channels 8/9 set up, first scan (2.4 GHz)
-- ✅ 22 Oct: 5 GHz works after sending the country rules (`SET_REGDOM`, DE limits from wireless-regdb);
-  first association with a WPA2 access point, first EAPOL frame received on data channel 9
-- ✅ 22 Oct: **`wlan0` as a real Linux Wi-Fi device** (cfg80211): `ip link set wlan0 up`, `iw dev wlan0 scan`
-- ✅ 23 Oct: **`wpa_supplicant` connects through the driver** (cfg80211 `connect`), receive path into `wlan0`
-  works: it receives message 1 of the WPA2 4-way handshake
-- Next: transmit path, key installation, then DHCP → SSH over Wi-Fi
+**Wireless**
+- ✅ **Wi-Fi** with Otto Pflüger's drivers from the Codeberg tree (`sprd_wcn` starts the WCN core with its own,
+  unsigned firmware, `sprd_sipc`, `sc23xx_wlan`): scan on 2.4 and 5 GHz, WPA2, DHCP, SSH over Wi-Fi (1 Nov)
+- ✅ Fixed MAC address derived from the chip ID instead of `00:00:00:00:00:00` (patch 0032, 4 Nov)
+- ✅ Reachable from the LAN without sending first: the firmware is told "screen on" and the own IPv4 address,
+  otherwise it sleeps through the DTIM beacons and filters ARP (patch 0033, 5 Nov)
+- 🟡 No autostart yet (started by hand); the firmware files must come from your own phone (see BUILDING.md)
+- The earlier test module for the SIPC channels ([`kernel/wcn-test/`](kernel/wcn-test/)) found the way there
+  (first AT reply 19 Oct, first Wi-Fi command 20 Oct, first scan 21 Oct)
 
 **Not working yet**
-- ❌ Wi-Fi data traffic (scan and association work), Bluetooth, audio, camera
+- ❌ Bluetooth, audio, camera, suspend
 - ❌ Vulkan on the GPU (Mesa's panvk does not support the Mali-G57 yet) and hardware video decoding (no driver)
 - ⏸️ LTE: the modem firmware is unsigned, but the part that needs the TEE (trusty) is **deliberately on hold**
   until the legal situation is clear — see [MODEM.md](MODEM.md). Everything else is being prepared
