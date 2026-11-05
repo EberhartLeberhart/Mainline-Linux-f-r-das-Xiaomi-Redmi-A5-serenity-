@@ -18,7 +18,7 @@ unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstell
 | `vendorboot_dt.sh` | vendor_boot mit Gerätebaum-Änderungen neu bauen (wird vom Rezept benutzt) |
 | `vendorboot_basis.sh` | leere vendor_boot-Hülle von Grund auf bauen (Gerätebaum + leere Ramdisk + bootconfig, nichts von Xiaomi); ersetzt das alte `vendor_boot_usb2.img` |
 | `wrap_dtb.py` | Gerätebaum in die DT-Tabelle des Bootloaders verpacken (wird von den vendor_boot-Skripten benutzt) |
-| `misc_slot_b.py` | `misc_b.img` erzeugen: Bootloader startet Slot b, nach 7 Fehlversuchen wieder Slot a |
+| `misc_slot_b.py` | `misc_b.img` erzeugen: Bootloader startet Slot b, nach 7 Fehlversuchen wieder Slot a; mit `--ok` die 32 Bytes für `redmi-boot-ok.service` |
 | `pack.sh` | `boot_mainline.img` aus dem frisch gebauten Kernel packen und prüfen, ob wirklich der aktuelle Kernel drinsteckt |
 | `deploy.sh` | Kernel, vendor_boot und alle Module per SSH auf Slot b schreiben, Slot b aktiv schalten, neu starten |
 | `net.sh` | USB-Netz zum Handy einrichten (nach jedem Handy-Neustart) |
@@ -35,6 +35,9 @@ unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstell
 | `redmi-cpufreq.sh` + `.service` | cpufreq-Modul beim Start laden |
 | `redmi-taste.sh` + `.service` | Einschalttaste: kurz = Licht, mindestens 3 s halten = Herunterfahren |
 | `redmi-usb.sh` + `.service` | USB-Rolle automatisch wählen: PC → Gerät (USB-Netz), Hub mit Netzteil → Host |
+| `redmi-usb-gadget.sh` + `.service` | USB-Gerät: Netz (NCM) + serielle Konsole (ACM), meldet jeden Schritt im Kernel-Log (05.11. ins Repo, läuft seit 27.09.) |
+| `10-usb0.network` | USB-Netz: Handy 192.168.7.2, PC 192.168.7.1 als Gateway (systemd-networkd, `/etc/systemd/network/`) |
+| `redmi-boot-ok.service` | nach gelungenem Start Slot b im `misc` als „erfolgreich“ markieren (32 Bytes `abc_b_ok.bin` aus `misc_slot_b.py --ok`, liegt unter `/usr/local/lib/redmi/`) – sonst startet nach 7 Starts wieder Android |
 | `20-lan.network` | USB-LAN-Adapter holt sich per DHCP eine Adresse (systemd-networkd) |
 | `redmi-kmsg.sh` | Kernel-Meldungen laufend auf die eMMC schreiben (für Abstürze) |
 | `redmi-dcsfrage.sh` | Panel per DCS-Lesebefehl nach seinem Zustand fragen (`0x0A` = 0x9C heißt gesund); fragt nicht, wenn das Display aus ist |

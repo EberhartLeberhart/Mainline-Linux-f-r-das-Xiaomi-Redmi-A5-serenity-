@@ -1,0 +1,10 @@
+[Unit]
+Description=Redmi A5: Slot b als erfolgreich gestartet markieren
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/dd if=/usr/local/lib/redmi/abc_b_ok.bin of=/dev/disk/by-partlabel/misc bs=1 seek=2048 count=32 conv=notrunc
+
+[Install]
+WantedBy=multi-user.target

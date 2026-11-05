@@ -8,6 +8,8 @@
 ✅ display, touch, battery, USB networking · 🟡 Wi-Fi/Bluetooth firmware already talks to Mainline (first Wi-Fi command answered) ·
 detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is still missing (German checklist): [FEHLT.md](FEHLT.md)
 
+**Build and install it yourself:** [BUILDING.md](BUILDING.md) (English, step by step from a clean PC).
+
 > This is the most complete public documentation of the Xiaomi Redmi A5's internals.
 > Built from hands-on reverse engineering — no leaked schematics, no vendor documentation.
 

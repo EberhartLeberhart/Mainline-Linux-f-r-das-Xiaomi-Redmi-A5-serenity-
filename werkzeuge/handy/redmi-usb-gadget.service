@@ -1,0 +1,12 @@
+[Unit]
+Description=Redmi A5: USB-Gadget (Netzwerk + Konsole)
+After=sys-kernel-config.mount
+Wants=sys-kernel-config.mount
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/redmi-usb-gadget.sh
+
+[Install]
+WantedBy=multi-user.target
