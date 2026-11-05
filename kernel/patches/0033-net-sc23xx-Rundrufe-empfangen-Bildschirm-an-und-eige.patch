@@ -1,0 +1,227 @@
+From 6609cc2e2449c57905bd110d2a7bc9f1cd4b9319 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Thu, 5 Nov 2026 14:39:00 +0100
+Subject: [PATCH] net: sc23xx: Rundrufe empfangen - Bildschirm an und eigene IP
+ an die Firmware
+
+- bisher: ARP/Broadcast/Multicast kamen nie beim Treiber an (mit -DDEBUG
+  0 Pakete bei ARP vom PC), das Handy war im Netz nur erreichbar, nachdem
+  es selbst gesendet hatte; der Router fuehrt es als schlafend (PS_STA)
+- Ursache: zwei Meldungen, die der Hersteller-Treiber schickt und dieser
+  nicht: (a) CMD_POWER_SAVE Unterbefehl 1 (Bildschirm an/aus, Android
+  SETSUSPENDMODE) - ohne "an" ueberspringt die Firmware die DTIM-Beacons;
+  (b) CMD_NOTIFY_IP_ACQUIRED mit der eigenen IPv4 - ohne sie laesst der
+  ARP-Filter der Firmware keine Anfrage durch
+- jetzt: "Bildschirm an" beim Oeffnen von wlan0 (unabhaengig vom echten
+  Display), IPv4 per inetaddr-Notifier an die Firmware
+- Gegenprobe Redmi A5 04./05.11.: nur IP 0/6, nur Bildschirm 0/9, beides
+  6/6; nach 14 h ohne neue Meldung 8/8, erstes Paket ~240 ms (ein DTIM)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/net/wireless/unisoc/cmd.c      | 37 +++++++++++++++++++++
+ drivers/net/wireless/unisoc/cmd.h      |  2 ++
+ drivers/net/wireless/unisoc/main.c     | 46 ++++++++++++++++++++++++++
+ drivers/net/wireless/unisoc/protocol.h |  1 +
+ drivers/net/wireless/unisoc/sc23xx.h   |  2 ++
+ drivers/net/wireless/unisoc/vif.c      |  5 +++
+ 6 files changed, 93 insertions(+)
+
+diff --git a/drivers/net/wireless/unisoc/cmd.c b/drivers/net/wireless/unisoc/cmd.c
+index 684f82b55..08214d4a7 100644
+--- a/drivers/net/wireless/unisoc/cmd.c
++++ b/drivers/net/wireless/unisoc/cmd.c
+@@ -229,6 +229,26 @@ int sc23xx_cmd_set_power_save(struct sc23xx_vif *vif, bool enabled)
+ 	return sc23xx_send_cmd_wait(vif->sdev, skb, NULL, 0);
+ }
+ 
++/*
++ * Bildschirm an/aus an die Firmware melden (Unterbefehl 1 von CMD_POWER_SAVE, unter Android per SETSUSPENDMODE).
++ * Ohne die Meldung "an" ueberspringt die Firmware im Stromsparen die DTIM-Beacons und verpasst damit alle
++ * Gruppen-Pakete (ARP, mDNS): das Geraet ist im Netz nur erreichbar, nachdem es selbst gesendet hat.
++ * ARP-Anfragen kommen zusaetzlich nur durch, wenn die Firmware die eigene IP kennt (sc23xx_cmd_notify_ip()).
++ */
++int sc23xx_cmd_set_screen(struct sc23xx_vif *vif, bool off)
++{
++	struct sk_buff *skb;
++
++	skb = sc23xx_cmd_alloc_skb(CMD_POWER_SAVE, 2, vif->idx);
++	if (!skb)
++		return -ENOMEM;
++
++	skb_put_u8(skb, SC23XX_POWER_SAVE_SCREEN_ON_OFF);
++	skb_put_u8(skb, off);
++
++	return sc23xx_send_cmd_wait(vif->sdev, skb, NULL, 0);
++}
++
+ int sc23xx_cmd_set_suspend(struct sc23xx_vif *vif, bool suspend)
+ {
+ 	struct sk_buff *skb;
+@@ -446,6 +466,23 @@ int sc23xx_cmd_set_def_key(struct sc23xx_vif *vif, u8 key_index)
+ 	return sc23xx_send_cmd_wait(vif->sdev, skb, NULL, 0);
+ }
+ 
++/*
++ * Der Firmware die eigene IP-Adresse melden (wie sprdwl_notify_ip() im Hersteller-Treiber: Nutzdaten sind nur die
++ * Adresse, 4 Bytes IPv4 bzw. 16 Bytes IPv6). Ohne diese Meldung reicht die Firmware keine ARP-Anfragen durch.
++ */
++int sc23xx_cmd_notify_ip(struct sc23xx_vif *vif, const void *addr, u16 len)
++{
++	struct sk_buff *skb;
++
++	skb = sc23xx_cmd_alloc_skb(CMD_NOTIFY_IP_ACQUIRED, len, vif->idx);
++	if (!skb)
++		return -ENOMEM;
++
++	skb_put_data(skb, addr, len);
++
++	return sc23xx_send_cmd_wait(vif->sdev, skb, NULL, 0);
++}
++
+ int sc23xx_cmd_set_rekey_data(struct sc23xx_vif *vif,
+ 			      struct cfg80211_gtk_rekey_data *data)
+ {
+diff --git a/drivers/net/wireless/unisoc/cmd.h b/drivers/net/wireless/unisoc/cmd.h
+index 4fac83125..f76b1f223 100644
+--- a/drivers/net/wireless/unisoc/cmd.h
++++ b/drivers/net/wireless/unisoc/cmd.h
+@@ -12,6 +12,7 @@ int sc23xx_cmd_open(struct sc23xx_vif *vif, const u8 *mac_addr);
+ int sc23xx_cmd_close(struct sc23xx_vif *vif);
+ int sc23xx_cmd_set_power_save(struct sc23xx_vif *vif, bool enabled);
+ int sc23xx_cmd_set_suspend(struct sc23xx_vif *vif, bool suspend);
++int sc23xx_cmd_set_screen(struct sc23xx_vif *vif, bool off);
+ int sc23xx_cmd_wakeup_fw(struct sc23xx_vif *vif);
+ int sc23xx_cmd_connect(struct sc23xx_vif *vif, struct cfg80211_connect_params *sme);
+ int sc23xx_cmd_disconnect(struct sc23xx_vif *vif, u16 reason_code);
+@@ -32,6 +33,7 @@ int sc23xx_cmd_set_rekey_data(struct sc23xx_vif *vif,
+ int sc23xx_cmd_mgmt_tx(struct sc23xx_vif *vif, struct cfg80211_mgmt_tx_params *params,
+ 		       u64 *cookie);
+ int sc23xx_cmd_set_multicast(struct sc23xx_vif *vif);
++int sc23xx_cmd_notify_ip(struct sc23xx_vif *vif, const void *addr, u16 len);
+ int sc23xx_cmd_set_mac_addr(struct sc23xx_vif *vif, const u8 *mac_addr);
+ int sc23xx_cmd_addba_rsp(struct sc23xx_dev *sdev, struct sc23xx_sta *sta,
+ 			 u8 tid);
+diff --git a/drivers/net/wireless/unisoc/main.c b/drivers/net/wireless/unisoc/main.c
+index c20dc7b3b..beacf55fe 100644
+--- a/drivers/net/wireless/unisoc/main.c
++++ b/drivers/net/wireless/unisoc/main.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <linux/firmware.h>
++#include <linux/inetdevice.h>
+ #include <linux/nvmem-consumer.h>
+ #include <linux/rtnetlink.h>
+ 
+@@ -638,6 +639,44 @@ static int sc23xx_mac_addr_from_uid(struct device *dev, u8 *addr)
+ 	return is_valid_ether_addr(addr) ? 0 : -EINVAL;
+ }
+ 
++/*
++ * Bekommt wlan0 eine IPv4-Adresse, melden wir sie der Firmware (CMD_NOTIFY_IP_ACQUIRED), wie der Hersteller-Treiber.
++ * Die Firmware filtert ARP selbst: ohne bekannte eigene IP reicht sie keine ARP-Anfrage durch, auch nicht mit
++ * "Bildschirm an" (sc23xx_cmd_set_screen()). Erst beides zusammen macht das Geraet im Netz von aussen auffindbar.
++ * Der Notifier laeuft unter RTNL und darf schlafen, wie sc23xx_cmd_connect() aus nl80211 heraus.
++ */
++static int sc23xx_inetaddr_event(struct notifier_block *nb, unsigned long event, void *ptr)
++{
++	struct sc23xx_dev *sdev = container_of(nb, struct sc23xx_dev, inetaddr_nb);
++	struct in_ifaddr *ifa = ptr;
++	struct net_device *ndev;
++	struct sc23xx_vif *vif;
++	int ret;
++
++	if (event != NETDEV_UP || !ifa->ifa_dev)
++		return NOTIFY_DONE;
++
++	ndev = ifa->ifa_dev->dev;
++	if (!ndev || !ndev->ieee80211_ptr || ndev->ieee80211_ptr->wiphy != sdev->wiphy)
++		return NOTIFY_DONE;
++
++	vif = netdev_priv(ndev);
++	if (vif->wdev.iftype != NL80211_IFTYPE_STATION &&
++	    vif->wdev.iftype != NL80211_IFTYPE_P2P_CLIENT)
++		return NOTIFY_DONE;
++	if (!test_bit(SC23XX_FLAG_OPENED, &vif->flags))
++		return NOTIFY_DONE;
++
++	ret = sc23xx_cmd_notify_ip(vif, &ifa->ifa_address, sizeof(ifa->ifa_address));
++	if (ret)
++		netdev_warn(ndev, "IPv4-Adresse %pI4 nicht an die Firmware gemeldet (%d)\n",
++			    &ifa->ifa_address, ret);
++	else
++		netdev_info(ndev, "IPv4-Adresse %pI4 an die Firmware gemeldet\n", &ifa->ifa_address);
++
++	return NOTIFY_DONE;
++}
++
+ int sc23xx_register_device(struct sc23xx_dev *sdev)
+ {
+ 	struct sc23xx_vif *vif;
+@@ -683,6 +722,11 @@ int sc23xx_register_device(struct sc23xx_dev *sdev)
+ 		return PTR_ERR(vif);
+ 	}
+ 
++	sdev->inetaddr_nb.notifier_call = sc23xx_inetaddr_event;
++	ret = register_inetaddr_notifier(&sdev->inetaddr_nb);
++	if (ret)	/* kein Abbruch: WLAN geht auch ohne, nur ARP von aussen nicht */
++		wiphy_warn(sdev->wiphy, "IP-Melder nicht angemeldet (%d)\n", ret);
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(sc23xx_register_device);
+@@ -693,6 +737,8 @@ void sc23xx_unregister_device(struct sc23xx_dev *sdev)
+ 	struct sc23xx_sta *sta;
+ 	int i, tid;
+ 
++	unregister_inetaddr_notifier(&sdev->inetaddr_nb);	/* harmlos, falls nie angemeldet */
++
+ 	rtnl_lock();
+ 	for (i = 0; i < SC23XX_VIF_NUM; i++) {
+ 		mutex_lock(&sdev->vif_lock);
+diff --git a/drivers/net/wireless/unisoc/protocol.h b/drivers/net/wireless/unisoc/protocol.h
+index 053f50530..72d724b75 100644
+--- a/drivers/net/wireless/unisoc/protocol.h
++++ b/drivers/net/wireless/unisoc/protocol.h
+@@ -206,6 +206,7 @@ struct sc23xx_req_close {
+ } __packed;
+ 
+ enum {
++	SC23XX_POWER_SAVE_SCREEN_ON_OFF = 1,
+ 	SC23XX_POWER_SAVE_PS_STATE = 4,
+ 	SC23XX_POWER_SAVE_SUSPEND_RESUME = 5,
+ 	SC23XX_POWER_SAVE_FW_PWR_DOWN_ACK = 6,
+diff --git a/drivers/net/wireless/unisoc/sc23xx.h b/drivers/net/wireless/unisoc/sc23xx.h
+index 6ada5cb67..13413db77 100644
+--- a/drivers/net/wireless/unisoc/sc23xx.h
++++ b/drivers/net/wireless/unisoc/sc23xx.h
+@@ -129,6 +129,8 @@ struct sc23xx_dev {
+ 
+ 	spinlock_t sta_lock;
+ 	struct sc23xx_sta sta[SC23XX_STA_IDX_NUM];
++
++	struct notifier_block inetaddr_nb;	/* meldet der Firmware die IPv4-Adresse */
+ };
+ 
+ void *sc23xx_alloc_device(struct device *dev, size_t size,
+diff --git a/drivers/net/wireless/unisoc/vif.c b/drivers/net/wireless/unisoc/vif.c
+index 41fe32dd5..d8381ca6e 100644
+--- a/drivers/net/wireless/unisoc/vif.c
++++ b/drivers/net/wireless/unisoc/vif.c
+@@ -82,6 +82,11 @@ static int sc23xx_open(struct net_device *ndev)
+ 		return ret;
+ 	}
+ 
++	/* "Bildschirm an": sonst verschlaeft die Firmware Broadcast/Multicast (siehe sc23xx_cmd_set_screen()) */
++	ret = sc23xx_cmd_set_screen(vif, false);
++	if (ret)
++		netdev_warn(ndev, "Firmware: Bildschirm an nicht gemeldet (%d), Broadcasts gehen verloren\n", ret);
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

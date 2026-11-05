@@ -29,7 +29,7 @@ Vibrationsmotor, microSD-Kartenleser.
 
 | Bereich | Was fehlt |
 |---|---|
-| WLAN | 01.11.: **läuft** mit Ottos Treibern (Scan, WPA2, DHCP, SSH über WLAN). 04.11.: MAC ✅ (Patch 0032: feste MAC aus der Chip-Kennung, nie mehr 00:00). Fehlt: Rundrufe (ARP/Broadcast/Multicast) kommen nicht an ❓; Schalter „MAC fest/zufällig“ (später Oberfläche, `wpa_supplicant mac_addr`); Autostart (Lade-Sperre `sprd_wcn` auf dem Handy aufheben, `wpa_supplicant`/networkd-Dienst); `WCN=1` als Standard; Kernel-Optionen in die defconfig des Kernel-Baums; Bluetooth (`BT_SPRDSIPC`) |
+| WLAN | 01.11.: **läuft** mit Ottos Treibern (Scan, WPA2, DHCP, SSH über WLAN). 04.11.: MAC ✅ (Patch 0032: feste MAC aus der Chip-Kennung, nie mehr 00:00). 05.11.: Rundrufe ✅ (Patch 0033: „Bildschirm an“ + eigene IP an die Firmware – von außen per ARP auffindbar, erstes Paket ~240 ms). Fehlt: DHCP braucht ~45 s nach dem Verbinden ❓; Schalter „MAC fest/zufällig“ (später Oberfläche, `wpa_supplicant mac_addr`); Autostart (Lade-Sperre `sprd_wcn` auf dem Handy aufheben, `wpa_supplicant`/networkd-Dienst); `WCN=1` als Standard; Kernel-Optionen in die defconfig des Kernel-Baums; Bluetooth (`BT_SPRDSIPC`) |
 | Display-Schlaf | 29.10.: `redmi-licht.sh` schläft über den Treiber (fb-blank, DSI+DPU aus, Touch folgt) ✅ – Akku: Schlaf 43 mA statt 60 mA (DCS-Weg). 31.10.: **Panel vollständig in Kernel-Hand** ✅ (Patch 0030: Reset/avdd/avee, Xiaomis Init-Befehle; Schlaf mit Versorgung aus 41 mA). ESD-Prüfung wie Xiaomi ✅ (Patch 0031, alle 3 s `0x0A = 0x9C`, sonst neu aufsetzen). Ungeklärt: `fb0/blank = 4` nach dem Start mit alter licht-Fassung ❓ |
 | Touch | 28.10.: Wächter-Erkennung + Selbst-Neuladen ✅, Runtime-PM beim Abmelden ✅ (Patch 0028). 29.10.: als Panel-Follower ans Display gekoppelt ✅ (Patch 0029, DT `panel`). `redmi-licht.sh` meldet ihn nicht mehr ab ✅ |
 | USB | Rollenwechsel: ein seltener Fehlschlag; Gadget-MAC wechselt bei jedem Start |
@@ -67,6 +67,11 @@ Läuft schon, könnte aber besser werden – kommt in ein späteres Update, nich
   fest 3,0 V). Vorbild: RG Rotate (UMS512) läuft mit SDR104.
 - **Fingerabdrucksensor:** siehe oben und `ideen/fingerabdruck-profilometer.md`.
 - **GPU-Feinschliff:** `gpu-mem`-Takt (fest 384 MHz) und Güteklasse `gpu_bin` (eFuse) für Spannungen je Stufe.
+- **WLAN „Immer erreichbar / Sparsam“ (05.11.):** die Firmware bekommt fest „Bildschirm an“ (wacht zu jedem DTIM auf,
+  Handy im Netz auffindbar). Schalter in der Oberfläche: „Sparsam“ = Meldung folgt dem echten Display (weniger Strom ❓,
+  bei dunklem Display schlechter erreichbar). Mehrverbrauch von „immer an“ noch nicht gemessen (`redmi-wcnstrom.sh`).
+- **WLAN-Senderate:** der Devolo empfängt vom Handy nur mit 6 Mbit/s (alte Betriebsart), zum Handy hin 52 Mbit/s (MCS 5);
+  passt zu ~19 Mbit/s bei scp. Ursache offen ❓ (Ratenauswahl der Firmware, beebonos Korrekturen?).
 - **Suspend (echter Tiefschlaf):** für einen Server nicht nötig, für einen Handy-Modus schon. Bekannte Stolpersteine aus dem
   RG-Rotate-Projekt (gleicher PMIC SC2730): Akkuanzeige braucht `power-supplies` zum Ladechip, `sc27xx_wdt` ohne
   Schlaf-Routinen, musb-Weck-Interrupt. Quelle: [rg-rotate-linux, DEVICE-BRINGUP.md](https://github.com/beebono/rg-rotate-linux/blob/main/DEVICE-BRINGUP.md)
