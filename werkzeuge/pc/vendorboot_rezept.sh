@@ -11,7 +11,9 @@ GP_PH=105                  # frei gewaehlt (hoechste vorhandene phandle war 104)
 FG=/soc/spi@64200000/pmic@0/fuel-gauge@c00   # Akkuanzeige im PMIC
 BAT_PH=106                 # phandle fuer den neuen Akku-Knoten
 # 09.10.: Display (DRM). Phandles aus dem Basis-Geraetebaum lesen statt raten; fehlt einer, neu vergeben.
-BASIS_DTB=~/redmi-unlock-work/serenity_v12.dtb
+# 05.11.: einstellbar, z. B. BASIS_DTB=<Kernel-Baum>/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dtb (gleicher Inhalt)
+export BASIS_DTB=${BASIS_DTB:-$HOME/redmi-unlock-work/serenity_v12.dtb}
+HIER=$(dirname "$(readlink -f "$0")")
 FB_PH=$(fdtget "$BASIS_DTB" /reserved-memory/framebuffer-region@0 phandle 2>/dev/null || echo 109)
 DPU_PH=$(fdtget "$BASIS_DTB" /soc/dpu@31000000 phandle 2>/dev/null || echo 110)
 DSIOUT_PH=107; PANELIN_PH=108
@@ -263,7 +265,7 @@ if [ "$AKKU" = 1 ]; then AKKU_ARGS=(
   $FG status okay )
 fi
 
-~/redmi-build/vendorboot_dt.sh rezept \
+"$HIER/vendorboot_dt.sh" rezept \
   `# 03./04.10.: cpufreq einschalten` \
   /cpufreq status okay \
   `# 04.10.: grosse Kerne ueber PMIC-Regler 0 (power.from.extern=0, Xiaomi pmic-type-v2=0) - sonst Haenger` \

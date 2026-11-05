@@ -7,13 +7,18 @@
 #   Zahl:     ~/redmi-build/vendorboot_dt.sh pmic0 /cpufreq status okay /cpufreq/cluster@1 sprd,pmic-type u:0
 #   Ergebnis: ~/redmi-build/vendor_boot_<name>.img  ->  ~/redmi-build/deploy.sh vendor_boot_<name>.img
 set -e
-cd ~/redmi-build
+HIER=$(dirname "$(readlink -f "$0")")
+# 05.11.: Ausgabeordner, Basis-Geraetebaum und vendor_boot-Huelle einstellbar (fuer den Bau aus dem Repo, BUILDING.md):
+#   AUSGABE=~/redmi-build  BASIS_DTB=<Kernel-Baum>/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dtb
+#   VB=vendor_boot_basis.img (aus vendorboot_basis.sh). Ohne Angabe wie bisher.
+AUSGABE=${AUSGABE:-$HOME/redmi-build}
+mkdir -p "$AUSGABE"; cd "$AUSGABE"
 NAME=$1; shift
 [ -n "$NAME" ] && [ $(( $# % 3 )) -eq 0 ] && [ $# -gt 0 ] || { sed -n 2,7p "$0"; exit 1; }
-BASE=~/redmi-unlock-work/serenity_v12.dtb
-VB=vendor_boot_usb2.img
-MKB=~/mkbootimg-aosp
-WRAP=$(ls ~/redmi-build/wrap_dtb.py ~/redmi-unlock-work/wrap_dtb.py ~/wrap_dtb.py 2>/dev/null | head -1)
+BASE=${BASIS_DTB:-$HOME/redmi-unlock-work/serenity_v12.dtb}
+VB=${VB:-vendor_boot_usb2.img}
+MKB=${MKB:-$HOME/mkbootimg-aosp}
+WRAP=$(ls "$HIER/wrap_dtb.py" ~/redmi-build/wrap_dtb.py ~/redmi-unlock-work/wrap_dtb.py ~/wrap_dtb.py 2>/dev/null | head -1)
 command -v fdtput >/dev/null || { echo "FEHLER: fdtput fehlt -> sudo apt install device-tree-compiler"; exit 1; }
 [ -f "$BASE" ] && [ -f "$VB" ] && [ -n "$WRAP" ] || { echo "FEHLER: $BASE, $VB oder wrap_dtb.py fehlt"; exit 1; }
 W=$(mktemp -d)
@@ -74,5 +79,5 @@ for f in $(cd $W/alt && ls); do
     cmp -s $W/alt/$f $W/neu/$f || echo "!! WARNUNG: $f unterscheidet sich ebenfalls"
 done
 cmp -s $W/neu/dtb $W/neu_table.dtb && echo ">>> Device-Tree im neuen Image ist der geaenderte" || echo "!! Device-Tree im Image stimmt nicht"
-echo ">>> fertig: ~/redmi-build/vendor_boot_$NAME.img  (Rettung: $VB)"
+echo ">>> fertig: $AUSGABE/vendor_boot_$NAME.img  (Rettung: $VB)"
 rm -rf $W

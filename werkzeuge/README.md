@@ -4,7 +4,10 @@ Alle Skripte des Projekts, nach Einsatzort sortiert (seit 01.11.2026; vorher lag
 Jedes Skript erklärt in seinen ersten Zeilen selbst, wie es aufgerufen wird. Lizenz: GPL-2.0-only (siehe `LIZENZEN.md`).
 
 **Wichtig:** Die Bau-Werkzeuge laufen aus `~/redmi-build/` (Kopien). Nach einer Änderung im Repo also kopieren, z. B.
-`cp werkzeuge/pc/vendorboot_rezept.sh werkzeuge/pc/deploy.sh ~/redmi-build/`. Die Handy-Skripte liegen auf dem Handy
+`cp werkzeuge/pc/vendorboot_rezept.sh werkzeuge/pc/deploy.sh ~/redmi-build/`.
+Seit 05.11. geht der vendor_boot-Bau auch ganz aus dem Repo, ohne Dateien, die nur auf unserem PC liegen:
+`BASIS_DTB` = Gerätebaum aus dem Kernel-Bau, `VB` = Hülle aus `vendorboot_basis.sh`, `AUSGABE` = Zielordner (siehe Kopf von `vendorboot_dt.sh`).
+Ohne diese Angaben arbeiten die Skripte wie bisher (Gegenprobe 05.11.: Byte für Byte gleiches Image). Die Handy-Skripte liegen auf dem Handy
 unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstellungen unter `/etc/redmi/`.
 
 ## `pc/` – bauen, packen, aufspielen (läuft am PC)
@@ -13,6 +16,9 @@ unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstell
 |---|---|
 | `vendorboot_rezept.sh` | **Alle** unsere Gerätebaum-Änderungen an einer Stelle (Schalter wie `GPU`, `SD`, `PANELKERNEL`, `GPUKUEHL`) → `vendor_boot_rezept.img` |
 | `vendorboot_dt.sh` | vendor_boot mit Gerätebaum-Änderungen neu bauen (wird vom Rezept benutzt) |
+| `vendorboot_basis.sh` | leere vendor_boot-Hülle von Grund auf bauen (Gerätebaum + leere Ramdisk + bootconfig, nichts von Xiaomi); ersetzt das alte `vendor_boot_usb2.img` |
+| `wrap_dtb.py` | Gerätebaum in die DT-Tabelle des Bootloaders verpacken (wird von den vendor_boot-Skripten benutzt) |
+| `misc_slot_b.py` | `misc_b.img` erzeugen: Bootloader startet Slot b, nach 7 Fehlversuchen wieder Slot a |
 | `pack.sh` | `boot_mainline.img` aus dem frisch gebauten Kernel packen und prüfen, ob wirklich der aktuelle Kernel drinsteckt |
 | `deploy.sh` | Kernel, vendor_boot und alle Module per SSH auf Slot b schreiben, Slot b aktiv schalten, neu starten |
 | `net.sh` | USB-Netz zum Handy einrichten (nach jedem Handy-Neustart) |
