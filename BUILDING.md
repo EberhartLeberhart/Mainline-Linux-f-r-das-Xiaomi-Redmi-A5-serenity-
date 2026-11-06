@@ -91,8 +91,8 @@ VB=vendor_boot_basis.img BASIS_DTB=$DTB ./vendorboot_rezept.sh   # -> vendor_boo
 `vendorboot_rezept.sh` collects every device-tree change of the project in one place, with switches such as `WCN=1`
 (Wi-Fi/Bluetooth core, needs the firmware from step 6). Without switches you get the default configuration.
 
-> **(not re-verified)** The `vendor_boot` built this way contains exactly the same device tree and bootconfig as the
-> author's working image (compared 05.11.2026), but has not yet been booted on the phone itself.
+> Verified 06.11.2026: a `vendor_boot` built this way (with `WCN=1`) boots the author's phone; display, Wi-Fi
+> autostart and everything else work as with the old hand-made image (same device tree and bootconfig).
 
 ## 4. Root filesystem (Ubuntu 24.04) — (not re-verified)
 
@@ -175,7 +175,11 @@ We do **not** distribute Xiaomi/Unisoc firmware. Wi-Fi needs two files from your
 | `/lib/firmware/sprd/wcnmodem.bin` | Wi-Fi/Bluetooth core firmware from `odm/firmware` |
 | `/lib/firmware/sprd/wifi_board_config.bin` | converted from `wifi_board_config.ini` with [`kernel/wcn-test/wcn_ini_bin.c`](kernel/wcn-test/wcn_ini_bin.c) (instructions at the top of the file) |
 
-Wi-Fi itself: see [STATUS.md](STATUS.md) (German, section "WLAN"). Autostart is not finished yet.
+Wi-Fi autostart with an on/off switch (all in [`werkzeuge/handy/`](werkzeuge/handy/)): `redmi-wlan.sh` to
+`/usr/local/sbin/`, `redmi-wlan.service` to `/etc/systemd/system/` (enable it), `30-wlan0.network` to
+`/etc/systemd/network/`, `wlan.conf` (`WLAN=an` = on, `WLAN=aus` = off) to `/etc/redmi/`, and your Wi-Fi credentials in
+`wpa_supplicant` format to `/etc/redmi/wpa-wlan0.conf` (mode 600). Build the `vendor_boot` with `WCN=1`.
+Then `redmi-wlan.sh an|aus|status` switches it. Details: [STATUS.md](STATUS.md) (German, section "WLAN").
 
 ## Reporting back
 

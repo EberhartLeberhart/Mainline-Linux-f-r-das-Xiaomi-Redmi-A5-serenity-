@@ -847,7 +847,8 @@ slim `ARCH_SPRD`-only configuration ([`kernel/redmi_a5_defconfig`](kernel/redmi_
 - ✅ Fixed MAC address derived from the chip ID instead of `00:00:00:00:00:00` (patch 0032, 4 Nov)
 - ✅ Reachable from the LAN without sending first: the firmware is told "screen on" and the own IPv4 address,
   otherwise it sleeps through the DTIM beacons and filters ARP (patch 0033, 5 Nov)
-- 🟡 No autostart yet (started by hand); the firmware files must come from your own phone (see BUILDING.md)
+- ✅ Autostart with an on/off switch (`redmi-wlan.service`, `/etc/redmi/wlan.conf`, 6 Nov); the firmware files must
+  come from your own phone (see BUILDING.md)
 - The earlier test module for the SIPC channels ([`kernel/wcn-test/`](kernel/wcn-test/)) found the way there
   (first AT reply 19 Oct, first Wi-Fi command 20 Oct, first scan 21 Oct)
 
