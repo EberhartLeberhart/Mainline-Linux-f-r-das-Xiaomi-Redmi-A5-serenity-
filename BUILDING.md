@@ -62,8 +62,8 @@ The base is Otto Pflüger's UMS9230 mainline tree on Codeberg, plus all patches 
 git clone https://codeberg.org/ums9230-mainline/linux.git ~/ums9230-linux
 cd ~/ums9230-linux
 git checkout -b redmi-a5 4a5b97b821b846f9a25a99a4fdcb3040fd910965
-git am ~/redmi-a5/kernel/patches/*.patch          # 33 patches, all apply cleanly (checked 05.11.2026)
-cp ~/redmi-a5/kernel/redmi_a5_defconfig arch/arm64/configs/
+git am ~/redmi-a5/kernel/patches/*.patch          # all patches apply cleanly (checked 05.11.2026); they also
+                                                  # bring arch/arm64/configs/redmi_a5_defconfig (= kernel/redmi_a5_defconfig)
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- redmi_a5_defconfig   # CROSS_COMPILE here too, see note below
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image dtbs modules
 ```
