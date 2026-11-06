@@ -91,8 +91,8 @@ VB=vendor_boot_basis.img BASIS_DTB=$DTB ./vendorboot_rezept.sh   # -> vendor_boo
 `vendorboot_rezept.sh` collects every device-tree change of the project in one place, with switches such as `WCN=1`
 (Wi-Fi/Bluetooth core, needs the firmware from step 6). Without switches you get the default configuration.
 
-> **(not re-verified)** The `vendor_boot` built this way contains exactly the same device tree and bootconfig as the
-> author's working image (compared 05.11.2026), but has not yet been booted on the phone itself.
+> Verified 06.11.2026: a `vendor_boot` built this way (with `WCN=1`) boots the author's phone; display, Wi-Fi
+> autostart and everything else work as with the old hand-made image (same device tree and bootconfig).
 
 ## 4. Root filesystem (Ubuntu 24.04) — (not re-verified)
 
