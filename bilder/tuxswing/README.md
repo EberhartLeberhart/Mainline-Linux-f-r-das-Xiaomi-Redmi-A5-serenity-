@@ -36,5 +36,6 @@ offizielles Logo des Linux-Kernel-Projekts und stellt keine offizielle Unterstü
 
 ## Verwendung im Projekt
 
-Geplant als Startbild (Plymouth); dank der GPL-2.0-Option später auch als Kernel-Logo möglich. Die Kreideziege an der
+Seit 06.11.2026 **Kernel-Startlogo** (unter GPL-2.0-only, 300×300 px, 224 Farben; Kernel-Patch 0034, Datei
+`drivers/video/logo/logo_tuxswing_clut224.ppm` mit Herkunftsangabe im Dateikopf); später auch als Startbild (Plymouth). Die Kreideziege an der
 Wand ist eine Hommage an das Projekt-Maskottchen. Tanz und Musik erst, wenn Kernel und Ton stabil sind.
