@@ -125,7 +125,8 @@ Gemeinsamer Speicher: `sprd,smem-info = <0x87240000 0x00240000 0x140000>` (AP, W
    auf dem Handy `/lib/firmware/sprd/wcnmodem.bin` + `sprd/wifi_board_config.bin` (aus der INI per `wcn_ini_bin.ko`, beide nur
    lokal), Lade-Sperre `/etc/modprobe.d/wcn-erst-von-hand.conf` (für den ersten Start; `modprobe sprd_wcn` von Hand).
    MAC ✅ (04.11., Patch 0032), Rundrufe/ARP ✅ (05.11., Patch 0033: „Bildschirm an“ + IP an die Firmware).
-   Offen: Autostart, langsames DHCP (~45 s), Bluetooth. **Merke:** Änderungen an `sc23xx.h` (gemeinsame Struktur) →
+   Autostart mit Schalter ✅ (06.11., `redmi-wlan.service` + `/etc/redmi/wlan.conf`; deploy-Standard jetzt
+   `vendor_boot_wcn_ok.img` = Rezept mit `WCN=1`). Offen: Bluetooth, WCN-Kern im Betrieb stoppen. **Merke:** Änderungen an `sc23xx.h` (gemeinsame Struktur) →
    immer **beide** Module (`sc23xx_wlan.ko` und `sc23xx_wlan_sipc.ko`) aufs Handy, sonst Speicherfehler und Absturz (05.11.). Vorbild für Korrekturen: beebonos Fassung
    (github.com/beebono/linux-mainline-sprd, Zweig `rg-rotate`, z. B. EAPOL über den Befehlskanal, MAC aus der Chip-Kennung).
    *Alter Plan (Lauscher), überholt:* **Senden** über einen Datenkanal (Realme `tx_msdu_dscr`, 11 Bytes + Adresse; die Datenpakete liegen bei

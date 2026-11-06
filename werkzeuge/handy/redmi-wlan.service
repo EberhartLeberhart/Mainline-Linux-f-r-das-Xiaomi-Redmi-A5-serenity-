@@ -1,0 +1,16 @@
+[Unit]
+Description=Redmi A5: WLAN (Schalter in /etc/redmi/wlan.conf)
+After=network-pre.target systemd-networkd.service
+Wants=network-pre.target
+
+[Service]
+Type=simple
+ExecCondition=/usr/local/sbin/redmi-wlan.sh pruefen
+ExecStartPre=/usr/local/sbin/redmi-wlan.sh vorbereiten
+ExecStart=/usr/sbin/wpa_supplicant -i wlan0 -D nl80211 -c /etc/redmi/wpa-wlan0.conf
+ExecStopPost=-/usr/sbin/ip link set wlan0 down
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

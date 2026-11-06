@@ -175,7 +175,11 @@ We do **not** distribute Xiaomi/Unisoc firmware. Wi-Fi needs two files from your
 | `/lib/firmware/sprd/wcnmodem.bin` | Wi-Fi/Bluetooth core firmware from `odm/firmware` |
 | `/lib/firmware/sprd/wifi_board_config.bin` | converted from `wifi_board_config.ini` with [`kernel/wcn-test/wcn_ini_bin.c`](kernel/wcn-test/wcn_ini_bin.c) (instructions at the top of the file) |
 
-Wi-Fi itself: see [STATUS.md](STATUS.md) (German, section "WLAN"). Autostart is not finished yet.
+Wi-Fi autostart with an on/off switch (all in [`werkzeuge/handy/`](werkzeuge/handy/)): `redmi-wlan.sh` to
+`/usr/local/sbin/`, `redmi-wlan.service` to `/etc/systemd/system/` (enable it), `30-wlan0.network` to
+`/etc/systemd/network/`, `wlan.conf` (`WLAN=an` = on, `WLAN=aus` = off) to `/etc/redmi/`, and your Wi-Fi credentials in
+`wpa_supplicant` format to `/etc/redmi/wpa-wlan0.conf` (mode 600). Build the `vendor_boot` with `WCN=1`.
+Then `redmi-wlan.sh an|aus|status` switches it. Details: [STATUS.md](STATUS.md) (German, section "WLAN").
 
 ## Reporting back
 

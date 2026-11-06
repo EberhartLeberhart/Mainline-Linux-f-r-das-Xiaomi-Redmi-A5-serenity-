@@ -35,6 +35,8 @@ unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstell
 | `redmi-cpufreq.sh` + `.service` | cpufreq-Modul beim Start laden |
 | `redmi-taste.sh` + `.service` | Einschalttaste: kurz = Licht, mindestens 3 s halten = Herunterfahren |
 | `redmi-usb.sh` + `.service` | USB-Rolle automatisch wählen: PC → Gerät (USB-Netz), Hub mit Netzteil → Host |
+| `redmi-wlan.sh` + `.service` + `wlan.conf` | WLAN mit Schalter: beim Start an/aus nach `/etc/redmi/wlan.conf`, `redmi-wlan.sh an\|aus\|status`; Zugangsdaten in `/etc/redmi/wpa-wlan0.conf` (nie ins Repo) |
+| `30-wlan0.network` | WLAN holt per DHCP eine Adresse (Metrik 600, USB-Netz bleibt bevorzugt) |
 | `redmi-usb-gadget.sh` + `.service` | USB-Gerät: Netz (NCM) + serielle Konsole (ACM), meldet jeden Schritt im Kernel-Log (05.11. ins Repo, läuft seit 27.09.) |
 | `10-usb0.network` | USB-Netz: Handy 192.168.7.2, PC 192.168.7.1 als Gateway (systemd-networkd, `/etc/systemd/network/`) |
 | `redmi-boot-ok.service` | nach gelungenem Start Slot b im `misc` als „erfolgreich“ markieren (32 Bytes `abc_b_ok.bin` aus `misc_slot_b.py --ok`, liegt unter `/usr/local/lib/redmi/`) – sonst startet nach 7 Starts wieder Android |

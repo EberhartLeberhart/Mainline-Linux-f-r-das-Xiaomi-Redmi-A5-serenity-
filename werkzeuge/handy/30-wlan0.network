@@ -1,0 +1,10 @@
+# WLAN holt sich per DHCP eine Adresse (systemd-networkd). RouteMetric 600: haengt das USB-Kabel am PC,
+# bleibt dessen Weg (usb0) bevorzugt; ohne Kabel geht alles ueber WLAN.
+[Match]
+Name=wlan0
+
+[Network]
+DHCP=ipv4
+
+[DHCPv4]
+RouteMetric=600
