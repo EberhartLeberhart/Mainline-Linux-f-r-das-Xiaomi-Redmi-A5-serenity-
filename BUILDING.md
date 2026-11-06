@@ -64,9 +64,14 @@ cd ~/ums9230-linux
 git checkout -b redmi-a5 4a5b97b821b846f9a25a99a4fdcb3040fd910965
 git am ~/redmi-a5/kernel/patches/*.patch          # 33 patches, all apply cleanly (checked 05.11.2026)
 cp ~/redmi-a5/kernel/redmi_a5_defconfig arch/arm64/configs/
-make ARCH=arm64 redmi_a5_defconfig
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- redmi_a5_defconfig   # CROSS_COMPILE here too, see note below
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image dtbs modules
 ```
+
+**Use the same `CROSS_COMPILE` for `defconfig` and for the build.** Several options depend on what the compiler
+supports; configuring with the host compiler and building with the cross compiler makes `make` restart the
+configuration and ask questions (`… (NEW)`). If that happened: run the `defconfig` line again with `CROSS_COMPILE`,
+then build. (Found 06.11.2026 by the first outside tester — thank you!)
 
 **Size limit:** the bootloader only loads a kernel image well below 48,103,424 bytes. With `redmi_a5_defconfig`
 (only the Unisoc platform enabled) the image is about 28 MB. If you enable more, check `ls -l arch/arm64/boot/Image`
