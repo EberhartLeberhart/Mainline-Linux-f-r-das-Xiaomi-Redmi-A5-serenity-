@@ -10,10 +10,11 @@ It describes the way the project author's own phone is built today (November 202
 > - Linux goes to **slot b**; never touch slot a. Note: once `userdata` holds Linux, Android on slot a no longer
 >   starts properly (its recovery says "Can't load Android system" — **do not** choose "Factory data reset", that
 >   would erase Linux). Your rescue is **fastboot** (Volume down + Power), which always works.
-> - **Display and touch currently work only on the panel variant `Panel_C3Z_42_02_0a_vid`.** The Redmi A5 ships with at
->   least four panels (C3Z_35, C3Z_36, C3Z_42, C3Z_43) with different display/touch chips. Check yours in Android:
->   `tr " \0" "\n\n" < /proc/device-tree/chosen/bootargs | grep lcd_name` (needs root). Other variants boot
->   and run fine over USB/SSH, but the screen stays black after boot (work in progress).
+> - **Panel variants:** the Redmi A5 ships with at least four panels (C3Z_35, C3Z_36, C3Z_42, C3Z_43) with different
+>   display/touch chips. Check yours in Android: `tr " \0" "\n\n" < /proc/device-tree/chosen/bootargs | grep lcd_name`
+>   (needs root). **`Panel_C3Z_42_02_0a_vid`: display and touch work** (default). **`Panel_C3Z_36_10_0d_vid`: display
+>   works, touch not yet** — build the `vendor_boot` with `PANEL=c3z36` (step 3). Other variants boot and run fine over
+>   USB/SSH, but the screen stays black or distorted after boot (work in progress).
 > - Steps marked **(not re-verified)** are known to have worked during the project, but have not been repeated from
 >   scratch with this exact guide yet. Please report how it went (see the end).
 > - What works and what doesn't: [README.md, section 15](README.md#15-booting-linux) and [STATUS.md](STATUS.md) (German).
@@ -114,6 +115,9 @@ VB=vendor_boot_basis.img BASIS_DTB=$DTB ./vendorboot_rezept.sh   # -> vendor_boo
 python3 ./leere_images.py ~/redmi-build                      # -> init_boot_leer.img, dtbo_leer.img
 ```
 
+For the panel variant C3Z_36 (see the warning at the top) add `PANEL=c3z36` to the last line
+(`VB=… BASIS_DTB=$DTB PANEL=c3z36 ./vendorboot_rezept.sh`).
+
 `vendorboot_rezept.sh` collects every device-tree change of the project in one place, with switches such as `WCN=1`
 (Wi-Fi/Bluetooth core, needs the firmware from step 6). Without switches you get the default configuration.
 
@@ -162,6 +166,16 @@ sudo chroot $R systemctl enable redmi-usb-gadget.service redmi-boot-ok.service s
 `redmi-boot-ok.service` matters: without it the bootloader counts down the boot tries of slot b and returns to
 Android after 7 boots. The other scripts (backlight/sleep, charge limit, power button, cpufreq, USB role switching)
 are optional; each one explains itself in its first lines.
+
+Recommended: the power button handler. Without it Ubuntu **powers off on a short press** of the power button.
+With it: hold 3 s = shut down, short press = nothing (or screen light briefly on, with `redmi-licht.sh`):
+
+```bash
+sudo install -m755 $H/redmi-taste.sh $R/usr/local/sbin/
+sudo install -m644 $H/redmi-taste.service $R/etc/systemd/system/
+sudo install -D -m644 $H/redmi-taste-logind.conf $R/etc/systemd/logind.conf.d/redmi-taste.conf
+sudo chroot $R systemctl enable redmi-taste.service
+```
 
 Pack the tree into an ext4 image and write it to `userdata` (this **erases** the Android user data):
 
