@@ -32,7 +32,9 @@ It describes the way the project author's own phone is built today (November 202
 | `dtbo_b` | **empty** device-tree overlay | `werkzeuge/pc/leere_images.py` |
 
 The kernel command line is built into the kernel (`CONFIG_CMDLINE_FORCE`, see `kernel/redmi_a5_defconfig`):
-it mounts `root=PARTLABEL=userdata`. The vbmeta partitions are **left unchanged**: on the author's unlocked phone all
+it mounts `root=PARTLABEL=userdata` **read-only** with `fsck.repair=yes`, so systemd checks (and if needed repairs)
+the root file system on every boot before the `/etc/fstab` line (step 4) switches it to read-write. Until 07.11.2026
+the command line said `rw`, which silently skipped that check (see STATUS.md). The vbmeta partitions are **left unchanged**: on the author's unlocked phone all
 `vbmeta*_a/_b` still have flags = 0 (checked 05.11.2026), and slot b boots anyway.
 
 **Why `init_boot_b` and `dtbo_b` must be emptied** (found 07.11.2026 on a phone in factory state, which hung at the
@@ -139,7 +141,7 @@ sudo chroot $R passwd root
 echo redmi-a5 | sudo tee $R/etc/hostname
 # SSH login with your key (Ubuntu does not allow root login with a password over SSH)
 sudo mkdir -m700 -p $R/root/.ssh && sudo cp ~/.ssh/id_ed25519.pub $R/root/.ssh/authorized_keys
-# the kernel mounts / read-only first; without this line it stays read-only
+# the kernel mounts / read-only first (and systemd runs fsck); without this line it stays read-only
 echo "PARTLABEL=userdata / ext4 defaults,noatime 0 1" | sudo tee $R/etc/fstab
 ```
 

@@ -1,0 +1,35 @@
+From 9b72aa9ba3c797d789d3a41569936b2db715e261 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 7 Nov 2026 19:47:19 +0100
+Subject: [PATCH] redmi_a5: Root nur lesend einhaengen, fsck beim Start (ro
+ fsck.repair=yes)
+
+- Befehlszeile hatte "rw": / war sofort beschreibbar, systemd-fsck-root wurde
+  uebersprungen (ConditionPathIsReadWrite=!/) -> nie ein fsck
+- jetzt "ro fsck.repair=yes": systemd prueft und repariert vor dem
+  Umschalten auf rw durch /etc/fstab
+- Beleg 07.11.: zweites Redmi ro -> e2fsck clean -> rw; Arbeitshandy hatte
+  "clean with errors" (Inode 8101 /var/log/wtmp), danach clean, 0 failed
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/configs/redmi_a5_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index ec2f318de..66afae9d5 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -40,7 +40,7 @@ CONFIG_NUMA=y
+ CONFIG_XEN=y
+ CONFIG_COMPAT=y
+ CONFIG_RANDOMIZE_BASE=y
+-CONFIG_CMDLINE="console=tty0 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused panic=5 nokaslr kvm-arm.mode=none id_aa64mmfr1.vh=0 root=PARTLABEL=userdata rootwait rw fbcon=logo-count:1 fbcon=logo-pos:center"
++CONFIG_CMDLINE="console=tty0 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused panic=5 nokaslr kvm-arm.mode=none id_aa64mmfr1.vh=0 root=PARTLABEL=userdata rootwait ro fsck.repair=yes fbcon=logo-count:1 fbcon=logo-pos:center"
+ CONFIG_CMDLINE_FORCE=y
+ CONFIG_HIBERNATION=y
+ CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y
+-- 
+2.43.0
+

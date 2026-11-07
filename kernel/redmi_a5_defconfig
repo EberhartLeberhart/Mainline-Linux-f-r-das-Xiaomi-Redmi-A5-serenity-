@@ -40,7 +40,7 @@ CONFIG_NUMA=y
 CONFIG_XEN=y
 CONFIG_COMPAT=y
 CONFIG_RANDOMIZE_BASE=y
-CONFIG_CMDLINE="console=tty0 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused panic=5 nokaslr kvm-arm.mode=none id_aa64mmfr1.vh=0 root=PARTLABEL=userdata rootwait rw fbcon=logo-count:1 fbcon=logo-pos:center"
+CONFIG_CMDLINE="console=tty0 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused panic=5 nokaslr kvm-arm.mode=none id_aa64mmfr1.vh=0 root=PARTLABEL=userdata rootwait ro fsck.repair=yes fbcon=logo-count:1 fbcon=logo-pos:center"
 CONFIG_CMDLINE_FORCE=y
 CONFIG_HIBERNATION=y
 CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y
