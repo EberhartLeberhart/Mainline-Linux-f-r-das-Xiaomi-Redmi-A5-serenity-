@@ -18,6 +18,7 @@ unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstell
 | `vendorboot_dt.sh` | vendor_boot mit Gerätebaum-Änderungen neu bauen (wird vom Rezept benutzt) |
 | `vendorboot_basis.sh` | leere vendor_boot-Hülle von Grund auf bauen (Gerätebaum + leere Ramdisk + bootconfig, nichts von Xiaomi); ersetzt das alte `vendor_boot_usb2.img` |
 | `wrap_dtb.py` | Gerätebaum in die DT-Tabelle des Bootloaders verpacken (wird von den vendor_boot-Skripten benutzt) |
+| `leere_images.py` | `init_boot_leer.img` (leere Ramdisk) und `dtbo_leer.img` (leeres Overlay) für Slot b – ohne sie startet ein Werksgerät unseren Kernel nicht (07.11.) |
 | `misc_slot_b.py` | `misc_b.img` erzeugen: Bootloader startet Slot b, nach 7 Fehlversuchen wieder Slot a; mit `--ok` die 32 Bytes für `redmi-boot-ok.service` |
 | `pack.sh` | `boot_mainline.img` aus dem frisch gebauten Kernel packen und prüfen, ob wirklich der aktuelle Kernel drinsteckt |
 | `deploy.sh` | Kernel, vendor_boot und alle Module per SSH auf Slot b schreiben, Slot b aktiv schalten, neu starten |
