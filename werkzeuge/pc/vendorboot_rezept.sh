@@ -21,6 +21,17 @@ DSIOUT_PH=107; PANELIN_PH=108
 CPU6_PH=$(fdtget "$BASIS_DTB" /cpus/cpu@600 phandle)
 CPU7_PH=$(fdtget "$BASIS_DTB" /cpus/cpu@700 phandle)
 DISP_AN=${DISPLAY_DRM:-1}   # DISPLAY_DRM=0 baut den Stand ohne Display-Treiber (simpledrm wie bisher)
+# 07.11.: Panel-Variante (steht in /proc/device-tree/chosen/bootargs als lcd_name=Panel_C3Z_..._vid).
+#   PANEL=c3z42 (Standard): Novatek NT36528, Treiber faehrt es selbst hoch (PANELKERNEL).
+#   PANEL=c3z36: anderer Chip (zweites Redmi, lcd_id=ID4160); Treiber uebernimmt nur den Bootloader-Zustand mit
+#   eigenen Taktwerten - kein Reset, keine Init-Befehle, keine ESD-Pruefung, daher auch PANELKERNEL=0. Braucht den
+#   Panel-Treiber mit Variante "xiaomi,serenity-panel-c3z36"; nur PANELKERNEL=0 ohne sie: Bild schief (falscher Takt).
+PANEL=${PANEL:-c3z42}
+case "$PANEL" in
+  c3z42) PANEL_COMPAT="novatek,nt36528-c3z42" ;;
+  c3z36) PANEL_COMPAT="xiaomi,serenity-panel-c3z36"; PANELKERNEL=0 ;;
+  *) echo "FEHLER: PANEL=$PANEL unbekannt (c3z42 oder c3z36)"; exit 1 ;;
+esac
 DISP_ARGS=()
 if [ "$DISP_AN" = 1 ]; then DISP_ARGS=(
   `# DPU an, Bootloader-Bildspeicher (0x9cf2a000, 720*1640*4) bleibt beim Uebergang ueber die IOMMU erreichbar (wie Reeder)` \
@@ -33,11 +44,11 @@ if [ "$DISP_AN" = 1 ]; then DISP_ARGS=(
   /display-subsystem status okay \
   `# simpledrm aus: sonst bleibt die Konsole auf dem alten Bootloader-Speicher (fb0), waehrend die DPU fb1 zeigt (Beleg 09.10.)` \
   /chosen/framebuffer@0 status disabled \
-  `# DSI an, Panel NT36528 (C3Z_42) an Kanal 0, ohne Reset-Leitung (Touch sitzt im selben Chip)` \
+  `# DSI an, Panel (Variante siehe PANEL oben) an Kanal 0` \
   /soc/dsi@31100000 status okay \
   /soc/dsi@31100000 "#address-cells" u:1 \
   /soc/dsi@31100000 "#size-cells" u:0 \
-  /soc/dsi@31100000/panel@0 compatible "novatek,nt36528-c3z42" \
+  /soc/dsi@31100000/panel@0 compatible "$PANEL_COMPAT" \
   /soc/dsi@31100000/panel@0 reg u:0 \
   /soc/dsi@31100000/panel@0/port/endpoint phandle u:$PANELIN_PH \
   /soc/dsi@31100000/panel@0/port/endpoint remote-endpoint u:$DSIOUT_PH \

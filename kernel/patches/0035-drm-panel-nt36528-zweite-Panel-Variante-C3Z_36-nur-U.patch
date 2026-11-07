@@ -1,0 +1,150 @@
+From 20db04314ea9ff4926cb07c4e7516e72e0f21c22 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 7 Nov 2026 19:14:51 +0100
+Subject: [PATCH] drm/panel: nt36528: zweite Panel-Variante C3Z_36 (nur
+ Uebernehmen)
+
+- Panel-Varianten ueber of_match-Daten: Modus, DSI-Takt, ob eigene
+  Novatek-Init-Befehle/Reset/ESD erlaubt sind; C3Z_42 unveraendert
+- neu "xiaomi,serenity-panel-c3z36" (zweites Redmi, lcd_id=ID4160): anderer
+  Chip (Init beginnt mit B0 04), daher nie Reset, Init oder ESD, nur der
+  Bootloader-Zustand mit Xiaomis Takt: 186,2 MHz, h 720+62+4+50,
+  v 1640+2036+4+32, 1117,2 Mbit/s je Spur
+- Beleg 07.11.: mit C3Z_42-Takt Bild verschoben/schraeg, mit diesem Takt
+  TuxSwing und Anmeldung gerade
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 62 ++++++++++++++++++-
+ 1 file changed, 59 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+index ef36b7e88..b188ec904 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36528.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -17,6 +17,12 @@
+  * Werkswerten (dunkler, regelte langsam herunter; Beleg 31.10.).
+  * Display und Touch sind ein Chip: Ein Reset setzt auch den Touch zurueck, der als Panel-Follower
+  * danach seine Firmware neu laedt.
++ *
++ * Zweite Panel-Variante C3Z_36_10_0d (07.11.2026, zweites Redmi A5, lcd_id=ID4160): anderer Chip
++ * (Init beginnt mit B0 04, nicht mit Novateks FF/FB-Seitenumschaltung), daher hier NUR Uebernehmen
++ * des Bootloader-Zustands mit eigenen Taktwerten - kein Reset, keine Init-Befehle, keine ESD-Pruefung,
++ * auch wenn Leitungen im DT stehen. Werte aus Panel_C3Z_36_10_0d_vid: 186,2 MHz, h 720+62+4+50,
++ * v 1640+2036+4+32, 1117,2 Mbit/s je Spur.
+  */
+ 
+ #include <linux/backlight.h>
+@@ -25,6 +31,7 @@
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
++#include <linux/property.h>
+ #include <linux/workqueue.h>
+ 
+ #include <drm/drm_mipi_dsi.h>
+@@ -40,8 +47,16 @@
+ #define NT36528_ESD_MS		3000
+ #define NT36528_ESD_OK		0x9c
+ 
++/* Unterschiede der Panel-Varianten */
++struct nt36528_variante {
++	const struct drm_display_mode *mode;
++	unsigned long hs_rate;		/* sprd,phy-bit-clock */
++	bool eigenes_init;		/* Novatek-Init-Befehle/Reset/ESD erlaubt (nur C3Z_42) */
++};
++
+ struct nt36528_panel {
+ 	struct drm_panel panel;
++	const struct nt36528_variante *var;
+ 	struct mipi_dsi_device *dsi;
+ 	struct gpio_desc *reset;	/* optional, im DT aktiv-low: 1 = Panel im Reset */
+ 	struct gpio_desc *avdd;		/* optional */
+@@ -387,9 +402,39 @@ static const struct drm_display_mode nt36528_modes[] = {
+ 	},
+ };
+ 
++/* Panel_C3Z_36_10_0d_vid timing0 (native-mode): 186,2 MHz, h 720+62+4+50 = 836, v 1640+2036+4+32 = 3712 */
++static const struct drm_display_mode c3z36_mode = {
++	.clock = 186200,
++	.hdisplay = 720,
++	.hsync_start = 720 + 62,
++	.hsync_end = 720 + 62 + 4,
++	.htotal = 720 + 62 + 4 + 50,
++	.vdisplay = 1640,
++	.vsync_start = 1640 + 2036,
++	.vsync_end = 1640 + 2036 + 4,
++	.vtotal = 1640 + 2036 + 4 + 32,
++	.width_mm = 70,
++	.height_mm = 160,
++	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++};
++
++static const struct nt36528_variante var_c3z42 = {
++	.mode = &nt36528_modes[0],
++	.hs_rate = 1195200000,		/* 0x123cc0 kHz */
++	.eigenes_init = true,
++};
++
++static const struct nt36528_variante var_c3z36 = {
++	.mode = &c3z36_mode,
++	.hs_rate = 1117200000,		/* 0x110c10 kHz */
++	.eigenes_init = false,
++};
++
+ static int nt36528_get_modes(struct drm_panel *panel, struct drm_connector *connector)
+ {
+-	return drm_connector_helper_get_modes_fixed(connector, &nt36528_modes[0]);
++	struct nt36528_panel *ctx = to_nt36528_panel(panel);
++
++	return drm_connector_helper_get_modes_fixed(connector, ctx->var->mode);
+ }
+ 
+ static const struct drm_panel_funcs nt36528_panel_funcs = {
+@@ -444,6 +489,15 @@ static int nt36528_probe(struct mipi_dsi_device *dsi)
+ 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
+ 	if (!ctx)
+ 		return -ENOMEM;
++	ctx->var = device_get_match_data(dev);
++	if (!ctx->var)
++		return -ENODEV;
++
++	if (!ctx->var->eigenes_init) {
++		/* fremder Chip: Leitungen nicht anfordern -> nur Uebernehmen, kein Reset, keine ESD-Pruefung */
++		dev_info(dev, "Panel-Variante ohne eigene Init-Befehle: Bootloader-Zustand wird uebernommen\n");
++		goto leitungen_fertig;
++	}
+ 
+ 	/* GPIOD_ASIS: beim Uebernehmen nichts umschalten, der Bootloader hat alles an gelassen */
+ 	ctx->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_ASIS);
+@@ -459,6 +513,7 @@ static int nt36528_probe(struct mipi_dsi_device *dsi)
+ 		dev_info(dev, "Panel in Kernel-Hand: Versorgung %s, Reset und Init-Befehle durch den Treiber\n",
+ 			 ctx->avdd && ctx->avee ? "avdd/avee" : "unvollstaendig");
+ 
++leitungen_fertig:
+ 	ctx->dsi = dsi;
+ 	mipi_dsi_set_drvdata(dsi, ctx);
+ 	ret = devm_mutex_init(dev, &ctx->lock);
+@@ -470,7 +525,7 @@ static int nt36528_probe(struct mipi_dsi_device *dsi)
+ 	dsi->format = MIPI_DSI_FMT_RGB888;
+ 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
+ 			  MIPI_DSI_MODE_VIDEO_HSE;
+-	dsi->hs_rate = 1195200000;	/* sprd,phy-bit-clock 0x123cc0 kHz */
++	dsi->hs_rate = ctx->var->hs_rate;
+ 	dsi->lp_rate = 20000000;	/* sprd,phy-escape-clock 0x4e20 kHz */
+ 
+ 	drm_panel_init(&ctx->panel, dev, &nt36528_panel_funcs, DRM_MODE_CONNECTOR_DSI);
+@@ -506,7 +561,8 @@ static void nt36528_remove(struct mipi_dsi_device *dsi)
+ }
+ 
+ static const struct of_device_id nt36528_of_match[] = {
+-	{ .compatible = "novatek,nt36528-c3z42" },
++	{ .compatible = "novatek,nt36528-c3z42", .data = &var_c3z42 },
++	{ .compatible = "xiaomi,serenity-panel-c3z36", .data = &var_c3z36 },
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(of, nt36528_of_match);
+-- 
+2.43.0
+
