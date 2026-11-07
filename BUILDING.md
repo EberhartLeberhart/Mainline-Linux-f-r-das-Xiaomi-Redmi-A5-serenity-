@@ -7,7 +7,13 @@ It describes the way the project author's own phone is built today (November 202
 > - This is an experimental hobby project. You can lose all data on the phone. **Back up every partition first.**
 > - The bootloader must already be **unlocked** (`fastboot getvar unlocked` → `yes`). How that was done is documented in
 >   [BOOTLOADER_UNLOCK.md](BOOTLOADER_UNLOCK.md); this guide does not repeat it.
-> - Android stays on **slot a** as a rescue system. Linux goes to **slot b**. Never touch slot a.
+> - Linux goes to **slot b**; never touch slot a. Note: once `userdata` holds Linux, Android on slot a no longer
+>   starts properly (its recovery says "Can't load Android system" — **do not** choose "Factory data reset", that
+>   would erase Linux). Your rescue is **fastboot** (Volume down + Power), which always works.
+> - **Display and touch currently work only on the panel variant `Panel_C3Z_42_02_0a_vid`.** The Redmi A5 ships with at
+>   least four panels (C3Z_35, C3Z_36, C3Z_42, C3Z_43) with different display/touch chips. Check yours in Android:
+>   `tr " \0" "\n\n" < /proc/device-tree/chosen/bootargs | grep lcd_name` (needs root). Other variants boot
+>   and run fine over USB/SSH, but the screen stays black after boot (work in progress).
 > - Steps marked **(not re-verified)** are known to have worked during the project, but have not been repeated from
 >   scratch with this exact guide yet. Please report how it went (see the end).
 > - What works and what doesn't: [README.md, section 15](README.md#15-booting-linux) and [STATUS.md](STATUS.md) (German).
@@ -21,10 +27,19 @@ It describes the way the project author's own phone is built today (November 202
 | `vendor_boot_b` | device tree (+ empty ramdisk, bootconfig) — **nothing from Xiaomi** | `werkzeuge/pc/vendorboot_basis.sh` + `vendorboot_rezept.sh` |
 | `userdata` | Ubuntu 24.04 root filesystem (ext4) | `debootstrap` |
 | `misc` | "boot slot b, fall back to a after 7 failed tries" | `werkzeuge/pc/misc_slot_b.py` (only for updates over SSH) |
+| `init_boot_b` | Android boot image **with an empty ramdisk** | `werkzeuge/pc/leere_images.py` |
+| `dtbo_b` | **empty** device-tree overlay | `werkzeuge/pc/leere_images.py` |
 
 The kernel command line is built into the kernel (`CONFIG_CMDLINE_FORCE`, see `kernel/redmi_a5_defconfig`):
 it mounts `root=PARTLABEL=userdata`. The vbmeta partitions are **left unchanged**: on the author's unlocked phone all
 `vbmeta*_a/_b` still have flags = 0 (checked 05.11.2026), and slot b boots anyway.
+
+**Why `init_boot_b` and `dtbo_b` must be emptied** (found 07.11.2026 on a phone in factory state, which hung at the
+logo and rebooted in a loop): on a stock phone `init_boot_b` holds Android's first-stage ramdisk — the bootloader
+hands it to our kernel, which then starts Android's init instead of Ubuntu. And `dtbo_b` holds Xiaomi's overlay for the
+Android device tree, which the bootloader lays over ours. **Both are needed:** with only `init_boot_b` emptied
+and Xiaomi's original `dtbo_b` the phone hangs at the logo again (counter-test 07.11.2026). The author's own phone had both emptied long ago, which is
+why this was only noticed with a second phone.
 
 ## 1. Host PC
 
@@ -32,7 +47,7 @@ Tested on Linux Mint (any Debian/Ubuntu-based distribution should work).
 
 ```bash
 sudo apt install git gcc-aarch64-linux-gnu build-essential bc flex bison libssl-dev libelf-dev \
-  device-tree-compiler python3 fastboot debootstrap qemu-user-static
+  device-tree-compiler python3 fastboot debootstrap qemu-user-static android-sdk-libsparse-utils
 ```
 
 Google's `mkbootimg` (Python scripts, used for the Android boot images):
@@ -65,8 +80,11 @@ git checkout -b redmi-a5 4a5b97b821b846f9a25a99a4fdcb3040fd910965
 git am ~/redmi-a5/kernel/patches/*.patch          # all patches apply cleanly (checked 05.11.2026); they also
                                                   # bring arch/arm64/configs/redmi_a5_defconfig (= kernel/redmi_a5_defconfig)
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- redmi_a5_defconfig   # CROSS_COMPILE here too, see note below
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image dtbs modules
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image dtbs modules sprd/ums9230-xiaomi-serenity.dtb
 ```
+
+The last target builds our device tree explicitly — its line in `arch/arm64/boot/dts/sprd/Makefile` is still missing
+in the patches (found by the first outside tester, fix coming).
 
 **Use the same `CROSS_COMPILE` for `defconfig` and for the build.** Several options depend on what the compiler
 supports; configuring with the host compiler and building with the cross compiler makes `make` restart the
@@ -91,6 +109,9 @@ DTB=~/ums9230-linux/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dtb
 # empty vendor_boot shell, then all our device-tree changes on top of it
 ./vendorboot_basis.sh $DTB vendor_boot_basis.img
 VB=vendor_boot_basis.img BASIS_DTB=$DTB ./vendorboot_rezept.sh   # -> vendor_boot_rezept.img
+
+# empty init_boot and dtbo for slot b (see "Why" above)
+python3 ./leere_images.py ~/redmi-build                      # -> init_boot_leer.img, dtbo_leer.img
 ```
 
 `vendorboot_rezept.sh` collects every device-tree change of the project in one place, with switches such as `WCN=1`
@@ -99,10 +120,11 @@ VB=vendor_boot_basis.img BASIS_DTB=$DTB ./vendorboot_rezept.sh   # -> vendor_boo
 > Verified 06.11.2026: a `vendor_boot` built this way (with `WCN=1`) boots the author's phone; display, Wi-Fi
 > autostart and everything else work as with the old hand-made image (same device tree and bootconfig).
 
-## 4. Root filesystem (Ubuntu 24.04) — (not re-verified)
+## 4. Root filesystem (Ubuntu 24.04)
 
 During the project the root filesystem was built with `debootstrap` on the PC, first written to the small `cust`
-partition, and later copied by the running system to `userdata`. Building it directly for `userdata`:
+partition, and later copied by the running system to `userdata`. Building it directly for `userdata` (verified
+07.11.2026 on a second phone):
 
 ```bash
 R=/mnt/redmi-rootfs
@@ -113,6 +135,8 @@ sudo chroot $R passwd root
 echo redmi-a5 | sudo tee $R/etc/hostname
 # SSH login with your key (Ubuntu does not allow root login with a password over SSH)
 sudo mkdir -m700 -p $R/root/.ssh && sudo cp ~/.ssh/id_ed25519.pub $R/root/.ssh/authorized_keys
+# the kernel mounts / read-only first; without this line it stays read-only
+echo "PARTLABEL=userdata / ext4 defaults,noatime 0 1" | sudo tee $R/etc/fstab
 ```
 
 Kernel modules (they must match the kernel version exactly):
@@ -143,13 +167,16 @@ Pack the tree into an ext4 image and write it to `userdata` (this **erases** the
 
 ```bash
 truncate -s 4G rootfs.img && sudo mkfs.ext4 -L ubuntu -d $R rootfs.img
-fastboot flash userdata rootfs.img
+img2simg rootfs.img rootfs_sparse.img          # sparse format (package android-sdk-libsparse-utils)
+fastboot flash userdata rootfs_sparse.img
 ```
+
+The 4 GB file system can be grown to the whole partition later on the phone: `resize2fs /dev/disk/by-partlabel/userdata`.
 
 On the PC, `werkzeuge/pc/net.sh` sets up the USB network after each boot of the phone; then `ssh root@192.168.7.2`.
 ([USB_SSH_SETUP.md](USB_SSH_SETUP.md) still shows the older `10.0.0.x` addresses.)
 
-## 5. First installation (fastboot) — (not re-verified)
+## 5. First installation (fastboot)
 
 Phone in fastboot mode (Volume down + Power):
 
@@ -157,12 +184,21 @@ Phone in fastboot mode (Volume down + Power):
 cd ~/redmi-build
 fastboot flash boot_b boot_mainline.img
 fastboot flash vendor_boot_b vendor_boot_rezept.img
+fastboot flash init_boot_b init_boot_leer.img
+fastboot flash dtbo_b dtbo_leer.img
 fastboot set_active b
 fastboot reboot
 ```
 
-The bootloader takes a while; then kernel messages and the boot logo appear on the screen.
-**Back to Android at any time:** `fastboot set_active a && fastboot reboot`.
+Verified 07.11.2026 on a second phone in factory state (with `userdata` from step 4). The bootloader takes about
+1.5 minutes; then kernel messages and the boot logo appear. `fastboot reboot` may report `FAILED (No such device)` —
+the phone was just faster than the answer; it does reboot.
+
+After boot: `werkzeuge/pc/net.sh`, then `ssh root@192.168.7.2`. **Only connect one phone by USB at a time** — every
+phone uses 192.168.7.2. With several phones, give each its own SSH host key name, e.g.
+`ssh -o HostKeyAlias=redmi-a5-zwei root@192.168.7.2`, otherwise SSH warns about a changed host key.
+
+**Back to slot a:** `fastboot set_active a && fastboot reboot` (Android itself won't start with Linux on `userdata`, see the top).
 
 ## Updates from the running system
 
