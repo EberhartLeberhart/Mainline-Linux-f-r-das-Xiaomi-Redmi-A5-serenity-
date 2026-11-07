@@ -238,6 +238,22 @@ Wi-Fi autostart with an on/off switch (all in [`werkzeuge/handy/`](werkzeuge/han
 `wpa_supplicant` format to `/etc/redmi/wpa-wlan0.conf` (mode 600). Build the `vendor_boot` with `WCN=1`.
 Then `redmi-wlan.sh an|aus|status` switches it. Details: [STATUS.md](STATUS.md) (German, section "WLAN").
 
+**Bluetooth** (verified 07.11.2026: Bluetooth 5.0, Classic and LE, scan finds devices) runs on the same Wi-Fi/BT core,
+so it needs Wi-Fi set up as above (`WLAN=an` starts the core). Two more files from `odm/firmware`, converted with
+[`werkzeuge/pc/bt_ini_bin.py`](werkzeuge/pc/bt_ini_bin.py) — the transmit power values in them are used unchanged:
+
+```bash
+O=~/odm/firmware          # folder firmware/ of your own odm partition copy
+python3 ~/redmi-a5/werkzeuge/pc/bt_ini_bin.py $O/bt_configure_pskey.ini bt_config_pskey.bin   # 160 bytes
+python3 ~/redmi-a5/werkzeuge/pc/bt_ini_bin.py $O/bt_configure_rf.ini bt_config_rf.bin         # 252 bytes
+scp bt_config_pskey.bin bt_config_rf.bin root@192.168.7.2:/lib/firmware/sprd/
+```
+
+On the phone: `apt install bluez`, then `redmi-bt.sh` to `/usr/local/sbin/`, `redmi-bt.service` to
+`/etc/systemd/system/` (enable it) and `bt.conf` (`BT=an`/`BT=aus`) to `/etc/redmi/`. The device tree has no
+Bluetooth address, so the script sets one at boot (Wi-Fi MAC + 1); only then the driver sends the configuration to
+the chip. `redmi-bt.sh an|aus|status` switches it.
+
 ## Reporting back
 
 Please open an issue with what worked and what didn't. A `dmesg` log helps a lot — but **remove MAC addresses,

@@ -1,0 +1,13 @@
+[Unit]
+Description=Redmi A5: Bluetooth (Schalter in /etc/redmi/bt.conf)
+After=bluetooth.service redmi-wlan.service
+Wants=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/redmi-bt.sh start
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target
