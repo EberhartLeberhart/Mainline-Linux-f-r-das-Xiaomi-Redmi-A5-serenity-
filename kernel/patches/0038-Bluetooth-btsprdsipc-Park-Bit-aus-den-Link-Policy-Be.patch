@@ -1,0 +1,78 @@
+From 90558039ceb5435bd3fdf54920b0b26c10dce3d9 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 7 Nov 2026 21:11:13 +0100
+Subject: [PATCH 38/38] Bluetooth: btsprdsipc: Park-Bit aus den
+ Link-Policy-Befehlen nehmen
+
+- der Chip (BT 5.0, LMP-Subversion 0x0800) meldet "Park state", lehnt aber
+  jede Richtlinie damit ab: Write Default Link Policy 0x000d -> Invalid HCI
+  Command Parameters (0x12), hci0 kam nie hoch (Park ist seit BT 5.0
+  gestrichen)
+- Treiber loescht HCI_LP_PARK in 0x080f und 0x080d vor dem Senden
+- Beleg 07.11. (btmon): vorher 0x000d abgelehnt, danach hci0 powered,
+  br/edr le ssp secure-conn, Suchlauf 20 Geraete
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/bluetooth/btsprdsipc.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/drivers/bluetooth/btsprdsipc.c b/drivers/bluetooth/btsprdsipc.c
+index b3d79bb5a..b3bbd8c53 100644
+--- a/drivers/bluetooth/btsprdsipc.c
++++ b/drivers/bluetooth/btsprdsipc.c
+@@ -9,6 +9,7 @@
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/rpmsg.h>
++#include <linux/unaligned.h>
+ 
+ #include <net/bluetooth/bluetooth.h>
+ #include <net/bluetooth/hci_core.h>
+@@ -49,12 +50,42 @@ static int btsprdsipc_callback(struct rpmsg_device *rpdev, void *data,
+ 	return count;
+ }
+ 
++/*
++ * The controller (Unisoc, Bluetooth 5.0, LMP subversion 0x0800) reports "Park state" in its LMP
++ * features, but rejects every link policy containing it with "Invalid HCI Command Parameters"
++ * (0x12). Park was removed in Bluetooth 5.0. The core builds the default link policy from the
++ * features, so Write Default Link Policy fails and the controller never comes up. Clear the
++ * park bit in both link policy commands before they reach the controller.
++ */
++static void btsprdsipc_fix_link_policy(struct sk_buff *skb)
++{
++	unsigned int off;
++	u16 opcode;
++
++	if (hci_skb_pkt_type(skb) != HCI_COMMAND_PKT || skb->len < HCI_COMMAND_HDR_SIZE)
++		return;
++
++	opcode = get_unaligned_le16(skb->data);
++	if (opcode == HCI_OP_WRITE_DEF_LINK_POLICY)
++		off = HCI_COMMAND_HDR_SIZE;		/* policy */
++	else if (opcode == HCI_OP_WRITE_LINK_POLICY)
++		off = HCI_COMMAND_HDR_SIZE + 2;		/* handle, policy */
++	else
++		return;
++
++	if (skb->len >= off + 2)
++		put_unaligned_le16(get_unaligned_le16(skb->data + off) & ~HCI_LP_PARK,
++				   skb->data + off);
++}
++
+ static int btsprdsipc_send(struct hci_dev *hdev, struct sk_buff *skb)
+ {
+ 	struct btsprdsipc *bts = hci_get_drvdata(hdev);
+ 	unsigned int len;
+ 	int ret;
+ 
++	btsprdsipc_fix_link_policy(skb);
++
+ 	/* Prepend skb with frame type */
+ 	memcpy(skb_push(skb, 1), &hci_skb_pkt_type(skb), 1);
+ 
+-- 
+2.43.0
+

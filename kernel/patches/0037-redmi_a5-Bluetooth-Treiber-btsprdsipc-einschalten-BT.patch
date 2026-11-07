@@ -1,0 +1,29 @@
+From 1d6c997b7f9fb6f81992b97a8e5ba1a416c7ed22 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 7 Nov 2026 20:46:50 +0100
+Subject: [PATCH 37/38] redmi_a5: Bluetooth-Treiber btsprdsipc einschalten
+ (BT_SPRDSIPC=m)
+
+- Otto Pfluegers btsprdsipc (HCI ueber SIPC, Kanal 4 Ringe 10/11) und der
+  DT-Knoten bluetooth@10 waren im Codeberg-Baum schon da, nur aus
+- Beleg 07.11.: Treiber findet den Kanal (remoteproc0:sipc.4.sbuf.wcn_bt.10.11),
+  hci0 entsteht, Chip antwortet (Bluetooth 5.0, Unisoc 1855)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/configs/redmi_a5_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index 66afae9d5..992f8988d 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1043,3 +1043,4 @@ CONFIG_CORESIGHT_STM=m
+ CONFIG_CORESIGHT_CPU_DEBUG=m
+ CONFIG_CORESIGHT_CTI=m
+ CONFIG_MEMTEST=y
++CONFIG_BT_SPRDSIPC=m
+-- 
+2.43.0
+
