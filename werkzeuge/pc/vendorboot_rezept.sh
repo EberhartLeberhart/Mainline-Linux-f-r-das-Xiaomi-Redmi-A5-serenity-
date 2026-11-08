@@ -6,17 +6,26 @@
 #   ~/redmi-build/vendorboot_rezept.sh            -> ~/redmi-build/vendor_boot_rezept.img
 #   danach: ~/redmi-build/deploy.sh vendor_boot_rezept.img
 set -e
-GP=/soc/gpio@641b0000      # GPIO-Baustein des Chips, hatte keine phandle
-GP_PH=105                  # frei gewaehlt (hoechste vorhandene phandle war 104)
-FG=/soc/spi@64200000/pmic@0/fuel-gauge@c00   # Akkuanzeige im PMIC
-BAT_PH=106                 # phandle fuer den neuen Akku-Knoten
-# 09.10.: Display (DRM). Phandles aus dem Basis-Geraetebaum lesen statt raten; fehlt einer, neu vergeben.
 # 05.11.: einstellbar, z. B. BASIS_DTB=<Kernel-Baum>/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dtb (gleicher Inhalt)
 export BASIS_DTB=${BASIS_DTB:-$HOME/redmi-unlock-work/serenity_v12.dtb}
 HIER=$(dirname "$(readlink -f "$0")")
-FB_PH=$(fdtget "$BASIS_DTB" /reserved-memory/framebuffer-region@0 phandle 2>/dev/null || echo 109)
-DPU_PH=$(fdtget "$BASIS_DTB" /soc/dpu@31000000 phandle 2>/dev/null || echo 110)
-DSIOUT_PH=107; PANELIN_PH=108
+# 08.11.: Verweise (phandles) nicht mehr fest vergeben. Hat der Knoten im Basis-Geraetebaum schon einen, wird der
+#   genommen; sonst eine neue Nummer oberhalb der hoechsten im Basis-Baum. Bisher endete der Basis-Baum bei 104 und die
+#   Nummern 105-123 standen hier fest - mit dem Audio-Teil im Kernel-DT (neue Verweise auf Verstaerker, Codecs,
+#   ap_gpio) vergibt dtc selbst mehr Nummern -> "duplicated phandle", Abbruch. Endet der Basis-Baum bei 104, ergeben
+#   sich genau die alten Nummern (gleiches Image wie vorher).
+PH_MAX=$(dtc -q -I dtb -O dts "$BASIS_DTB" | sed -n 's/.*phandle = <\(0x[0-9a-f]*\)>.*/\1/p' | xargs -n1 printf "%d\n" | sort -n | tail -1)
+PH_OFF=$(( PH_MAX > 104 ? PH_MAX - 104 : 0 ))
+ph() { fdtget "$BASIS_DTB" "$1" phandle 2>/dev/null || echo $(( $2 + PH_OFF )); }
+echo ">>> phandles: Basis bis $PH_MAX, neue ab $((105 + PH_OFF))"
+GP=/soc/gpio@641b0000      # GPIO-Baustein des Chips (hatte im alten Basis-Baum keine phandle)
+GP_PH=$(ph $GP 105)
+FG=/soc/spi@64200000/pmic@0/fuel-gauge@c00   # Akkuanzeige im PMIC
+BAT_PH=$(ph /battery 106)  # phandle fuer den neuen Akku-Knoten
+# 09.10.: Display (DRM). Phandles aus dem Basis-Geraetebaum lesen statt raten; fehlt einer, neu vergeben.
+FB_PH=$(ph /reserved-memory/framebuffer-region@0 109)
+DPU_PH=$(ph /soc/dpu@31000000 110)
+DSIOUT_PH=$(ph /soc/dsi@31100000/ports/port@1/endpoint 107); PANELIN_PH=$(ph /soc/dsi@31100000/panel@0/port/endpoint 108)
 # 24.10.: Verweise der grossen Kerne fuer die korrigierte cpu-map (aus dem Basis-Geraetebaum, nicht geraten)
 CPU6_PH=$(fdtget "$BASIS_DTB" /cpus/cpu@600 phandle)
 CPU7_PH=$(fdtget "$BASIS_DTB" /cpus/cpu@700 phandle)
@@ -59,7 +68,7 @@ fi
 # passiv 70 °C -> CPU drosseln (GPU hat noch keine Taktstufen; gleicher Chip), kritisch 110 °C -> Abschalten.
 # Hysterese und Kuehlgeraete aus den CPU-Zonen des Basis-Geraetebaums gelesen, nicht geraten.
 TZ=/thermal-zones
-GPU_TRIP_PH=111            # neu; 105-110 sind im Rezept vergeben
+GPU_TRIP_PH=$(ph $TZ/gpu-thermal/trips/gpu-passiv 111)
 HYST_PASS=$(fdtget "$BASIS_DTB" $TZ/cputop0-thermal/trips/trip-point0 hysteresis)
 HYST_KRIT=$(fdtget "$BASIS_DTB" $TZ/cputop0-thermal/trips/cpu-crit hysteresis)
 KUEHL="$(fdtget -t u "$BASIS_DTB" $TZ/cputop0-thermal/cooling-maps/map0 cooling-device) $(fdtget -t u "$BASIS_DTB" $TZ/cputop1-thermal/cooling-maps/map0 cooling-device)"
@@ -118,7 +127,7 @@ OPP_STUFEN=${OPP_STUFEN:-"384000000 512000000 614400000 768000000 850000000"}
 #   GPU-Fehler; Akkustrom unter GPU-Last 262 -> 253 mA (Leerlauf unveraendert 53 mA, Display aus) -> vendor_boot_opp850mv_ok.img
 #   Einzelwerte je Stufe (Android 0,70-0,80 V) bewusst zurueckgestellt: nur wenige mA Nutzen, weniger Reserve.
 OPP_UV=${OPP_UV:-850000}
-VDDGPU_PH=112; GPU_OPP_PH=113   # neu; 105-111 sind vergeben, Basis-DT endet bei 104 (0x68)
+VDDGPU_PH=$(ph /soc/spi@64200000/pmic@0/regulators/dcdc-gpu 112); GPU_OPP_PH=$(ph /gpu-opp-table 113)
 OPP_ARGS=()
 if [ "$OPP" = 1 ]; then
   OPP_ARGS=( /soc/spi@64200000/pmic@0/regulators/dcdc-gpu phandle u:$VDDGPU_PH \
@@ -140,7 +149,7 @@ fi
 #   Belegt 27.10. (vendor_boot_sd_ok.img): SDXC 128 GB "high speed", Partitionen gelesen, 20,8 MB/s lesend (nahe am
 #   Hoechstwert von High Speed, ~25 MB/s); Herausziehen/Einstecken erkannt (cd lo = keine Karte, hi = Karte).
 #   no-sdio/no-mmc sind reine Schalter ohne Wert: "u:" ohne Zahl schreibt eine leere Eigenschaft (sonst warnt der Kernel).
-EIC_SYNC_PH=114; SDCORE_PH=115; SDIO_PH=116   # neu; 105-113 sind vergeben
+EIC_SYNC_PH=$(ph /soc/gpio@641000c0 114); SDCORE_PH=$(ph /soc/spi@64200000/pmic@0/regulators/ldo-vddsdcore 115); SDIO_PH=$(ph /soc/spi@64200000/pmic@0/regulators/ldo-vddsdio 116)
 SD_ARGS=()
 if [ "$SD" = 1 ]; then
   RG=/soc/spi@64200000/pmic@0/regulators
@@ -170,7 +179,7 @@ fi
 #   Beleg 29.10.: fb-blank/unblank -> Firmware genau einmal neu geladen, kein Waechter-Alarm, Panel 0x9C/0x2C, evtest 827.
 #   Standard seit 29.10. (Ergebnis = vendor_boot_folger_ok.img); ausschalten: TOUCHFOLGER=0
 TOUCHFOLGER=${TOUCHFOLGER:-1}
-PANEL_PH=117   # neu; 105-116 sind vergeben
+PANEL_PH=$(ph /soc/dsi@31100000/panel@0 117)
 FOLGER_ARGS=()
 if [ "$TOUCHFOLGER" = 1 ]; then FOLGER_ARGS=(
   /soc/dsi@31100000/panel@0 phandle u:$PANEL_PH \
@@ -199,7 +208,7 @@ fi
 #   Beleg 31.10.: gpu-thermal hat 3 Kuehlgeraete (2x CPU + GPU); emul_temp 75 °C -> GPU-Stufe 1 (max_freq 850 -> 768 MHz)
 #   und CPU-Stufe 1, nach Freigabe wieder 0 / 850 MHz. Standard seit 31.10. (vendor_boot_gpukuehl_ok.img); aus: GPUKUEHL=0
 GPUKUEHL=${GPUKUEHL:-1}
-GPU_PH=118   # neu; 105-117 sind vergeben
+GPU_PH=$(ph /soc/gpu@23100000 118)
 GPUKUEHL_ARGS=()
 if [ "$GPUKUEHL" = 1 ]; then GPUKUEHL_ARGS=(
   /soc/gpu@23100000 phandle u:$GPU_PH \
@@ -216,12 +225,12 @@ fi
 #   auf 3,0 V und vddwcn auf 0,9 V (Beleg wcntest Stufe 0, 09.10.). Noetig sind 1,8 V / 1,2 V / 3,3 V (Realme, wcntest
 #   Stufe 1). Deshalb min = max: der Kernel stellt die Spannung beim Anmelden des Reglers ein, solange er noch aus ist.
 #   Raster: vddwcn 900 + n*15 mV (1200 = n 20), vddsim2/vddwifipa 1200 + n*10 mV (1800 = 60, 3300 = 210).
-VDDWCN_PH=119; VDDWIFIPA_PH=120; DCXO_PH=121   # neu; 105-118 sind vergeben
+VDDWCN_PH=$(ph /soc/spi@64200000/pmic@0/regulators/ldo-vddwcn 119); VDDWIFIPA_PH=$(ph /soc/spi@64200000/pmic@0/regulators/ldo-vddwifipa 120); DCXO_PH=$(ph /soc/spi@64200000/pmic@0/regulators/ldo-vddsim2 121)
 # 04.11.: feste WLAN-MAC aus der Chip-Kennung (UID). Ottos nvmem-Geraet fuer den eFuse-Spiegel beginnt bei 0x65014c04,
 #   Androids uid-start@5c / uid-end@58 (qogirl6.dtsi, cache_efuse 0x65014c00) liegen darin also bei 0x58 / 0x54.
 #   Abgefragt 04.11.: beide Felder belegt und stabil. Der WLAN-Treiber (Patch "MAC-Ersatzkette") liest sie ueber
 #   nvmem-cells am Kanal-7-Knoten und leitet daraus eine feste, lokal verwaltete MAC ab (wie beebono, UMS512).
-UIDSTART_PH=122; UIDEND_PH=123   # neu; 105-121 sind vergeben
+UIDSTART_PH=$(ph /reserved-memory/nvmem@65014c00/nvmem-layout/uid-start@58 122); UIDEND_PH=$(ph /reserved-memory/nvmem@65014c00/nvmem-layout/uid-end@54 123)
 NVL=/reserved-memory/nvmem@65014c00/nvmem-layout
 WCN_ARGS=()
 if [ "$WCN" = 1 ]; then

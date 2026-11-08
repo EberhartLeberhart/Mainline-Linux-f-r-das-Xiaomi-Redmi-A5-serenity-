@@ -1,0 +1,116 @@
+From 156cb9ad76ac155a223082ca8729324570b543eb Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 8 Nov 2026 16:44:38 +0100
+Subject: [PATCH 40/40] redmi_a5: Ton - Soundkarte, Lautsprecher-Verstaerker,
+ Audio-Module
+
+- Board-DT: SC2730-Codec und Soundkarte an (nach Ottos
+  ums9230-reeder-s19mps.dts, ohne Modem-Sprachweg), externer
+  Lautsprecher-Verstaerker an ap_gpio 58 als awinic,aw8738 mit
+  awinic,mode = 4 (Xiaomis spk-ext-pa-info: Impulssteuerung, aktiv hoch,
+  Modus 4), gespeist aus SPK_OUT (nicht HPL wie beim Reeder)
+- defconfig: SPRD_AGDSP, SND_SOC_SPRD(_UMS9230), SND_SOC_SC2730,
+  SND_SOC_UMS9230_DIGITAL, SND_SOC_SIMPLE_AMPLIFIER, SND_SOC_AW8738 als Module
+- Beleg 08.11.: Kopfhoerer und Lautsprecher spielen (DSP-Wege wie in
+  Ottos UCM: TX0 SEL IIS0, RX0 SEL IIS1, FE_* an, TX0 MIXER0 NOT_MIX)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ .../boot/dts/sprd/ums9230-xiaomi-serenity.dts | 61 +++++++++++++++++++
+ arch/arm64/configs/redmi_a5_defconfig         |  6 ++
+ 2 files changed, 67 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index 2dbbb4f49..02e0ded56 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -132,6 +132,21 @@ key-power {
+ 			linux,code = <KEY_POWER>;
+ 		};
+ 	};
++
++	/*
++	 * External speaker amplifier. Unlike the Reeder (fed from HPL), it is fed from the SC2730's
++	 * internal speaker PA output (SPK_OUT): with HPL the speaker stayed silent. Xiaomi's overlay: sprd,spk-ext-pa-gpio = ap_gpio 58 and
++	 * sprd,spk-ext-pa-info = <0 0 4 0 ...>: speaker, Unisoc's "general_speaker" hook = one-wire
++	 * pulse control, active high, mode 4 (4 rising edges, then high). A plain on/off
++	 * (simple-audio-amplifier) left the speaker silent; the AW8738 driver does the same pulse
++	 * protocol as Unisoc's hook.
++	 */
++	speaker_amp: speaker-amp {
++		compatible = "awinic,aw8738";
++		sound-name-prefix = "Speaker Amp";
++		mode-gpios = <&ap_gpio 58 GPIO_ACTIVE_HIGH>;
++		awinic,mode = <4>;
++	};
+ };
+ 
+ &uart0 { status = "okay"; };
+@@ -161,3 +176,49 @@ &usb {
+ 	role-switch-default-mode = "peripheral";
+ 	status = "okay";
+ };
++
++/*
++ * Audio: digital codec + SC2730 analog codec, playback through the audio DSP (started by the
++ * bootloader from l_agdsp). Taken from ums9230-reeder-s19mps.dts without the modem voice path
++ * (the modem stays off in this project).
++ */
++&sc2730_codec {
++	status = "okay";
++};
++
++&sound {
++	model = "xiaomi-serenity";
++	widgets =
++		"Headphone", "Headphones",
++		"Speaker", "Speaker";
++	pin-switches = "Speaker";
++	audio-routing =
++		"Headphones", "HPL_OUT",
++		"Headphones", "HPR_OUT",
++		"Speaker Amp IN", "SPK_OUT",
++		"Speaker", "Speaker Amp OUT";
++	aux-devs = <&speaker_amp>;
++	status = "okay";
++
++	iis0-dai-link {
++		link-name = "IIS0";
++		dai-format = "i2s";
++		frame-inversion;
++		sprd,fixed-fmt = <24>;
++
++		codec {
++			sound-dai = <&dig_codec 0>, <&sc2730_codec 0>;
++		};
++	};
++
++	iis1-dai-link {
++		link-name = "IIS1";
++		dai-format = "i2s";
++		frame-inversion;
++		sprd,fixed-fmt = <24>;
++
++		codec {
++			sound-dai = <&dig_codec 1>, <&sc2730_codec 1>;
++		};
++	};
++};
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index 992f8988d..f5769b288 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1044,3 +1044,9 @@ CONFIG_CORESIGHT_CPU_DEBUG=m
+ CONFIG_CORESIGHT_CTI=m
+ CONFIG_MEMTEST=y
+ CONFIG_BT_SPRDSIPC=m
++CONFIG_SPRD_AGDSP=m
++CONFIG_SND_SOC_SPRD=m
++CONFIG_SND_SOC_SPRD_UMS9230=m
++CONFIG_SND_SOC_SC2730=m
++CONFIG_SND_SOC_UMS9230_DIGITAL=m
++CONFIG_SND_SOC_AW8738=m
+-- 
+2.43.0
+
