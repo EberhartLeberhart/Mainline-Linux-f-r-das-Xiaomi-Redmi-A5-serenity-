@@ -1,0 +1,40 @@
+From 60787513b4059432a52bd7f82ddb65a5ec61c396 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 8 Nov 2026 17:09:41 +0100
+Subject: [PATCH] arm64: dts: sprd: redmi-a5: Audio-DMA-Interrupt ist SPI 181
+
+- der AGCP-DMA meldet "Periode fertig" an den AP auf SPI 181, nicht auf
+  SPI 180 wie im ums9230.dtsi (und in Unisocs qogirl6.dtsi): mit 180 kam
+  nie ein Interrupt an (Zaehler 0), der DMA-Kanal hatte TRSC_INT_STS
+  dauerhaft anliegen (GLB_INT_MSK_STS = 1), die Wiedergabe lief im
+  Ringpuffer im Kreis ("zerkratzte Schallplatte")
+- Beleg 08.11.: GICD_ISPENDR - SPI 181 steht nur waehrend der Wiedergabe
+  an (vorher/nachher 0), SPI 180 nie; mit 181 saubere Musik
+- vermutlich gilt das fuer alle UMS9230-Geraete (Fehlerbericht an Otto)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index 02e0ded56..6ace42f0f 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -222,3 +222,12 @@ codec {
+ 		};
+ 	};
+ };
++
++/*
++ * The AGCP DMA raises its AP interrupt on SPI 181, not SPI 180 as in the SoC dtsi (and in
++ * Unisoc's qogirl6.dtsi): GICD_ISPENDR shows SPI 181 pending only while audio plays, SPI 180
++ * never. With 180, period interrupts never arrived and playback looped ("scratched record").
++ */
++&agcp_dma {
++	interrupts = <GIC_SPI 181 IRQ_TYPE_LEVEL_HIGH>;
++};
+-- 
+2.43.0
+
