@@ -224,11 +224,12 @@ Once Linux runs and SSH over USB works, the author updates over SSH instead of f
 
 ## 6. Firmware you must take from your own phone
 
-We do **not** distribute Xiaomi/Unisoc firmware. Wi-Fi needs two files from your own phone's firmware
+We do **not** distribute Xiaomi/Unisoc firmware. Touch and Wi-Fi need files from your own phone's firmware
 (`odm` partition, folder `firmware/`), copied to the phone's Linux system:
 
 | File on the phone | Source |
 |---|---|
+| `/lib/firmware/novatek_ts_csot_fw.bin` | **touchscreen firmware** (panel C3Z_42), copied unchanged from `odm/firmware`. Without it the touch controller never starts. It loads about 17 s after boot (the first try before `/` is mounted fails, the driver retries). |
 | `/lib/firmware/sprd/wcnmodem.bin` | Wi-Fi/Bluetooth core firmware from `odm/firmware` |
 | `/lib/firmware/sprd/wifi_board_config.bin` | converted from `wifi_board_config.ini` with [`kernel/wcn-test/wcn_ini_bin.c`](kernel/wcn-test/wcn_ini_bin.c) (instructions at the top of the file) |
 
