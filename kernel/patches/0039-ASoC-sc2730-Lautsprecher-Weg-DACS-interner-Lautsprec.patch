@@ -1,0 +1,224 @@
+From 7520e71250cfaad09d5e78741efe0ef9704ae731 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 8 Nov 2026 16:44:37 +0100
+Subject: [PATCH 39/40] ASoC: sc2730: Lautsprecher-Weg (DACS, interner
+ Lautsprecher-PA)
+
+- der SC2730 hat neben HP/EAR einen eigenen Lautsprecher-Weg:
+  DACS (ANA_CDC6 Bit 3) -> SPK PA (ANA_CDC14) -> SPK_OUT; Ottos Treiber
+  kannte ihn nicht, beim Redmi A5 haengt der externe Verstaerker daran
+- Ablaeufe aus Unisocs Codec-Treiber (Realme C33): DACS mit Depop
+  (PA_RSV, PA_DPOP_RC_L, SDAPA = ANA_CDC9 Bit 4), PA im AB-Betrieb mit
+  Warten auf PA_AB_DPOP_DVLD (ANA_STS11 Bit 8); Takte CLK_PA_32K,
+  DIG_CLK_PA, DIG_CLK_FGU; Regler "SPK Volume" (ANA_CDC8, 1,5 dB/Stufe)
+- DC-Offset-Kalibrierung des DACS (DAS_OS) noch nicht
+- Beleg 08.11.: Lautsprecher spielt 1 kHz, PA meldet depop fertig
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ sound/soc/codecs/sc2730.c | 128 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 128 insertions(+)
+
+diff --git a/sound/soc/codecs/sc2730.c b/sound/soc/codecs/sc2730.c
+index e0d3f4dd9..5f7f0c9ed 100644
+--- a/sound/soc/codecs/sc2730.c
++++ b/sound/soc/codecs/sc2730.c
+@@ -3,6 +3,7 @@
+  * Copyright (C) 2025 Otto Pflüger
+  */
+ 
++#include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+@@ -191,17 +192,41 @@
+ #define CP_NEG_PD_FLYP	BIT(9)
+ #define CP_NEG_PD_FLYN	BIT(8)
+ 
++/* ANA_CDC6 */
++#define DAS_EN		BIT(3)
++
++/* ANA_CDC9 */
++#define SDAPA		BIT(4)
++
++/* ANA_CDC14 */
++#define PA_EN		BIT(6)
++#define PA_D_EN		BIT(5)
++#define PA_DPOP_BYP_EN	BIT(0)
++
++/* ANA_CDC17 */
++#define PA_RSV_MASK	GENMASK(15, 11)
++#define PA_RSV(x)	(((x) << 11) & PA_RSV_MASK)
++
++/* ANA_CDC19 */
++#define PA_DPOP_RC_L_MASK	GENMASK(7, 6)
++#define PA_DPOP_RC_L(x)		(((x) << 6) & PA_DPOP_RC_L_MASK)
++
++/* ANA_STS11 */
++#define PA_AB_DPOP_DVLD	BIT(8)
++
+ /* ANA_DCL10 */
+ #define CP_POS_SOFT_EN	BIT(11)
+ #define CP_NEG_SOFT_EN	BIT(5)
+ 
+ static const DECLARE_TLV_DB_SCALE(adc_tlv, 0, 300, 0);
+ static const DECLARE_TLV_DB_SCALE(hp_ear_tlv, -2400, 300, 1);
++static const DECLARE_TLV_DB_SCALE(spk_tlv, 0, 150, 0);
+ 
+ static const struct snd_kcontrol_new sc2730_codec_controls[] = {
+ 	SOC_DOUBLE_TLV("Capture Volume", ANA_CDC2, 3, 0, 7, 0, adc_tlv),
+ 	SOC_DOUBLE_TLV("Headphone Volume", ANA_CDC7, 4, 0, 15, 1, hp_ear_tlv),
+ 	SOC_SINGLE_TLV("Earpiece Volume", ANA_CDC7, 8, 15, 1, hp_ear_tlv),
++	SOC_SINGLE_TLV("SPK Volume", ANA_CDC8, 0, 15, 0, spk_tlv),
+ };
+ 
+ static int sc2730_codec_cp_event(struct snd_soc_dapm_widget *w,
+@@ -255,6 +280,84 @@ static int sc2730_depop_event(struct snd_soc_dapm_widget *w,
+ 	return 0;
+ }
+ 
++/*
++ * Speaker path (DACS -> internal speaker PA -> SPK pins). Sequences follow Unisoc's SC2730 codec
++ * driver (dacs_switch_event, spk_pa_event); the PA runs in class-AB mode (PA_D_EN off, Unisoc's
++ * default), the DC offset calibration of the DACS is left out.
++ */
++static int sc2730_dacs_event(struct snd_soc_dapm_widget *w,
++			     struct snd_kcontrol *kcontrol, int event)
++{
++	struct snd_soc_component *codec = snd_soc_dapm_to_component(w->dapm);
++
++	switch (event) {
++	case SND_SOC_DAPM_PRE_PMU:
++		snd_soc_component_update_bits(codec, ANA_CDC17, PA_RSV_MASK, 0);
++		usleep_range(100, 110);
++		break;
++	case SND_SOC_DAPM_POST_PMU:
++		usleep_range(100, 110);
++		snd_soc_component_update_bits(codec, ANA_CDC19, PA_DPOP_RC_L_MASK,
++					      PA_DPOP_RC_L(3));
++		usleep_range(10, 15);
++		snd_soc_component_update_bits(codec, ANA_CDC17, PA_RSV_MASK,
++					      PA_RSV(8));
++		msleep(20);
++		snd_soc_component_update_bits(codec, ANA_CDC19, PA_DPOP_RC_L_MASK, 0);
++		usleep_range(100, 110);
++		snd_soc_component_update_bits(codec, ANA_CDC9, SDAPA, SDAPA);
++		usleep_range(100, 110);
++		break;
++	case SND_SOC_DAPM_PRE_PMD:
++		snd_soc_component_update_bits(codec, ANA_CDC9, SDAPA, 0);
++		usleep_range(10, 15);
++		snd_soc_component_update_bits(codec, ANA_CDC19, PA_DPOP_RC_L_MASK,
++					      PA_DPOP_RC_L(3));
++		msleep(20);
++		snd_soc_component_update_bits(codec, ANA_CDC17, PA_RSV_MASK, 0);
++		usleep_range(10, 15);
++		snd_soc_component_update_bits(codec, ANA_CDC19, PA_DPOP_RC_L_MASK, 0);
++		usleep_range(100, 110);
++		break;
++	}
++
++	return 0;
++}
++
++static int sc2730_spk_pa_event(struct snd_soc_dapm_widget *w,
++			       struct snd_kcontrol *kcontrol, int event)
++{
++	struct snd_soc_component *codec = snd_soc_dapm_to_component(w->dapm);
++	int i;
++
++	switch (event) {
++	case SND_SOC_DAPM_PRE_PMU:
++		snd_soc_component_update_bits(codec, ANA_CDC19, PA_DPOP_RC_L_MASK, 0);
++		snd_soc_component_update_bits(codec, ANA_CDC14,
++					      PA_D_EN | PA_DPOP_BYP_EN, 0);
++		usleep_range(1000, 1100);
++		snd_soc_component_update_bits(codec, ANA_CDC14, PA_EN, PA_EN);
++
++		/* depop takes about 60 to 195 ms */
++		msleep(60);
++		for (i = 0; i < 135; i++) {
++			if (snd_soc_component_read(codec, ANA_STS11) &
++			    PA_AB_DPOP_DVLD)
++				break;
++			usleep_range(1000, 1100);
++		}
++		if (i == 135)
++			dev_warn(codec->dev, "speaker PA depop not done\n");
++		break;
++	case SND_SOC_DAPM_POST_PMD:
++		snd_soc_component_update_bits(codec, ANA_CDC14, PA_EN, 0);
++		usleep_range(2000, 2100);
++		break;
++	}
++
++	return 0;
++}
++
+ static const struct snd_kcontrol_new sc2730_hp_switch =
+ 	SOC_DAPM_DOUBLE("Headphone Playback Switch", ANA_CDC9, 3, 2, 1, 0);
+ 
+@@ -278,6 +381,7 @@ static const struct snd_soc_dapm_widget sc2730_codec_dapm_widgets[] = {
+ 	SND_SOC_DAPM_OUTPUT("HPL_OUT"),
+ 	SND_SOC_DAPM_OUTPUT("HPR_OUT"),
+ 	SND_SOC_DAPM_OUTPUT("EAR_OUT"),
++	SND_SOC_DAPM_OUTPUT("SPK_OUT"),
+ 
+ 	SND_SOC_DAPM_INPUT("HPMIC_IN"),
+ 	SND_SOC_DAPM_INPUT("MIC2_IN"),
+@@ -300,6 +404,7 @@ static const struct snd_soc_dapm_widget sc2730_codec_dapm_widgets[] = {
+ 	SND_SOC_DAPM_SUPPLY("CLK_ADC", ANA_CLK0, 9, 0, NULL, 0),
+ 	SND_SOC_DAPM_SUPPLY("CLK_DAC", ANA_CLK0, 8, 0, NULL, 0),
+ 	SND_SOC_DAPM_SUPPLY("CLK_CP", ANA_CLK0, 7, 0, NULL, 0),
++	SND_SOC_DAPM_SUPPLY("CLK_PA_32K", ANA_CLK0, 2, 0, NULL, 0),
+ 	SND_SOC_DAPM_SUPPLY("VB", ANA_PMU0, 13, 0, NULL, 0),
+ 	SND_SOC_DAPM_SUPPLY("BG", ANA_PMU0, 9, 0, NULL, 0),
+ 	SND_SOC_DAPM_SUPPLY("BIAS", ANA_PMU0, 4, 0, NULL, 0),
+@@ -314,6 +419,8 @@ static const struct snd_soc_dapm_widget sc2730_codec_dapm_widgets[] = {
+ 	SND_SOC_DAPM_SUPPLY("DIG_CLK_INTC", ANA_DCL1, 8, 0, NULL, 0),
+ 	SND_SOC_DAPM_SUPPLY("DIG_CLK_HPDPOP", ANA_DCL1, 4, 0, NULL, 0),
+ 	SND_SOC_DAPM_SUPPLY("DIG_CLK_DRV_SOFT", ANA_DCL1, 1, 0, NULL, 0),
++	SND_SOC_DAPM_SUPPLY("DIG_CLK_FGU", ANA_DCL1, 2, 0, NULL, 0),
++	SND_SOC_DAPM_SUPPLY("DIG_CLK_PA", ANA_DCL1, 0, 0, NULL, 0),
+ 
+ 	SND_SOC_DAPM_SUPPLY("Codec Supply", SND_SOC_NOPM, 0, 0, NULL, 0),
+ 
+@@ -332,6 +439,12 @@ static const struct snd_soc_dapm_widget sc2730_codec_dapm_widgets[] = {
+ 
+ 	SND_SOC_DAPM_DAC("DACL", NULL, ANA_CDC5, 4, 0),
+ 	SND_SOC_DAPM_DAC("DACR", NULL, ANA_CDC5, 3, 0),
++	SND_SOC_DAPM_DAC_E("DACS", NULL, ANA_CDC6, 3, 0, sc2730_dacs_event,
++			   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
++			   SND_SOC_DAPM_PRE_PMD),
++	SND_SOC_DAPM_PGA_E("SPK PA", SND_SOC_NOPM, 0, 0, NULL, 0,
++			   sc2730_spk_pa_event,
++			   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+ 
+ 	SND_SOC_DAPM_PGA("HP BUF", ANA_CDC10, 1, 0, NULL, 0),
+ 
+@@ -406,6 +519,21 @@ static const struct snd_soc_dapm_route sc2730_codec_dapm_routes[] = {
+ 	{"HPR_OUT", NULL, "HPR"},
+ 	{"EAR_OUT", NULL, "EAR"},
+ 
++	{"DACS", NULL, "AUDIF_IN"},
++	{"DACS", NULL, "DAC_EN_L"},
++	{"DACS", NULL, "CLK_DAC"},
++
++	{"CLK_PA_32K", NULL, "Codec Supply"},
++	{"DIG_CLK_PA", NULL, "Codec Supply"},
++	{"DIG_CLK_FGU", NULL, "Codec Supply"},
++
++	{"SPK PA", NULL, "DACS"},
++	{"SPK PA", NULL, "CLK_PA_32K"},
++	{"SPK PA", NULL, "DIG_CLK_PA"},
++	{"SPK PA", NULL, "DIG_CLK_FGU"},
++
++	{"SPK_OUT", NULL, "SPK PA"},
++
+ 	/* Capture routes */
+ 	{"SC2730 Capture", NULL, "AUDIF_OUT"},
+ 
+-- 
+2.43.0
+
