@@ -1,0 +1,70 @@
+From 09d35af7c85c58aeb757842d47da4afaf9b546ab Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Mon, 9 Nov 2026 20:46:46 +0100
+Subject: [PATCH] redmi_a5: USB-C-Erkennung im PMIC (sc27xx_pd), noch ohne 5 V
+
+- PMIC-USB-C-Controller pd@e00 an (Treiber TYPEC_SC27XX_PD=m, TCPM),
+  Anschluss wie bei Ottos Reeder: dual role, try sink, 5 V PDOs
+- bewusst OHNE vbus-supply: der Treiber faengt das ab (vbus = NULL),
+  set_vbus tut dann nichts -> das Handy liefert nie selbst 5 V
+- ohne port/endpoint: der USB-Rollenschalter bleibt bei redmi-usb.sh
+- Beleg 09.11.: am PC Partner, power_role sink, VBUS 4937 mV, USB-Netz
+  unveraendert; OTG-Geraet (CC2 = Rd) -> TCPM SRC_ATTACHED, vbus:=1
+  (laeuft ins Leere), Netzteil (CC2 = Rp) -> SNK_ATTACHED
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ .../boot/dts/sprd/ums9230-xiaomi-serenity.dts | 22 +++++++++++++++++++
+ arch/arm64/configs/redmi_a5_defconfig         |  1 +
+ 2 files changed, 23 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index 6ace42f0f..c5b096c83 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -2,6 +2,7 @@
+ /* Xiaomi Redmi A5 (serenity) - minimal, Konsole auf simple-framebuffer */
+ /dts-v1/;
+ #include <dt-bindings/input/input.h>
++#include <dt-bindings/usb/pd.h>
+ #include "ums9230.dtsi"
+ #include "sc2730.dtsi"
+ 
+@@ -231,3 +232,24 @@ codec {
+ &agcp_dma {
+ 	interrupts = <GIC_SPI 181 IRQ_TYPE_LEVEL_HIGH>;
+ };
++
++/*
++ * USB-C controller in the PMIC, step 1: detection only. Dual role like Otto Pflueger's Reeder, but
++ * WITHOUT vbus-supply: the driver then never switches 5 V on (set_vbus does nothing), so an OTG
++ * device is only detected, not powered. No port/endpoint: the USB role switch stays with
++ * redmi-usb.sh for now.
++ */
++&pmic_typec_pd {
++	status = "okay";
++
++	connector {
++		compatible = "usb-c-connector";
++		label = "USB-C";
++		data-role = "dual";
++		power-role = "dual";
++		try-power-role = "sink";
++		source-pdos = <PDO_FIXED(5000, 1200, PDO_FIXED_USB_COMM)>;
++		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
++		op-sink-microwatt = <10000000>;
++	};
++};
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index f5769b288..dc1eef4f2 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1050,3 +1050,4 @@ CONFIG_SND_SOC_SPRD_UMS9230=m
+ CONFIG_SND_SOC_SC2730=m
+ CONFIG_SND_SOC_UMS9230_DIGITAL=m
+ CONFIG_SND_SOC_AW8738=m
++CONFIG_TYPEC_SC27XX_PD=m
+-- 
+2.43.0
+
