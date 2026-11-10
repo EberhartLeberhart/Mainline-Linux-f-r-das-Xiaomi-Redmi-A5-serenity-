@@ -1,0 +1,30 @@
+From 4a60cfc5e02aac238dc15f58083f73ad80c41793 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Tue, 10 Nov 2026 19:23:00 +0100
+Subject: [PATCH] arm64: dts: sprd: Makefile: Redmi A5 (serenity) mit bauen
+
+- ums9230-xiaomi-serenity.dtb fehlte in der dtb-Liste, "make dtbs" hat
+  den Geraetebaum des Redmi A5 deshalb nie gebaut (BUILDING.md nannte ihn
+  bisher ausdruecklich als eigenes Ziel)
+- Beleg 10.11.: alte .dtb geloescht, "make dtbs" baut sie jetzt von selbst
+- gemeldet vom Tester farrizdesignpro1339 (Issue #26)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/boot/dts/sprd/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/Makefile b/arch/arm64/boot/dts/sprd/Makefile
+index 0af83bf5f..c709187fc 100644
+--- a/arch/arm64/boot/dts/sprd/Makefile
++++ b/arch/arm64/boot/dts/sprd/Makefile
+@@ -4,4 +4,5 @@ dtb-$(CONFIG_ARCH_SPRD) += sc9836-openphone.dtb 	\
+ 			sp9863a-1h10.dtb		\
+ 			ums512-1h10.dtb			\
+ 			ums9230-reeder-s19mps.dtb	\
++			ums9230-xiaomi-serenity.dtb	\
+ 			ums9620-2h10.dtb
+-- 
+2.43.0
+
