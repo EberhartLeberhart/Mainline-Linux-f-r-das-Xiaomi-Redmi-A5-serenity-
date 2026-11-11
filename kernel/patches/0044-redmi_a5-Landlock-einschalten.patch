@@ -1,0 +1,30 @@
+From e6a8a605237da301bfae2580f5225edfe669999b Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Wed, 11 Nov 2026 19:44:17 +0100
+Subject: [PATCH] redmi_a5: Landlock einschalten
+
+- CONFIG_SECURITY_LANDLOCK=y im defconfig. Landlock steht in der
+  Standardliste CONFIG_LSM an erster Stelle und ist damit beim Start aktiv
+- Nutzen: Programme koennen sich selbst einsperren (z. B. laedt pacman 7
+  unter Arch in einer Landlock-Sandbox herunter), Wunsch vom Tester
+- Beleg 11.11.: /sys/kernel/security/lsm = "capability,landlock",
+  dmesg "landlock: Up and running."
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/configs/redmi_a5_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index dc1eef4f2..ab7a06f65 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1051,3 +1051,4 @@ CONFIG_SND_SOC_SC2730=m
+ CONFIG_SND_SOC_UMS9230_DIGITAL=m
+ CONFIG_SND_SOC_AW8738=m
+ CONFIG_TYPEC_SC27XX_PD=m
++CONFIG_SECURITY_LANDLOCK=y
+-- 
+2.43.0
+
