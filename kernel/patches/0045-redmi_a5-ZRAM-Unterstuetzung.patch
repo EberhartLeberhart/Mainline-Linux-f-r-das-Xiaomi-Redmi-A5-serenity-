@@ -1,0 +1,31 @@
+From 30b9ac55a15ee6acadcc3db0a5d1b2670639ddb9 Mon Sep 17 00:00:00 2001
+From: farrizdesignpro1339 <229765408+farrizdesignpro1339@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:50:55 +0700
+Subject: [PATCH] redmi_a5: ZRAM einschalten
+
+- CONFIG_ZRAM=y (eingebaut) mit ZSMALLOC-Backend
+- Kompressor ZSTD vorkonfiguriert (CONFIG_ZRAM_BACKEND_ZSTD,
+  CONFIG_ZRAM_DEF_COMP_ZSTD) - beste Kompression bei geringem CPU-Kosten
+- Aktivierung ueber systemd zram-generator: /etc/systemd/zram-generator.conf
+  mit zram-size=4096; /dev/zram0 erscheint dann beim naechsten Start
+- Test hinterher auf dem Handy: ls /dev/zram0, swapon --show, free -m
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm64/configs/redmi_a5_defconfig | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index ab7a06f..a904427 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1052,3 +1052,7 @@ CONFIG_SND_SOC_UMS9230_DIGITAL=m
+ CONFIG_SND_SOC_AW8738=m
+ CONFIG_TYPEC_SC27XX_PD=m
+ CONFIG_SECURITY_LANDLOCK=y
++CONFIG_ZSMALLOC=y
++CONFIG_ZRAM=y
++CONFIG_ZRAM_BACKEND_ZSTD=y
++CONFIG_ZRAM_DEF_COMP_ZSTD=y
+-- 
+2.56.0
