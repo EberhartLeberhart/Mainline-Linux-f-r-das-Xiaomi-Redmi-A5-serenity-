@@ -13,6 +13,11 @@
 #   Nach HIZ aus erkennt der Chip den Eingang neu und stellt den Eingangsstrom selbst
 #   hoch (0x17 = 2400 mA, am PC-Anschluss zu viel) -> wird danach zurueckgestellt.
 #
+# Seit 12.11. (Kernel-Treiber sgm41513_charger, Patch 0045): Die 5 V fuer USB-OTG schaltet der
+# Kernel ueber REG01 Bit 5 (OTG an + Laden aus). Dieses Skript fasst Bit 5 NIE an, liest REG01
+# vor jedem Schreiben frisch und pausiert, solange OTG an ist (sonst wuerde es die Bits des
+# Kernels ueberschreiben - bis 11.11. schrieb es einen beim Start gemerkten REG01-Wert zurueck).
+#
 # Einstellungen: /etc/redmi/akku.conf (MODUS=server, OBEN, UNTEN, NOTFALL, INTERVALL)
 # Ohne MODUS=server tut der Dienst nichts (Handy-Modus: voll laden).
 set -u
@@ -64,14 +69,16 @@ if [ "$MODUS" != server ]; then
 fi
 [ "$UNTEN" -lt "$OBEN" ] && [ "$NOTFALL" -lt "$UNTEN" ] || { log "FEHLER: NOTFALL < UNTEN < OBEN noetig"; exit 1; }
 
-R00=$(rd 0x00) && R01=$(rd 0x01) || { log "FEHLER: Ladechip nicht lesbar"; exit 1; }
+R00=$(rd 0x00) && rd 0x01 > /dev/null || { log "FEHLER: Ladechip nicht lesbar"; exit 1; }
 # Eingangsstrom (REG00 Bits 4:0, 100 mA + n*100 mA) auf hoechstens EINGANG_MAX begrenzen.
 # Grund 05.10.: nach dem Einstecken stellt der Chip selbst 0x17 = 2400 mA ein (auch am PC-Anschluss).
 IMAX=$(( (EINGANG_MAX - 100) / 100 )); [ $IMAX -lt 0 ] && IMAX=0; [ $IMAX -gt 31 ] && IMAX=31
 IIN=$(( R00 & 0x7f ))            # Eingangsstrom wie beim Start, ohne HIZ-Bit
 [ $(( IIN & 0x1f )) -gt $IMAX ] && IIN=$(( (IIN & 0x60) | IMAX ))
-AN=$(( R01 | 0x10 ))             # REG01 mit Laden an
-AUS=$(( R01 & ~0x10 & 0xff ))    # REG01 mit Laden aus
+# REG01 immer frisch lesen und nur Bit 4 (Laden) aendern - Bit 5 (OTG) gehoert dem Kernel
+laden_an(){  wr 0x01 $(( $(rd 0x01) | 0x10 )); }
+laden_aus(){ wr 0x01 $(( $(rd 0x01) & ~0x10 & 0xff )); }
+otg(){ [ $(( $(rd 0x01) & 0x20 )) -ne 0 ]; }   # 5 V fuer ein USB-Geraet an?
 
 hiz_aus(){
     # HIZ nur loesen, wenn es gesetzt ist - danach Eingangsstrom zurueck (Neuerkennung)
@@ -80,10 +87,11 @@ hiz_aus(){
     fi
 }
 setze(){
+    otg && return                # nie in laufendes OTG hineinschreiben
     case $1 in
-        laden)    hiz_aus; wr 0x00 $IIN; wr 0x01 $AN ;;
-        ruhen)    hiz_aus; wr 0x00 $IIN; wr 0x01 $AUS ;;
-        entladen) wr 0x01 $AUS; wr 0x00 $(( IIN | 0x80 )) ;;
+        laden)    hiz_aus; wr 0x00 $IIN; laden_an ;;
+        ruhen)    hiz_aus; wr 0x00 $IIN; laden_aus ;;
+        entladen) laden_aus; wr 0x00 $(( IIN | 0x80 )) ;;
     esac
 }
 passt(){   # stimmen die Schalter im Chip noch mit dem Zustand ueberein?
@@ -103,6 +111,7 @@ nachsehen(){
     local k alt
     for k in 1 2 3 4 5; do
         sleep 2
+        otg && return
         if ! passt $zust; then
             alt="0x00=$(rd 0x00) 0x01=$(rd 0x01)"
             setze $zust; log "$(cat $CAP 2>/dev/null) % - Chip hat nachtraeglich ueberschrieben ($alt), erneut gesetzt"
@@ -111,12 +120,19 @@ nachsehen(){
 }
 
 # Beim Beenden - egal wie - immer zurueck auf normal (Strom an, Laden an)
-trap 'setze laden; speichern; log "Dienst beendet - Laden normal"' EXIT
+trap 'otg || setze laden; speichern; log "Dienst beendet - Laden normal"' EXIT
 trap 'exit 0' TERM INT HUP
 
 log "Ladegrenze aktiv: ${UNTEN}-${OBEN} %, Notfall unter ${NOTFALL} %, Eingang 0x$(printf %02x $IIN) (max. ${EINGANG_MAX} mA), Pruefung alle ${PRUEF} s"
-zust=""; seit=$INTERVALL
+zust=""; seit=$INTERVALL; pause=0
 while :; do
+  if otg; then
+    # USB-Geraet am Handy, der Kernel liefert 5 V: Chip nicht anfassen, danach neu entscheiden
+    [ $pause -eq 0 ] && log "$(cat $CAP 2>/dev/null) % - USB-OTG aktiv (5 V vom Kernel), Ladesteuerung pausiert"
+    pause=1; zust=""; seit=$INTERVALL
+    sleep "$PRUEF" & wait $!; continue
+  fi
+  [ $pause -eq 1 ] && log "$(cat $CAP 2>/dev/null) % - USB-OTG beendet, Ladesteuerung laeuft weiter" && pause=0
   if [ -n "$zust" ] && [ $seit -lt $INTERVALL ]; then
     # nur der schnelle Chip-Check (Einstecken setzt HIZ zurueck und den Eingangsstrom hoch)
     if ! passt $zust; then
