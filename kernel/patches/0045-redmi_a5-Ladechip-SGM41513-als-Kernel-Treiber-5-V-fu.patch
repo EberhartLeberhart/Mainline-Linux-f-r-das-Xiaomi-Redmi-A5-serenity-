@@ -1,0 +1,457 @@
+From 267fd7ee9aa891cc28a060684c224b2d34a50c3f Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Wed, 11 Nov 2026 20:49:28 +0100
+Subject: [PATCH] redmi_a5: Ladechip SGM41513 als Kernel-Treiber, 5 V fuer
+ USB-OTG
+
+- neuer Treiber sgm41513_charger (Stufe 1+2): prueft die Chip-ID
+  (REG0B PN=1), schaltet den Wachhund ab und meldet den Ladezustand als
+  power_supply "sgm41513-charger" (online, status, charge_type, health,
+  usb_type) - am Laden selbst wird nichts veraendert
+- OTG-Ausgang als Regler "otg-vbus" (REG01: OTG an + Laden aus bzw.
+  zurueck). Ottos USB-C-Treiber sc27xx_pd bekommt ihn als vbus-supply und
+  schaltet die 5 V jetzt selbst: nur bei einem Geraet (Rd), nie am PC
+- Geraetebaum: i2c2 eingeschaltet (+ Alias), Ladechip an 0x1a
+- Registerplan abgeglichen mit Unisocs sgm41513-charger.c (GPL, aus
+  dem vom Tester portierten arctic-Kernel)
+- Beleg 11.11.: Stick rein -> 5V an, raus -> nach <1 s aus; PC-Kabel ->
+  5V bleibt aus, Laden laeuft; Intenso-Stick 200 MB mit 11,4 MB/s gelesen
+- Achtung: redmi-akku.sh in der bisherigen Form ist damit nicht
+  vertraeglich (schreibt einen alten REG01-Wert zurueck)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ .../boot/dts/sprd/ums9230-xiaomi-serenity.dts |  22 ++
+ arch/arm64/configs/redmi_a5_defconfig         |   1 +
+ drivers/power/supply/Kconfig                  |   9 +
+ drivers/power/supply/Makefile                 |   1 +
+ drivers/power/supply/sgm41513_charger.c       | 341 ++++++++++++++++++
+ 5 files changed, 374 insertions(+)
+ create mode 100644 drivers/power/supply/sgm41513_charger.c
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index c5b096c83..2364a2dda 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -241,6 +241,8 @@ &agcp_dma {
+  */
+ &pmic_typec_pd {
+ 	status = "okay";
++	/* 5 V fuer OTG-Geraete (Rd) aus dem Ladechip, schaltet TCPM selbst */
++	vbus-supply = <&otg_vbus>;
+ 
+ 	connector {
+ 		compatible = "usb-c-connector";
+@@ -253,3 +255,23 @@ connector {
+ 		op-sink-microwatt = <10000000>;
+ 	};
+ };
++
++/ {
++	aliases {
++		/* i2c-sprd nimmt die Busnummer aus dem Alias */
++		i2c2 = &i2c2;
++	};
++};
++
++&i2c2 {
++	status = "okay";
++
++	charger@1a {
++		compatible = "sgmicro,sgm41513";
++		reg = <0x1a>;
++
++		otg_vbus: usb-otg-vbus {
++			regulator-name = "otg-vbus";
++		};
++	};
++};
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index ab7a06f65..ed4555d82 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1052,3 +1052,4 @@ CONFIG_SND_SOC_UMS9230_DIGITAL=m
+ CONFIG_SND_SOC_AW8738=m
+ CONFIG_TYPEC_SC27XX_PD=m
+ CONFIG_SECURITY_LANDLOCK=y
++CONFIG_CHARGER_SGM41513=m
+diff --git a/drivers/power/supply/Kconfig b/drivers/power/supply/Kconfig
+index 83392ed6a..1f8814fb0 100644
+--- a/drivers/power/supply/Kconfig
++++ b/drivers/power/supply/Kconfig
+@@ -839,6 +839,15 @@ config CHARGER_BQ25980
+ 	  Say Y to enable support for the TI BQ25980, BQ25975 and BQ25960
+ 	  series of fast battery chargers.
+ 
++config CHARGER_SGM41513
++	tristate "SG Micro SGM41513 charger"
++	depends on I2C
++	depends on REGULATOR
++	select REGMAP_I2C
++	help
++	  Status and USB OTG VBUS regulator for the SG Micro SGM41513
++	  single-cell charger (Xiaomi Redmi A5).
++
+ config CHARGER_BQ256XX
+ 	tristate "TI BQ256XX battery charger driver"
+ 	depends on I2C
+diff --git a/drivers/power/supply/Makefile b/drivers/power/supply/Makefile
+index 7ee839dca..a4cae9691 100644
+--- a/drivers/power/supply/Makefile
++++ b/drivers/power/supply/Makefile
+@@ -131,3 +131,4 @@ obj-$(CONFIG_CHARGER_QCOM_SMB2)	+= qcom_smbx.o
+ obj-$(CONFIG_FUEL_GAUGE_MM8013)	+= mm8013.o
+ obj-$(CONFIG_MACSMC_POWER)	+= macsmc-power.o
+ obj-$(CONFIG_CHARGER_MAX77759)	+= max77759_charger.o
++obj-$(CONFIG_CHARGER_SGM41513)	+= sgm41513_charger.o
+diff --git a/drivers/power/supply/sgm41513_charger.c b/drivers/power/supply/sgm41513_charger.c
+new file mode 100644
+index 000000000..155a511e6
+--- /dev/null
++++ b/drivers/power/supply/sgm41513_charger.c
+@@ -0,0 +1,341 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * SG Micro SGM41513 single-cell charger - Stufe 1+2 (Redmi A5 / serenity)
++ *
++ * Stufe 1: Chip-ID pruefen, Wachhund aus, Ladezustand nur LESEN
++ *          (online, status, health, usb_type) - es wird nichts am Laden veraendert.
++ * Stufe 2: OTG-Ausgang (5 V auf VBUS) als Regulator "otg-vbus", damit der
++ *          USB-C-Treiber (TCPM) ihn bei einem Geraet (Rd) selbst schaltet.
++ *
++ * Registeraufbau wie BQ25601 (TI): REG00..REG0B.
++ * Der Chip hat hier keine Interrupt-Leitung im Geraetebaum, deshalb fragt der
++ * Treiber REG08 alle 2 s ab und meldet Aenderungen (power_supply_changed).
++ */
++
++#include <linux/bitfield.h>
++#include <linux/delay.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/power_supply.h>
++#include <linux/regmap.h>
++#include <linux/regulator/driver.h>
++#include <linux/regulator/of_regulator.h>
++#include <linux/workqueue.h>
++
++#define SGM_REG00		0x00	/* EN_HIZ, IINDPM */
++#define SGM_REG01		0x01	/* WD_RST, OTG_CONFIG, CHG_CONFIG, SYS_MIN */
++#define SGM_REG02		0x02	/* BOOST_LIM, ICHG */
++#define SGM_REG05		0x05	/* EN_TERM, WATCHDOG, EN_TIMER */
++#define SGM_REG06		0x06	/* OVP, BOOSTV, VINDPM */
++#define SGM_REG08		0x08	/* Status */
++#define SGM_REG09		0x09	/* Fehler (Lesen loescht gespeicherte Fehler) */
++#define SGM_REG0B		0x0b	/* REG_RST, PN, DEV_REV */
++#define SGM_MAX_REG		0x0b
++
++#define SGM_OTG_CONFIG		BIT(5)
++#define SGM_CHG_CONFIG		BIT(4)
++#define SGM_BOOST_LIM		BIT(7)
++#define SGM_WATCHDOG		GENMASK(5, 4)
++#define SGM_BOOSTV		GENMASK(5, 4)
++#define SGM_VBUS_STAT		GENMASK(7, 5)
++#define SGM_CHRG_STAT		GENMASK(4, 3)
++#define SGM_PG_STAT		BIT(2)
++#define SGM_WD_FAULT		BIT(7)
++#define SGM_BOOST_FAULT		BIT(6)
++#define SGM_CHRG_FAULT		GENMASK(5, 4)
++#define SGM_BAT_FAULT		BIT(3)
++#define SGM_NTC_FAULT		GENMASK(2, 0)
++#define SGM_REG_RST		BIT(7)
++#define SGM_PN			GENMASK(6, 3)
++
++/* PN-Wert, den unser Chip am 04.10. gemeldet hat (STATUS.md: "REG0B PN=1") */
++#define SGM41513_PN		1
++
++#define SGM_VBUS_NONE		0
++#define SGM_VBUS_SDP		1
++#define SGM_VBUS_CDP		2
++#define SGM_VBUS_DCP		3
++#define SGM_VBUS_UNKNOWN	5
++#define SGM_VBUS_NONSTD		6
++#define SGM_VBUS_OTG		7
++
++#define SGM_POLL_MS		2000
++
++struct sgm41513 {
++	struct device *dev;
++	struct regmap *regmap;
++	struct power_supply *psy;
++	struct regulator_dev *otg;
++	struct delayed_work poll;
++	unsigned int last_stat;
++};
++
++static const struct regmap_config sgm41513_regmap = {
++	.reg_bits = 8,
++	.val_bits = 8,
++	.max_register = SGM_MAX_REG,
++	/* kein Cache: der Chip aendert Status/Fehler selbst, und bis Stufe 4
++	 * fasst redmi-akku.sh die Register noch direkt an */
++	.cache_type = REGCACHE_NONE,
++};
++
++/* ---------- Stufe 2: OTG-Regulator ---------- */
++
++/*
++ * Ein:  OTG_CONFIG=1, CHG_CONFIG=0  (wie beim Handtest am 04.10.: OTG und Laden aus)
++ * Aus:  OTG_CONFIG=0, CHG_CONFIG=1  (Normalzustand nach jedem Neustart)
++ * Nur diese zwei Bits werden angefasst (read-modify-write ueber regmap).
++ */
++static const struct regulator_ops sgm41513_otg_ops = {
++	.enable = regulator_enable_regmap,
++	.disable = regulator_disable_regmap,
++	.is_enabled = regulator_is_enabled_regmap,
++};
++
++static const struct regulator_desc sgm41513_otg_desc = {
++	.name = "otg-vbus",
++	.of_match = "usb-otg-vbus",
++	.regulators_node = NULL,
++	.type = REGULATOR_VOLTAGE,
++	.owner = THIS_MODULE,
++	.ops = &sgm41513_otg_ops,
++	.n_voltages = 1,
++	.fixed_uV = 5150000,	/* Chip-Vorgabe BOOSTV, gemessen 04.10.: 5,15 V */
++	.enable_reg = SGM_REG01,
++	.enable_mask = SGM_OTG_CONFIG | SGM_CHG_CONFIG,
++	.enable_val = SGM_OTG_CONFIG,
++	.disable_val = SGM_CHG_CONFIG,
++	.enable_time = 10000,	/* ❓ Datenblatt nicht zur Hand, grosszuegig */
++};
++
++/* ---------- Stufe 1: Ladezustand lesen ---------- */
++
++static enum power_supply_property sgm41513_props[] = {
++	POWER_SUPPLY_PROP_ONLINE,
++	POWER_SUPPLY_PROP_STATUS,
++	POWER_SUPPLY_PROP_CHARGE_TYPE,
++	POWER_SUPPLY_PROP_HEALTH,
++	POWER_SUPPLY_PROP_USB_TYPE,
++	POWER_SUPPLY_PROP_MANUFACTURER,
++	POWER_SUPPLY_PROP_MODEL_NAME,
++};
++
++static int sgm41513_get_property(struct power_supply *psy,
++				 enum power_supply_property psp,
++				 union power_supply_propval *val)
++{
++	struct sgm41513 *sgm = power_supply_get_drvdata(psy);
++	unsigned int stat, fault, vbus, chrg;
++	int ret;
++
++	switch (psp) {
++	case POWER_SUPPLY_PROP_MANUFACTURER:
++		val->strval = "SG Micro";
++		return 0;
++	case POWER_SUPPLY_PROP_MODEL_NAME:
++		val->strval = "SGM41513";
++		return 0;
++	default:
++		break;
++	}
++
++	ret = regmap_read(sgm->regmap, SGM_REG08, &stat);
++	if (ret)
++		return ret;
++	vbus = FIELD_GET(SGM_VBUS_STAT, stat);
++	chrg = FIELD_GET(SGM_CHRG_STAT, stat);
++
++	switch (psp) {
++	case POWER_SUPPLY_PROP_ONLINE:
++		/* Eigene 5 V (OTG) sind keine Stromquelle fuer das Handy */
++		val->intval = (stat & SGM_PG_STAT) && vbus != SGM_VBUS_OTG;
++		break;
++	case POWER_SUPPLY_PROP_STATUS:
++		if (!(stat & SGM_PG_STAT) || vbus == SGM_VBUS_OTG)
++			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
++		else if (chrg == 3)
++			val->intval = POWER_SUPPLY_STATUS_FULL;
++		else if (chrg)
++			val->intval = POWER_SUPPLY_STATUS_CHARGING;
++		else
++			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
++		break;
++	case POWER_SUPPLY_PROP_CHARGE_TYPE:
++		if (chrg == 1)
++			val->intval = POWER_SUPPLY_CHARGE_TYPE_TRICKLE;
++		else if (chrg == 2)
++			val->intval = POWER_SUPPLY_CHARGE_TYPE_FAST;
++		else
++			val->intval = POWER_SUPPLY_CHARGE_TYPE_NONE;
++		break;
++	case POWER_SUPPLY_PROP_USB_TYPE:
++		switch (vbus) {
++		case SGM_VBUS_SDP:
++			val->intval = POWER_SUPPLY_USB_TYPE_SDP;
++			break;
++		case SGM_VBUS_CDP:
++			val->intval = POWER_SUPPLY_USB_TYPE_CDP;
++			break;
++		case SGM_VBUS_DCP:
++			val->intval = POWER_SUPPLY_USB_TYPE_DCP;
++			break;
++		default:
++			val->intval = POWER_SUPPLY_USB_TYPE_UNKNOWN;
++			break;
++		}
++		break;
++	case POWER_SUPPLY_PROP_HEALTH:
++		/*
++		 * REG09 haelt alte Fehler, bis er gelesen wird: zweimal lesen,
++		 * der zweite Wert ist der aktuelle Zustand (wie bei BQ2560x).
++		 */
++		ret = regmap_read(sgm->regmap, SGM_REG09, &fault);
++		if (!ret)
++			ret = regmap_read(sgm->regmap, SGM_REG09, &fault);
++		if (ret)
++			return ret;
++		if (fault & SGM_BAT_FAULT)
++			val->intval = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
++		else if (FIELD_GET(SGM_CHRG_FAULT, fault) == 1)
++			val->intval = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
++		else if (FIELD_GET(SGM_CHRG_FAULT, fault) == 2)
++			val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
++		else if (FIELD_GET(SGM_CHRG_FAULT, fault) == 3)
++			val->intval = POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
++		else if (fault & SGM_BOOST_FAULT)
++			val->intval = POWER_SUPPLY_HEALTH_OVERCURRENT;
++		else if (fault & SGM_WD_FAULT)
++			val->intval = POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE;
++		else
++			val->intval = POWER_SUPPLY_HEALTH_GOOD;
++		break;
++	default:
++		return -EINVAL;
++	}
++	return 0;
++}
++
++static const struct power_supply_desc sgm41513_psy_desc = {
++	.name = "sgm41513-charger",
++	.type = POWER_SUPPLY_TYPE_USB,
++	.usb_types = BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN) |
++		     BIT(POWER_SUPPLY_USB_TYPE_SDP) |
++		     BIT(POWER_SUPPLY_USB_TYPE_CDP) |
++		     BIT(POWER_SUPPLY_USB_TYPE_DCP),
++	.properties = sgm41513_props,
++	.num_properties = ARRAY_SIZE(sgm41513_props),
++	.get_property = sgm41513_get_property,
++};
++
++static void sgm41513_poll(struct work_struct *work)
++{
++	struct sgm41513 *sgm = container_of(to_delayed_work(work),
++					    struct sgm41513, poll);
++	unsigned int stat;
++
++	if (!regmap_read(sgm->regmap, SGM_REG08, &stat) &&
++	    stat != sgm->last_stat) {
++		dev_dbg(sgm->dev, "REG08 0x%02x -> 0x%02x\n", sgm->last_stat, stat);
++		sgm->last_stat = stat;
++		power_supply_changed(sgm->psy);
++	}
++	schedule_delayed_work(&sgm->poll, msecs_to_jiffies(SGM_POLL_MS));
++}
++
++static void sgm41513_stop_poll(void *data)
++{
++	struct sgm41513 *sgm = data;
++
++	cancel_delayed_work_sync(&sgm->poll);
++}
++
++static int sgm41513_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct power_supply_config psy_cfg = { };
++	struct regulator_config reg_cfg = { };
++	struct sgm41513 *sgm;
++	unsigned int id, r01, r02, r05, r06, r08;
++	int ret;
++
++	sgm = devm_kzalloc(dev, sizeof(*sgm), GFP_KERNEL);
++	if (!sgm)
++		return -ENOMEM;
++	sgm->dev = dev;
++
++	sgm->regmap = devm_regmap_init_i2c(client, &sgm41513_regmap);
++	if (IS_ERR(sgm->regmap))
++		return dev_err_probe(dev, PTR_ERR(sgm->regmap), "regmap\n");
++
++	/* Erst den Chip fragen: passt die Teilenummer? */
++	ret = regmap_read(sgm->regmap, SGM_REG0B, &id);
++	if (ret)
++		return dev_err_probe(dev, ret, "REG0B nicht lesbar\n");
++	if (FIELD_GET(SGM_PN, id) != SGM41513_PN)
++		return dev_err_probe(dev, -ENODEV,
++				     "unbekannte Teilenummer: REG0B=0x%02x (PN %lu)\n",
++				     id, FIELD_GET(SGM_PN, id));
++
++	/* Wachhund aus, sonst stellt der Chip nach Ablauf alles zurueck
++	 * (und wuerde die OTG-5-V abschalten) */
++	ret = regmap_update_bits(sgm->regmap, SGM_REG05, SGM_WATCHDOG, 0);
++	if (ret)
++		return dev_err_probe(dev, ret, "Wachhund nicht abschaltbar\n");
++
++	regmap_read(sgm->regmap, SGM_REG01, &r01);
++	regmap_read(sgm->regmap, SGM_REG02, &r02);
++	regmap_read(sgm->regmap, SGM_REG05, &r05);
++	regmap_read(sgm->regmap, SGM_REG06, &r06);
++	regmap_read(sgm->regmap, SGM_REG08, &r08);
++	sgm->last_stat = r08;
++	dev_info(dev, "SGM41513 rev %u: REG01=0x%02x REG02=0x%02x REG05=0x%02x REG06=0x%02x REG08=0x%02x, OTG-Grenze %s\n",
++		 id & 0x3, r01, r02, r05, r06, r08,
++		 (r02 & SGM_BOOST_LIM) ? "1,2 A" : "0,5 A");
++
++	psy_cfg.drv_data = sgm;
++	psy_cfg.fwnode = dev_fwnode(dev);
++	sgm->psy = devm_power_supply_register(dev, &sgm41513_psy_desc, &psy_cfg);
++	if (IS_ERR(sgm->psy))
++		return dev_err_probe(dev, PTR_ERR(sgm->psy), "power_supply\n");
++
++	reg_cfg.dev = dev;
++	reg_cfg.regmap = sgm->regmap;
++	reg_cfg.driver_data = sgm;
++	sgm->otg = devm_regulator_register(dev, &sgm41513_otg_desc, &reg_cfg);
++	if (IS_ERR(sgm->otg))
++		return dev_err_probe(dev, PTR_ERR(sgm->otg), "OTG-Regulator\n");
++
++	INIT_DELAYED_WORK(&sgm->poll, sgm41513_poll);
++	ret = devm_add_action_or_reset(dev, sgm41513_stop_poll, sgm);
++	if (ret)
++		return ret;
++	schedule_delayed_work(&sgm->poll, msecs_to_jiffies(SGM_POLL_MS));
++
++	return 0;
++}
++
++static const struct of_device_id sgm41513_of_match[] = {
++	{ .compatible = "sgmicro,sgm41513" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, sgm41513_of_match);
++
++static const struct i2c_device_id sgm41513_i2c_ids[] = {
++	{ "sgm41513" },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, sgm41513_i2c_ids);
++
++static struct i2c_driver sgm41513_driver = {
++	.driver = {
++		.name = "sgm41513-charger",
++		.of_match_table = sgm41513_of_match,
++	},
++	.probe = sgm41513_probe,
++	.id_table = sgm41513_i2c_ids,
++};
++module_i2c_driver(sgm41513_driver);
++
++MODULE_DESCRIPTION("SGM41513 charger: Status + OTG-Regulator (Redmi A5)");
++MODULE_LICENSE("GPL");
+-- 
+2.43.0
+
