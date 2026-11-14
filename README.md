@@ -1,11 +1,13 @@
 # Xiaomi Redmi A5 — Complete Reverse Engineering Documentation
 
 **Codename**: `serenity`  
-**Model**: 25028RN03A (Global)  
+**Model**: 25028RN03A (Global), 25028RN03Y (EEA) · also sold as **POCO C71** (same codename and hardware, reported by a tester, not tested by us)  
 **SoC**: Unisoc T7250 / UMS9230E (`sharkl5pro` family)  
 **Stock OS**: Android 15 Go — Build `A15.0.20.0.VGWMIXM`  
-**Status** (5 Nov 2026): ✅ Bootloader unlocked · ✅ Mainline 7.1 kernel boots cold and warm · ✅ Ubuntu 24.04 runs ·
-✅ display, touch, GPU, battery, USB networking · ✅ Wi-Fi (WPA2, SSH over Wi-Fi) · ❌ Bluetooth, audio, camera ·
+**Status** (14 Nov 2026): ✅ Bootloader unlocked · ✅ Mainline 7.1 kernel boots cold and warm · ✅ Ubuntu 24.04 runs ·
+✅ display, touch, GPU, battery, USB networking · ✅ Wi-Fi (WPA2, SSH over Wi-Fi) · ✅ Bluetooth ·
+✅ audio playback (headphones, loudspeaker; mixer settings needed, UCM profile in progress) ·
+✅ USB OTG (5 V and data role switched by the kernel) · ❌ camera · ⏸️ mobile data (on hold) ·
 detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is still missing (German checklist): [FEHLT.md](FEHLT.md)
 
 **Build and install it yourself:** [BUILDING.md](BUILDING.md) (English, step by step from a clean PC).
@@ -49,7 +51,7 @@ detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is stil
 | Storage         | eMMC 5.1 — 64 GB or 128 GB variants |
 | Display         | IPS LCD, ~6.7" |
 | Modem           | Integrated LTE (T615-class baseband) |
-| USB             | Micro-USB, OTG capable (`dr-mode = "otg"` in DTS) |
+| USB             | USB Type-C (USB 2.0); OTG: 5 V from the SGM41513 charger, data role from the PMIC Type-C controller (patches 0045–0047) |
 | USB Controller  | `sprd,qogirl6-musb` @ `0x64900000` (Mentor Graphics MUSB) |
 | FM Radio        | Present in SoC (TX capability unclear — PCB routing unknown) |
 

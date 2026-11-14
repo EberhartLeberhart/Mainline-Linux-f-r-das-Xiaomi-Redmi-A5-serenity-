@@ -1,9 +1,9 @@
-# Was im Kernel noch fehlt (Stand 01.11.2026)
+# Was im Kernel noch fehlt (Stand 14.11.2026)
 
 Zum Abhaken. Belege und Einzelheiten stehen in [STATUS.md](STATUS.md), die Arbeitsreihenfolge in
 [UEBERGABE.md](UEBERGABE.md). Zeichen: 🟡 angefangen · ❌ fehlt · ❓ noch nicht untersucht.
 
-**Läuft schon:** Start kalt/warm, 8 Kerne mit cpufreq und Tiefschlaf, eMMC, PMIC (Aus, Neustart, Uhr,
+**Läuft schon:** (neu bis 14.11.: Bluetooth, Ton über Kopfhörer und Lautsprecher, USB-OTG mit 5 V und Rollenwechsel durch den Kernel, Ladechip-Treiber, Landlock) Start kalt/warm, 8 Kerne mit cpufreq und Tiefschlaf, eMMC, PMIC (Aus, Neustart, Uhr,
 Wachhund), Temperaturschutz, Akkuanzeige und Ladegrenze, USB-Gerät und -Host, LAN über USB-Adapter,
 Display (DRM) mit Helligkeit, Touch (Zuordnung geprüft, bis 10 Finger), Tasten, WCN-Kern mit allen
 sipc-Kanälen, `wlan0` mit Scan und Anmeldung (wpa_supplicant empfängt EAPOL 1/4), Krypto-Befehle der
@@ -32,7 +32,8 @@ Vibrationsmotor, microSD-Kartenleser.
 | WLAN | 01.11.: **läuft** mit Ottos Treibern (Scan, WPA2, DHCP, SSH über WLAN). 04.11.: MAC ✅ (Patch 0032: feste MAC aus der Chip-Kennung, nie mehr 00:00). 05.11.: Rundrufe ✅ (Patch 0033: „Bildschirm an“ + eigene IP an die Firmware – von außen per ARP auffindbar, erstes Paket ~240 ms). 06.11.: Autostart ✅ mit Schalter (`redmi-wlan.service`, `/etc/redmi/wlan.conf` an/aus, `redmi-wlan.sh an|aus|status`; Lade-Sperre bleibt, nur der Dienst lädt `sprd_wcn`). Fehlt: erster Schlüsselaustausch nach dem Start bricht manchmal ab (Grund 15), `wpa_supplicant` verbindet sich nach ~4 s von selbst ❓; WCN-Kern im Betrieb stoppen (bisher wirkt „aus“ erst ab dem nächsten Start); Schalter „MAC fest/zufällig“ (später Oberfläche, `wpa_supplicant mac_addr`); `WCN=1` als Standard im Rezept; Bluetooth (`BT_SPRDSIPC`) |
 | Display-Schlaf | 29.10.: `redmi-licht.sh` schläft über den Treiber (fb-blank, DSI+DPU aus, Touch folgt) ✅ – Akku: Schlaf 43 mA statt 60 mA (DCS-Weg). 31.10.: **Panel vollständig in Kernel-Hand** ✅ (Patch 0030: Reset/avdd/avee, Xiaomis Init-Befehle; Schlaf mit Versorgung aus 41 mA). ESD-Prüfung wie Xiaomi ✅ (Patch 0031, alle 3 s `0x0A = 0x9C`, sonst neu aufsetzen). Ungeklärt: `fb0/blank = 4` nach dem Start mit alter licht-Fassung ❓ |
 | Touch | 28.10.: Wächter-Erkennung + Selbst-Neuladen ✅, Runtime-PM beim Abmelden ✅ (Patch 0028). 29.10.: als Panel-Follower ans Display gekoppelt ✅ (Patch 0029, DT `panel`). `redmi-licht.sh` meldet ihn nicht mehr ab ✅ |
-| USB | Rollenwechsel: ein seltener Fehlschlag; Gadget-MAC wechselt bei jedem Start |
+| USB | Rollenwechsel macht seit 14.11. der Kernel (Patch 0047), das Rate-Skript `redmi-usb.sh` ist überflüssig; Gadget-Skript setzt die Rolle beim Start noch zusätzlich auf `device`; Gadget-MAC wechselt bei jedem Start; Ladechip stellt am PC-Kabel oft 2400 mA ein (→ Eingangsstrom in den Treiber) |
+| Ton | 08.11.: Kopfhörer und Lautsprecher spielen (Patches 0039–0041). Fehlt: UCM-Profil (Entwurf vom Tester, PR #47/#50), Mikrofon, Hörmuschel, Klinkenerkennung |
 | i2c-sprd | meldet kein NACK |
 | Ladechip | nur per `i2cset`; drei mögliche Chips (SGM41513 getestet, SC89601, UPM6922 nicht) |
 | microSD | 27.10.: läuft (High Speed, 20,8 MB/s lesend). Fehlt: UHS-Modi (SDR50/104, 1,8-V-Signalpegel) für mehr Tempo ❓; Idee für später: System auf SD-Karte (Root auf `mmcblk1`), mit kexec-Startmenü wählbar |
@@ -44,11 +45,9 @@ Vibrationsmotor, microSD-Kartenleser.
 
 | Bereich | Stand / Abhängigkeit |
 |---|---|
-| Bluetooth | WCN läuft, Ringe 11/10 auf Kanal 4 angelegt; HCI-Treiber und Konfigurationsdaten (pskey/rf) fehlen ❓ |
 | FM-Radio | am WCN-Kern, Ringe 13/14 |
 | GNSS/GPS | eigener Kern (core@4, Mailbox 9), `gnssmodem.bin`; Speicher `0x8749b000–0x874ccfff` reservieren |
-| Ton | Quellcode gefunden (Realme); davor `sprd-dma` (−110, hängt an der Audio-DSP-Domain); Lautsprecher-Verstärker FS1588 ohne Quellcode |
-| Kamera | ISP `0x3a000000`; Sensoren laut Analyse OV SP0821, BYD BF30A2, SC080CS ❓ |
+| Kamera | ISP `0x3a000000`; Sensoren (Tester-Handy, 10.11.): hinten OV32D40, vorne OV08F10, Tiefe OVSP0821; kein Mainline-Treiber für diese Sensoren ❓ |
 | Mobilfunk | bewusst zurückgestellt bis zur Antwort von Bundesnetzagentur/Xiaomi (Anfragen 23.10.); vorbereitbar: sipc-Treiberstapel, `sprd-pmic-wdt` |
 | PWM | ungeklärt, fürs Panel nicht nötig |
 
