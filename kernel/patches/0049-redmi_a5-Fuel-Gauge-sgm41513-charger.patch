@@ -1,0 +1,34 @@
+From 44d4b6d608ce88462ce6fdd16d421f246aab50e8 Mon Sep 17 00:00:00 2001
+From: farrizdesignpro1339 <garenafreefiremax1339@gmail.com>
+Date: Sat, 14 Nov 2026 10:34:02 +0700
+Subject: [PATCH] power: supply: sc27xx_fgu: also accept sgm41513-charger
+
+The Unisoc SC2730 PMIC fuel gauge polls the power supply status
+every few seconds, searching the supply list for a
+sc273x_charger / sc272x_charger driver. On phones whose battery
+charger is an external SGM41513 (configured as sgm41513-charger via the Type-C
+port), no matching supply is ever found and the driver logs
+'get charger status error.' forever, even when the battery is
+perfectly fine.
+
+Add the supply driver used on Redmi A5 / Poco C71 (serenity) and other
+Qualcomm-free Unisoc devices with an SGM41513 charger.
+---
+ drivers/power/supply/sc27xx_fuel_gauge.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/power/supply/sc27xx_fuel_gauge.c b/drivers/power/supply/sc27xx_fuel_gauge.c
+index 125b6e2ef25c..068bcd7da78d 100644
+--- a/drivers/power/supply/sc27xx_fuel_gauge.c
++++ b/drivers/power/supply/sc27xx_fuel_gauge.c
+@@ -144,6 +144,7 @@ static const char * const sc27xx_charger_supply_name[] = {
+ 	"sc2720_charger",
+ 	"sc2721_charger",
+ 	"sc2723_charger",
++	"sgm41513-charger",
+ };
+ 
+ static int sc27xx_fgu_adc_to_current(struct sc27xx_fgu_data *data, s64 adc)
+-- 
+2.56.1
+
