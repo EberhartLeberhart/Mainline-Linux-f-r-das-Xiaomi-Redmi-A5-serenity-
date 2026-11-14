@@ -1,0 +1,40 @@
+From f82cf3f85c473efec5604b21d76f57a7f513e3ad Mon Sep 17 00:00:00 2001
+From: farrizdesignpro1339 <garenafreefiremax1339@gmail.com>
+Date: Sat, 14 Nov 2026 10:34:02 +0700
+Subject: [PATCH] power: supply: sc27xx_fgu: also accept sgm41513-charger
+
+The Unisoc SC2730 PMIC fuel gauge looks for a charger power supply
+by name (sc27xx_charger_supply_name[]) to report the battery status.
+On the Redmi A5 / POCO C71 (serenity) the charger is an external
+SGM41513 (power supply "sgm41513-charger", patch 0045), so no supply
+was found and the driver logged "get charger status error.".
+
+Add "sgm41513-charger" to the list.
+
+Beleg 14.11. (Redmi A5): /sys/class/power_supply/sc27xx-fgu/status
+zeigt am PC-Kabel "Charging", ohne Kabel "Discharging" (vorher kannte
+die Akkuanzeige den Ladezustand nicht). "get charger status error"
+nur noch 2x ganz frueh beim Start (FGU startet vor dem Ladetreiber),
+danach keine mehr.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/power/supply/sc27xx_fuel_gauge.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/power/supply/sc27xx_fuel_gauge.c b/drivers/power/supply/sc27xx_fuel_gauge.c
+index 125b6e2ef..068bcd7da 100644
+--- a/drivers/power/supply/sc27xx_fuel_gauge.c
++++ b/drivers/power/supply/sc27xx_fuel_gauge.c
+@@ -144,6 +144,7 @@ static const char * const sc27xx_charger_supply_name[] = {
+ 	"sc2720_charger",
+ 	"sc2721_charger",
+ 	"sc2723_charger",
++	"sgm41513-charger",
+ };
+ 
+ static int sc27xx_fgu_adc_to_current(struct sc27xx_fgu_data *data, s64 adc)
+-- 
+2.43.0
+
