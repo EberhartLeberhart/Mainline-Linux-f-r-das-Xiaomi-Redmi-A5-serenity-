@@ -179,6 +179,21 @@ sudo install -D -m644 $H/redmi-taste-logind.conf $R/etc/systemd/logind.conf.d/re
 sudo chroot $R systemctl enable redmi-taste.service
 ```
 
+Recommended: compressed swap in RAM (ZRAM, kernel patch 0049; suggested by a tester). With 3–4 GB RAM it keeps
+a desktop or several services from running out of memory. The package is in Ubuntu's `universe` component
+(on Arch: `zram-generator`):
+
+```bash
+# systemd-zram-generator is in "universe"; debootstrap only enables "main"
+sudo sed -i 's/^deb \(.*\) main$/deb \1 main universe/' $R/etc/apt/sources.list
+sudo chroot $R apt-get update
+sudo chroot $R apt-get install -y systemd-zram-generator
+sudo install -m644 $H/zram-generator.conf $R/etc/systemd/zram-generator.conf
+```
+
+(Tested 14.11.2026 on the running phone with `apt-get install` + the same config file: after a reboot
+`/dev/zram0` is a 1.8 GB zstd swap. The chroot variant above is not tested yet ❓.)
+
 Pack the tree into an ext4 image and write it to `userdata` (this **erases** the Android user data):
 
 ```bash
