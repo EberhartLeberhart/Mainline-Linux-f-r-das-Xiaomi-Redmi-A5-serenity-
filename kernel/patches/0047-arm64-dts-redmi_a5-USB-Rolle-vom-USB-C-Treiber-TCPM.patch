@@ -1,0 +1,55 @@
+From dc6770b6d5a723f036b6635fabd75e6950fee539 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 14 Nov 2026 21:02:10 +0100
+Subject: [PATCH 47/47] arm64: dts: redmi_a5: USB-Rolle vom USB-C-Treiber
+ (TCPM)
+
+- OF-Graph zwischen dem usb-c-connector von pmic_typec_pd und dem
+  Rollen-Schalter von &usb (usb-role-switch). TCPM schaltet die
+  Datenrolle jetzt selbst, gleichzeitig mit den 5 V (Patch 0045).
+  Vorlage: beebono/linux-mainline-sprd (rg-rotate), Commit 360a737c
+- redmi-usb.sh (Rolle per Raten nach 10 s) wird damit ueberfluessig
+- Beleg 14.11. (redmi-usb.service aus): Stick rein -> 5 V und Rolle
+  host in derselben Sekunde, Hub + Stick nach 1 s; raus -> 5 V aus,
+  Rolle none; PC-Kabel -> Rolle device sofort, USB-Netz zum PC laeuft
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ .../arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index e6c0fd5b3..6675df025 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -176,6 +176,13 @@ &usb {
+ 	usb-role-switch;
+ 	role-switch-default-mode = "peripheral";
+ 	status = "okay";
++
++	/* Datenrolle kommt vom USB-C-Treiber (TCPM), Vorlage: beebono/rg-rotate */
++	port {
++		usb_hs_ep: endpoint {
++			remote-endpoint = <&tcpc_hs_ep>;
++		};
++	};
+ };
+ 
+ /*
+@@ -253,6 +260,12 @@ connector {
+ 		source-pdos = <PDO_FIXED(5000, 1200, PDO_FIXED_USB_COMM)>;
+ 		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+ 		op-sink-microwatt = <10000000>;
++
++		port {
++			tcpc_hs_ep: endpoint {
++				remote-endpoint = <&usb_hs_ep>;
++			};
++		};
+ 	};
+ };
+ 
+-- 
+2.43.0
+

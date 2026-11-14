@@ -35,7 +35,7 @@ unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstell
 | `redmi-akku.sh` + `.service` + `akku.conf` | Ladegrenze für den Server-Betrieb (Ladechip SGM41513) |
 | `redmi-cpufreq.sh` + `.service` | cpufreq-Modul beim Start laden |
 | `redmi-taste.sh` + `.service` | Einschalttaste: kurz = Licht, mindestens 3 s halten = Herunterfahren |
-| `redmi-usb.sh` + `.service` | USB-Rolle automatisch wählen: PC → Gerät (USB-Netz), Hub mit Netzteil → Host |
+| `redmi-usb.sh` + `.service` | USB-Rolle automatisch wählen: PC → Gerät (USB-Netz), Hub mit Netzteil → Host. **Ab Patch 0047 überflüssig** (der Kernel schaltet die Rolle selbst) → Dienst abschalten |
 | `redmi-wlan.sh` + `.service` + `wlan.conf` | WLAN mit Schalter: beim Start an/aus nach `/etc/redmi/wlan.conf`, `redmi-wlan.sh an\|aus\|status`; Zugangsdaten in `/etc/redmi/wpa-wlan0.conf` (nie ins Repo) |
 | `30-wlan0.network` | WLAN holt per DHCP eine Adresse (Metrik 600, USB-Netz bleibt bevorzugt) |
 | `redmi-usb-gadget.sh` + `.service` | USB-Gerät: Netz (NCM) + serielle Konsole (ACM), meldet jeden Schritt im Kernel-Log (05.11. ins Repo, läuft seit 27.09.) |
