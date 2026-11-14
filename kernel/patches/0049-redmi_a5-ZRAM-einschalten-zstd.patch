@@ -1,0 +1,36 @@
+From da7aa726497c903e404873a6c07c95cb2de2bdf3 Mon Sep 17 00:00:00 2001
+From: farrizdesignpro1339
+ <229765408+farrizdesignpro1339@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:28:17 +0100
+Subject: [PATCH] redmi_a5: ZRAM einschalten (zstd)
+
+- CONFIG_ZRAM=y mit ZSMALLOC, Kompressor zstd als Standard
+  (CONFIG_ZRAM_BACKEND_ZSTD, CONFIG_ZRAM_DEF_COMP_ZSTD)
+- Vorschlag und Optionen vom Tester farrizdesignpro1339 (PR #47/#49);
+  hier auf den aktuellen defconfig gesetzt
+- Beleg 14.11. (Redmi A5, 3733 MB RAM): zramctl --size 1G --algorithm
+  zstd + swapon -> /dev/zram0 als Swap; Lasttest 3800 MB: 360,7 MB
+  ausgelagert, komprimiert 6,8 MB (sehr gut komprimierbare Testdaten),
+  kein OOM
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/configs/redmi_a5_defconfig | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index ed4555d82..120681c28 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1053,3 +1053,7 @@ CONFIG_SND_SOC_AW8738=m
+ CONFIG_TYPEC_SC27XX_PD=m
+ CONFIG_SECURITY_LANDLOCK=y
+ CONFIG_CHARGER_SGM41513=m
++CONFIG_ZSMALLOC=y
++CONFIG_ZRAM=y
++CONFIG_ZRAM_BACKEND_ZSTD=y
++CONFIG_ZRAM_DEF_COMP_ZSTD=y
+-- 
+2.43.0
+
