@@ -194,6 +194,22 @@ sudo install -m644 $H/zram-generator.conf $R/etc/systemd/zram-generator.conf
 (Tested 14.11.2026 on the running phone with `apt-get install` + the same config file: after a reboot
 `/dev/zram0` is a 1.8 GB zstd swap. The chroot variant above is not tested yet ❓.)
 
+Recommended for sound: the UCM profile (based on a tester's profile) tells PipeWire/PulseAudio which mixer controls to
+set, and `redmi-ton.service` sets the audio routing at every boot. Without it, the first playback after a boot can
+hang the audio DMA until the next reboot (`alsactl restore` does not run the profile's `FixedBootSequence`):
+
+```bash
+sudo chroot $R apt-get install -y alsa-ucm-conf alsa-utils
+sudo cp -a $H/ucm2/. $R/usr/share/alsa/ucm2/       # keeps the link in conf.d/xiaomi-serenity/
+sudo install -m644 $H/redmi-ton.service $R/etc/systemd/system/
+sudo chroot $R systemctl enable redmi-ton.service
+```
+
+(Tested 15.11.2026 on the running phone: `alsaucm -c hw:0 list _verbs` shows `HiFi` with `Speaker` and
+`Headphones`; music plays through the speaker; after saving a wrong mixer state and rebooting,
+`redmi-ton.service` restores the routing. Headphones through the profile: not tested yet ❓.
+The chroot variant above is not tested yet ❓.)
+
 Pack the tree into an ext4 image and write it to `userdata` (this **erases** the Android user data):
 
 ```bash

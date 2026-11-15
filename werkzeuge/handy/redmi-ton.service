@@ -1,0 +1,14 @@
+[Unit]
+Description=Redmi A5: Ton-Routing aus dem UCM-Profil (FixedBootSequence) nach alsa-restore
+# alsactl restore fuehrt die FixedBootSequence nicht aus (alsa-utils 1.2.9). Ohne FE_FAST_PLAYBACK
+# haengt der Audio-DMA beim ersten Abspielen bis zum Neustart.
+After=alsa-restore.service
+ConditionPathExists=/dev/snd/controlC0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/alsaucm -c hw:0 set _fboot ""
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sound.target
