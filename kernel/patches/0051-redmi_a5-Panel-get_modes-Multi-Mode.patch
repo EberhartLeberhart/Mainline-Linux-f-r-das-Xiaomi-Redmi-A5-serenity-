@@ -1,0 +1,59 @@
+From 85967facbe9a0dcf684f29a97964f66a6fb30f56 Mon Sep 17 00:00:00 2001
+From: farrizdesignpro1339 <garenafreefiremax1339@gmail.com>
+Date: Sat, 14 Nov 2026 11:13:29 +0700
+Subject: [PATCH] drm/panel-novatek: get_modes -> mengembalikan semua mode
+ panel
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+get_modes() sebelumnya hanya menambahkan mode yang dipilih berdasarkan
+varian panel (mis. c3z42 -> timings tunggal, nt36528_modes[0]). Akibatnya
+mode yang kita tambahkan di nt36528_modes[] (90/120 Hz) tidak pernah
+dieksport ke DRM dan tidak pernah terlihat di userspace.
+
+Ganti dengan pengulangan seluruh nt36528_modes[]: yang indeks 0 diberi
+bend DRM_MODE_TYPE_PREFERRED (default 60 Hz), sisanya DRM_MODE_TYPE_DRIVER.
+
+Catatan: mode yang baru belum langsung memperbesar refresh-rate fisik —
+panel akan tetap mengirim init sequence 60 Hz kecuali kita menambahkan
+register-register khusus untuk 90/120 Hz, seperti yang dilakukan Xiaomi
+untuk refresh rate control. Ini langkah pertama; nanti kita cari init
+sequence yang tepat dari catatan rom pabrik.
+---
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+index 35ee1cf83a66..ab50bc0dcd4e 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36528.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -460,9 +460,23 @@ static const struct nt36528_variante var_c3z36 = {
+ 
+ static int nt36528_get_modes(struct drm_panel *panel, struct drm_connector *connector)
+ {
+-	struct nt36528_panel *ctx = to_nt36528_panel(panel);
++	unsigned int j, i = 0;
++
++	for (j = 0; j < ARRAY_SIZE(nt36528_modes); j++) {
++		struct drm_display_mode *mode;
++		bool preferred = (j == 0);
++
++		mode = drm_mode_duplicate(connector->dev, &nt36528_modes[j]);
++		if (!mode)
++			continue;
++
++		mode->type |= DRM_MODE_TYPE_DRIVER | (preferred ? DRM_MODE_TYPE_PREFERRED : 0);
++
++		drm_mode_probed_add(connector, mode);
++		i++;
++	}
+ 
+-	return drm_connector_helper_get_modes_fixed(connector, ctx->var->mode);
++	return i;
+ }
+ 
+ static const struct drm_panel_funcs nt36528_panel_funcs = {
+-- 
+2.56.1
+
