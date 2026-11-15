@@ -33,7 +33,7 @@ Vibrationsmotor, microSD-Kartenleser.
 | Display-Schlaf | 29.10.: `redmi-licht.sh` schläft über den Treiber (fb-blank, DSI+DPU aus, Touch folgt) ✅ – Akku: Schlaf 43 mA statt 60 mA (DCS-Weg). 31.10.: **Panel vollständig in Kernel-Hand** ✅ (Patch 0030: Reset/avdd/avee, Xiaomis Init-Befehle; Schlaf mit Versorgung aus 41 mA). ESD-Prüfung wie Xiaomi ✅ (Patch 0031, alle 3 s `0x0A = 0x9C`, sonst neu aufsetzen). Ungeklärt: `fb0/blank = 4` nach dem Start mit alter licht-Fassung ❓ |
 | Touch | 28.10.: Wächter-Erkennung + Selbst-Neuladen ✅, Runtime-PM beim Abmelden ✅ (Patch 0028). 29.10.: als Panel-Follower ans Display gekoppelt ✅ (Patch 0029, DT `panel`). `redmi-licht.sh` meldet ihn nicht mehr ab ✅ |
 | USB | Rollenwechsel macht seit 14.11. der Kernel (Patch 0047), das Rate-Skript `redmi-usb.sh` ist überflüssig; Gadget-Skript setzt die Rolle beim Start noch zusätzlich auf `device`; Gadget-MAC wechselt bei jedem Start; Ladechip stellt am PC-Kabel oft 2400 mA ein (→ Eingangsstrom in den Treiber) |
-| Ton | 08.11.: Kopfhörer und Lautsprecher spielen (Patches 0039–0041). Fehlt: UCM-Profil (Entwurf vom Tester, PR #47/#50), Mikrofon, Hörmuschel, Klinkenerkennung |
+| Ton | 08.11.: Kopfhörer und Lautsprecher spielen (Patches 0039–0041). 15.11.: UCM-Profil (vom Tester, aufgeräumt) + `redmi-ton.service` ✅. Fehlt: Mikrofon, Hörmuschel, Klinkenerkennung |
 | i2c-sprd | meldet kein NACK |
 | Ladechip | nur per `i2cset`; drei mögliche Chips (SGM41513 getestet, SC89601, UPM6922 nicht) |
 | microSD | 27.10.: läuft (High Speed, 20,8 MB/s lesend). Fehlt: UHS-Modi (SDR50/104, 1,8-V-Signalpegel) für mehr Tempo ❓; Idee für später: System auf SD-Karte (Root auf `mmcblk1`), mit kexec-Startmenü wählbar |
