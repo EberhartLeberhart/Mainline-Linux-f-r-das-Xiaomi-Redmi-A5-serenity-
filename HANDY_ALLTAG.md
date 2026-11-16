@@ -8,7 +8,7 @@ Diese Liste ist für die **Bedienung**. Was im **Kernel** fehlt, steht in [FEHLT
 
 Zeichen: ✅ erledigt · 🟡 teilweise · ❌ offen · ⏸️ bewusst angehalten · ❓ Vermutung, noch nicht geprüft
 
-Stand: 16.11.2026 – Ubuntu 24.04 + Cinnamon 6.0 (lightdm, slick-greeter) auf dem Arbeitshandy;
+Stand: 16.11.2026 (abends) – Ubuntu 24.04 + Cinnamon 6.0 (lightdm, slick-greeter) auf dem Arbeitshandy;
 beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 
 ## Desktop als Standard und Gestaltung
@@ -54,7 +54,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 
 | Punkt | Stand | Notiz |
 |---|---|---|
-| WLAN (unser Weg) | ✅ | `redmi-wlan.service` + wpa_supplicant + systemd-networkd |
+| WLAN (unser Weg) | ✅ | `redmi-wlan.service` + wpa_supplicant + systemd-networkd; 16.11.: hält auch mit Desktop-Autologin (Patch 0053, vorher Anmelde-Timeouts) |
 | WLAN im Desktop wählen | ❌ | 16.11.: NetworkManager stritt mit unserem Weg um `wlan0` (vermutlich auch ein Absturz, Kernel-Meldung `ieee80211 phy0: mismatch`) → vorerst `wlan0`/`usb0` für NetworkManager **unmanaged**. Ziel: NetworkManager übernimmt `wlan0` ganz, unser Dienst lädt nur den Treiber |
 | Bluetooth im Desktop | ❓ | Kernel ✅; Desktop-Applet + `redmi-bt.sh` (feste Adresse) zusammen prüfen |
 | Mobilfunk | ⏸️ | wartet auf die Antwort der Bundesnetzagentur |
@@ -65,8 +65,9 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | Punkt | Stand | Notiz |
 |---|---|---|
 | Lautsprecher | ✅ | UCM-Profil + `redmi-ton.service` (15.11.) |
-| Lautstärke im Desktop | ❓ | PipeWire mit dem UCM-Profil prüfen (Software-Lautstärke) |
-| Laut-/Leise-Tasten | ❓ | senden `KEY_VOLUMEUP/DOWN` ❓; der Desktop sollte sie selbst nutzen |
+| Lautstärke im Desktop | ✅ | 16.11.: PipeWire + WirePlumber laufen in der Sitzung, Cinnamon-Regler wirkt |
+| Laut-/Leise-Tasten | ✅ | 16.11.: Cinnamon nimmt sie selbst, Regler bewegt sich |
+| Medien abspielen | ✅ | 16.11.: Firefox spielt YouTube über den Lautsprecher; Medienanzeige mit Pause/Vor/Zurück im Ton-Menü |
 | Kopfhörer | 🟡 | Kernel ✅; über das Profil noch nicht getestet |
 | Mikrofon, Hörmuschel, Klinkenerkennung | ❌ | Kernel-Arbeit, siehe FEHLT.md |
 
@@ -90,5 +91,5 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 
 | Punkt | Stand | Notiz |
 |---|---|---|
-| Webbrowser | ❌ | Ubuntus `firefox` ist nur ein Snap-Umweg (snapd auf unserem Kernel ungeprüft ❓); Plan: Firefox als .deb aus Mozillas Paketquelle, sonst GNOME Web; auch für den Tontest aus dem Desktop |
+| Webbrowser | ✅ | 16.11.: Firefox 160 als arm64-.deb aus Mozillas Paketquelle (kein Snap), dazu `pavucontrol`; Skript `werkzeuge/handy/redmi-browser.sh` |
 | Desktop auf den PC spiegeln | ✅ | `x11vnc` auf dem Handy, durch SSH zum PC getunnelt, Remmina am PC; per USB-Kabel flüssiger als per WLAN |
