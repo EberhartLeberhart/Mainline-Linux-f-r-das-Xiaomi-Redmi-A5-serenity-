@@ -11,6 +11,13 @@ Zeichen: ✅ erledigt · 🟡 teilweise · ❌ offen · ⏸️ bewusst angehalte
 Stand: 16.11.2026 – Ubuntu 24.04 + Cinnamon 6.0 (lightdm, slick-greeter) auf dem Arbeitshandy;
 beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 
+## Desktop als Standard und Gestaltung
+
+| Punkt | Stand | Notiz |
+|---|---|---|
+| Desktop läuft von Haus aus | ❌ | Ziel: Wer den Kernel bzw. später das fertige Abbild installiert, bekommt Cinnamon samt Anpassungen gleich mit (Installer/Abbild). Wer einen anderen Desktop möchte (KDE Plasma, Phosh, …), tauscht ihn selbst; der Kernel bleibt derselbe |
+| Oberfläche fürs Handy gestalten | ❌ | eigenes Erscheinungsbild statt PC-Standard: Leistenaufbau und -lage, Startmenü, Symbole und Abstände für Finger, Farben und Hintergrund; als Vorgabe ins Abbild |
+
 ## Starten und Anmelden
 
 | Punkt | Stand | Notiz |
@@ -83,4 +90,5 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 
 | Punkt | Stand | Notiz |
 |---|---|---|
+| Webbrowser | ❌ | Ubuntus `firefox` ist nur ein Snap-Umweg (snapd auf unserem Kernel ungeprüft ❓); Plan: Firefox als .deb aus Mozillas Paketquelle, sonst GNOME Web; auch für den Tontest aus dem Desktop |
 | Desktop auf den PC spiegeln | ✅ | `x11vnc` auf dem Handy, durch SSH zum PC getunnelt, Remmina am PC; per USB-Kabel flüssiger als per WLAN |
