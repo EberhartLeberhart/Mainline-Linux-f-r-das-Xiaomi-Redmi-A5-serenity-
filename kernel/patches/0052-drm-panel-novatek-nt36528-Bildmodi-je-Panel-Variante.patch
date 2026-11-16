@@ -1,0 +1,87 @@
+From a06ba2fac6320779fa9465b204cab2f32d485c64 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Mon, 16 Nov 2026 11:15:46 +0100
+Subject: [PATCH 52/52] drm/panel-novatek: nt36528: Bildmodi je Panel-Variante
+
+- nach den 90/120-Hz-Patches des Testers meldete get_modes fuer jede
+  Variante die NT36528-Modi (199,2 MHz). Das C3Z_36-Panel (Handy 2, nur
+  Uebernahme, 186,2 MHz) haette damit falsche Timings bekommen
+- nt36528_variante bekommt num_modes: C3Z_42 alle drei Modi
+  (60/120/90 Hz), C3Z_36 weiter nur seinen einen; Modusnamen gesetzt,
+  Displaygroesse (display_info) wie vorher bei get_modes_fixed
+- Beleg 16.11. (Arbeitshandy, C3Z_42): modetest meldet 3 Modi
+  (720x1640, 70x160 mm); mit -v gemessen 119,97 / 89,99 / 60,00 Hz;
+  stehendes Testbild bei allen drei Raten ohne Flackern, nur beim
+  Umschalten kurz (voller Moduswechsel). Handy 2 nicht getestet
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/gpu/drm/panel/panel-novatek-nt36528.c | 21 ++++++++++++-------
+ 1 file changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36528.c b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+index ab50bc0dc..6bd312b09 100644
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36528.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36528.c
+@@ -49,7 +49,8 @@
+ 
+ /* Unterschiede der Panel-Varianten */
+ struct nt36528_variante {
+-	const struct drm_display_mode *mode;
++	const struct drm_display_mode *mode;	/* mode[0] = bevorzugter Modus */
++	unsigned int num_modes;
+ 	unsigned long hs_rate;		/* sprd,phy-bit-clock */
+ 	bool eigenes_init;		/* Novatek-Init-Befehle/Reset/ESD erlaubt (nur C3Z_42) */
+ };
+@@ -447,35 +448,41 @@ static const struct drm_display_mode c3z36_mode = {
+ };
+ 
+ static const struct nt36528_variante var_c3z42 = {
+-	.mode = &nt36528_modes[0],
++	.mode = nt36528_modes,
++	.num_modes = ARRAY_SIZE(nt36528_modes),	/* 60/120/90 Hz */
+ 	.hs_rate = 1195200000,		/* 0x123cc0 kHz */
+ 	.eigenes_init = true,
+ };
+ 
+ static const struct nt36528_variante var_c3z36 = {
+ 	.mode = &c3z36_mode,
++	.num_modes = 1,
+ 	.hs_rate = 1117200000,		/* 0x110c10 kHz */
+ 	.eigenes_init = false,
+ };
+ 
+ static int nt36528_get_modes(struct drm_panel *panel, struct drm_connector *connector)
+ {
++	struct nt36528_panel *ctx = to_nt36528_panel(panel);
+ 	unsigned int j, i = 0;
+ 
+-	for (j = 0; j < ARRAY_SIZE(nt36528_modes); j++) {
++	/* nur C3Z_42 (NT36528) hat 90/120 Hz; C3Z_36 behaelt seinen einen Modus */
++	for (j = 0; j < ctx->var->num_modes; j++) {
+ 		struct drm_display_mode *mode;
+-		bool preferred = (j == 0);
+ 
+-		mode = drm_mode_duplicate(connector->dev, &nt36528_modes[j]);
++		mode = drm_mode_duplicate(connector->dev, &ctx->var->mode[j]);
+ 		if (!mode)
+ 			continue;
+ 
+-		mode->type |= DRM_MODE_TYPE_DRIVER | (preferred ? DRM_MODE_TYPE_PREFERRED : 0);
+-
++		drm_mode_set_name(mode);
++		mode->type |= DRM_MODE_TYPE_DRIVER | (j == 0 ? DRM_MODE_TYPE_PREFERRED : 0);
+ 		drm_mode_probed_add(connector, mode);
+ 		i++;
+ 	}
+ 
++	connector->display_info.width_mm = ctx->var->mode[0].width_mm;
++	connector->display_info.height_mm = ctx->var->mode[0].height_mm;
++
+ 	return i;
+ }
+ 
+-- 
+2.43.0
+
