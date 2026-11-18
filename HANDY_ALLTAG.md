@@ -34,7 +34,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 |---|---|---|
 | Display bleibt im Desktop an | ✅ | 16.11.: `redmi-licht.sh` behandelt `DESKTOP=an` wie `START=an` |
 | Einschalttaste kurz = Display an/aus | ❌ | heute: Licht an (ohne Abschaltung); Ziel wie Android: an/aus umschalten, Touch schläft mit |
-| Helligkeit im Desktop regeln | ❓ | `/sys/class/backlight/31100000.dsi.0` ist da; prüfen, ob der Cinnamon-Regler sie nimmt |
+| Helligkeit im Desktop regeln | ✅ | 18.11.: Cinnamon-Regler wirkt (`/sys/class/backlight/31100000.dsi.0`) |
 | Display nach Zeit aus (Energieverwaltung) | ❓ | Cinnamon-Einstellung prüfen, Zusammenspiel mit `redmi-licht.sh` |
 | 60/90/120 Hz | ✅ | Patches 0050–0052; in den Anzeige-Einstellungen wählbar ❓ |
 | Hoch- und Querformat | 🟡 | von Hand drehbar (beim Tester quer); automatisch braucht den Lagesensor (hängt am pmsys-Kern ⏸️) |
@@ -58,7 +58,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | WLAN im Desktop wählen | ❌ | 16.11.: NetworkManager stritt mit unserem Weg um `wlan0` (vermutlich auch ein Absturz, Kernel-Meldung `ieee80211 phy0: mismatch`) → vorerst `wlan0`/`usb0` für NetworkManager **unmanaged**. Ziel: NetworkManager übernimmt `wlan0` ganz, unser Dienst lädt nur den Treiber |
 | Bluetooth im Desktop | ❓ | Kernel ✅; Desktop-Applet + `redmi-bt.sh` (feste Adresse) zusammen prüfen |
 | Mobilfunk | ⏸️ | wartet auf die Antwort der Bundesnetzagentur |
-| Uhrzeit aus dem Netz | ❌ | Uhr geht ~1 h vor; Zeitabgleich (NTP) prüfen |
+| Uhrzeit aus dem Netz | ✅ | 18.11.: Uhr ging 1 h 23 min vor, kein Zeitdienst installiert → `apt install systemd-timesyncd`, `timedatectl set-ntp true`, `hwclock --systohc`; Zeitzone Europe/Berlin stimmte. Gehört später ins Abbild ❓ RTC-Drift beobachten |
 
 ## Ton
 
@@ -77,7 +77,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 |---|---|---|
 | Akkustand im Desktop | ✅ | 16.11.: Leiste zeigt Prozent (Akkuanzeige + Ladetreiber, Patch 0045/0048) |
 | Ladegrenze (Server) im Desktop schaltbar | ❌ | heute nur `redmi-akku.sh` / `akku.conf` |
-| Eingangsstrom im Ladetreiber | ❌ | Chip stellt am PC-Kabel oft 2400 mA ein; heute korrigiert das Skript |
+| Eingangsstrom im Ladetreiber | ✅ | 18.11.: Patches 0054/0055 – PC 500 mA, Netzteil 2000 mA, Treiber prüft Fehl-Erkennung nach |
 
 ## Mehr Hardware
 
