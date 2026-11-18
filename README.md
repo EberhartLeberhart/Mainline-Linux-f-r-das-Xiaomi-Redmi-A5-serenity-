@@ -15,6 +15,10 @@ detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is stil
 <p align="center"><img src="bilder/redmi-a5-cinnamon-anmeldung.jpg" width="300" alt="Redmi A5 showing the Cinnamon login screen on the mainline kernel"><br>
 <em>Cinnamon desktop login (Ubuntu 24.04, Mint-style greeter) on our mainline 7.1 kernel, 16 Nov 2026</em></p>
 
+<p align="center"><img src="bilder/redmi-a5-kde-plasma-arch.jpg" width="600" alt="Redmi A5 in landscape running KDE Plasma 6.8 on Arch Linux ARM with the mainline kernel"><br>
+<em>KDE Plasma 6.8 (Wayland) on Arch Linux ARM, same mainline kernel, landscape. Screenshot by
+<a href="https://github.com/farrizdesignpro1339">farrizdesignpro1339</a>, shown with permission, 16 Nov 2026</em></p>
+
 > Hardware overview for everyone (and editable by everyone): the [project wiki](https://github.com/EberhartLeberhart/Mainline-Linux-f-r-das-Xiaomi-Redmi-A5-serenity-/wiki).
 
 > This is the most complete public documentation of the Xiaomi Redmi A5's internals.

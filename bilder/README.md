@@ -6,4 +6,6 @@ mit ihren eigenen Bedingungen aufgeführt.
 
 | Ordner | Inhalt | Lizenz |
 |---|---|---|
+| `redmi-a5-cinnamon-anmeldung.jpg` | Foto: Cinnamon-Anmeldung auf dem Redmi A5 (EberhartLeberhart), EXIF entfernt | wie das Repo |
+| `redmi-a5-kde-plasma-arch.jpg` | Bildschirmfoto: KDE Plasma 6.8 auf Arch Linux ARM, von farrizdesignpro1339; Zeigen im README mit seiner Erlaubnis (Issue #26, 17.11.2026), Metadaten entfernt | Rechte beim Urheber, keine eigene Lizenz erteilt |
 | [tuxswing/](tuxswing/) | TuxSwing – Start-Maskottchen (Community-Beitrag) | CC BY 4.0 oder GPL-2.0-only, Tux-Hinweis beachten |
