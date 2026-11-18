@@ -1,0 +1,414 @@
+From 4c348abe7637b50b60c40ab0a72d4c9a3ca63a12 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Wed, 18 Nov 2026 19:48:45 +0100
+Subject: [PATCH 54/55] power: supply: sgm41513: Eingangsstrom nach erkanntem
+ Eingang (Stufe 3)
+
+- der Treiber setzt den Eingangsstrom (REG00 IINDPM) nach dem Einstecken
+  selbst, je nach Erkennung des Chips (REG08 VBUS_STAT, wartet auf
+  INPUT_DET_DONE in REG0E): PC 500 mA, CDP 900 mA, Netzteil 2000 mA,
+  nicht standardkonform 1000 mA, sonst 500 mA (Werte wie Unisocs Treiber)
+- PC wurde als Netzteil erkannt: Beleg 18.11. am PC-Kabel mit erzwungener
+  Neuerkennung (REG07 IINDET_EN): USB-Daten an -> VBUS_STAT 3 (2400 mA),
+  Gadget abgemeldet oder Rolle none -> 1 (500 mA), Rolle zurueck auf
+  device -> bleibt 1. Am Netzteil in allen Faellen 3. Unisoc schaltet
+  dafuer die USB-Leitungen hochohmig; hier nimmt der Treiber bei "Netzteil"
+  und Rolle device kurz die Rolle weg (usb-role-switch = <&usb> im
+  Geraetebaum), laesst neu erkennen und setzt die Rolle zurueck
+- input_current_limit in sysfs lesbar und schreibbar (uA)
+- HIZ von redmi-akku.sh bleibt unangetastet; nach HIZ aus erkennt der
+  Chip neu, der Treiber wertet das wie ein Einstecken aus
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ .../boot/dts/sprd/ums9230-xiaomi-serenity.dts |   3 +
+ drivers/power/supply/sgm41513_charger.c       | 261 +++++++++++++++++-
+ 2 files changed, 258 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index 6675df025..90e6e5cd9 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -284,6 +284,9 @@ &i2c2 {
+ 	charger@1a {
+ 		compatible = "sgmicro,sgm41513";
+ 		reg = <0x1a>;
++		/* Meldet der Chip "Netzteil", nimmt der Treiber kurz die USB-Rolle weg
++		 * und laesst neu erkennen (sonst gilt ein PC als Netzteil) */
++		usb-role-switch = <&usb>;
+ 
+ 		otg_vbus: usb-otg-vbus {
+ 			regulator-name = "otg-vbus";
+diff --git a/drivers/power/supply/sgm41513_charger.c b/drivers/power/supply/sgm41513_charger.c
+index 155a511e6..66a1a3517 100644
+--- a/drivers/power/supply/sgm41513_charger.c
++++ b/drivers/power/supply/sgm41513_charger.c
+@@ -1,11 +1,20 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * SG Micro SGM41513 single-cell charger - Stufe 1+2 (Redmi A5 / serenity)
++ * SG Micro SGM41513 single-cell charger - Stufe 1-3 (Redmi A5 / serenity)
+  *
+- * Stufe 1: Chip-ID pruefen, Wachhund aus, Ladezustand nur LESEN
+- *          (online, status, health, usb_type) - es wird nichts am Laden veraendert.
++ * Stufe 1: Chip-ID pruefen, Wachhund aus, Ladezustand lesen
++ *          (online, status, health, usb_type).
+  * Stufe 2: OTG-Ausgang (5 V auf VBUS) als Regulator "otg-vbus", damit der
+  *          USB-C-Treiber (TCPM) ihn bei einem Geraet (Rd) selbst schaltet.
++ * Stufe 3: Eingangsstrom (IINDPM) nach erkanntem Eingang setzen.
++ *          Der Chip erkennt die Quelle selbst ueber D+/D- (BC1.2). Laeuft dabei
++ *          die USB-Datenseite des Handys, meldet er einen PC faelschlich als
++ *          Netzteil (DCP) und stellt 2400 mA ein (Beleg 18.11.: Daten an ->
++ *          VBUS_STAT 3, Daten aus -> 1). Unisoc schaltet dafuer die
++ *          USB-Leitungen hochohmig; hier nimmt der Treiber kurz die USB-Rolle
++ *          weg (usb-role-switch), laesst neu erkennen und setzt sie zurueck.
++ *          Werte wie bei Unisoc: PC 500, CDP 900, Netzteil 2000, sonst 500 mA.
++ *          Lesen/Setzen von aussen: input_current_limit (in uA).
+  *
+  * Registeraufbau wie BQ25601 (TI): REG00..REG0B.
+  * Der Chip hat hier keine Interrupt-Leitung im Geraetebaum, deshalb fragt der
+@@ -21,6 +30,7 @@
+ #include <linux/regmap.h>
+ #include <linux/regulator/driver.h>
+ #include <linux/regulator/of_regulator.h>
++#include <linux/usb/role.h>
+ #include <linux/workqueue.h>
+ 
+ #define SGM_REG00		0x00	/* EN_HIZ, IINDPM */
+@@ -28,11 +38,16 @@
+ #define SGM_REG02		0x02	/* BOOST_LIM, ICHG */
+ #define SGM_REG05		0x05	/* EN_TERM, WATCHDOG, EN_TIMER */
+ #define SGM_REG06		0x06	/* OVP, BOOSTV, VINDPM */
++#define SGM_REG07		0x07	/* IINDET_EN, TMR2X_EN, BATFET_DIS, ... */
+ #define SGM_REG08		0x08	/* Status */
+ #define SGM_REG09		0x09	/* Fehler (Lesen loescht gespeicherte Fehler) */
+ #define SGM_REG0B		0x0b	/* REG_RST, PN, DEV_REV */
+-#define SGM_MAX_REG		0x0b
++#define SGM_REG0E		0x0e	/* INPUT_DET_DONE (Unisoc-Treiber) */
++#define SGM_MAX_REG		0x0f
+ 
++#define SGM_IINDPM		GENMASK(4, 0)	/* 100 mA + n * 100 mA */
++#define SGM_IINDET_EN		BIT(7)
++#define SGM_INPUT_DET_DONE	BIT(7)
+ #define SGM_OTG_CONFIG		BIT(5)
+ #define SGM_CHG_CONFIG		BIT(4)
+ #define SGM_BOOST_LIM		BIT(7)
+@@ -62,13 +77,32 @@
+ 
+ #define SGM_POLL_MS		2000
+ 
++#define SGM_IINDPM_MIN_MA	100
++#define SGM_IINDPM_MAX_MA	3200
++#define SGM_IINDPM_STEP_MA	100
++
++/* Eingangsstrom je erkanntem Eingang (Unisoc-Vorgaben fuer dieses Handy) */
++#define SGM_IIN_SDP_MA		500
++#define SGM_IIN_CDP_MA		900
++#define SGM_IIN_DCP_MA		2000
++#define SGM_IIN_NONSTD_MA	1000
++#define SGM_IIN_OTHER_MA	500
++
++/* Rollen-Schalter fehlt noch (USB-Treiber laedt spaeter): so oft nachsehen */
++#define SGM_ROLE_RETRIES	15
++
+ struct sgm41513 {
+ 	struct device *dev;
+ 	struct regmap *regmap;
+ 	struct power_supply *psy;
+ 	struct regulator_dev *otg;
+ 	struct delayed_work poll;
++	struct delayed_work attach;
++	struct usb_role_switch *role_sw;
+ 	unsigned int last_stat;
++	unsigned int role_tries;
++	bool attached;
++	bool detecting;		/* Erkennung laeuft, REG08 kann kurz wackeln */
+ };
+ 
+ static const struct regmap_config sgm41513_regmap = {
+@@ -117,6 +151,7 @@ static enum power_supply_property sgm41513_props[] = {
+ 	POWER_SUPPLY_PROP_CHARGE_TYPE,
+ 	POWER_SUPPLY_PROP_HEALTH,
+ 	POWER_SUPPLY_PROP_USB_TYPE,
++	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
+ 	POWER_SUPPLY_PROP_MANUFACTURER,
+ 	POWER_SUPPLY_PROP_MODEL_NAME,
+ };
+@@ -136,6 +171,13 @@ static int sgm41513_get_property(struct power_supply *psy,
+ 	case POWER_SUPPLY_PROP_MODEL_NAME:
+ 		val->strval = "SGM41513";
+ 		return 0;
++	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
++		ret = regmap_read(sgm->regmap, SGM_REG00, &stat);
++		if (ret)
++			return ret;
++		val->intval = (FIELD_GET(SGM_IINDPM, stat) * SGM_IINDPM_STEP_MA +
++			       SGM_IINDPM_MIN_MA) * 1000;
++		return 0;
+ 	default:
+ 		break;
+ 	}
+@@ -216,6 +258,181 @@ static int sgm41513_get_property(struct power_supply *psy,
+ 	return 0;
+ }
+ 
++/* ---------- Stufe 3: Eingangsstrom ---------- */
++
++static int sgm41513_set_iindpm(struct sgm41513 *sgm, unsigned int ma)
++{
++	ma = clamp(ma, SGM_IINDPM_MIN_MA, SGM_IINDPM_MAX_MA);
++	/* nur IINDPM, das HIZ-Bit (redmi-akku.sh) bleibt wie es ist */
++	return regmap_update_bits(sgm->regmap, SGM_REG00, SGM_IINDPM,
++				  FIELD_PREP(SGM_IINDPM, (ma - SGM_IINDPM_MIN_MA) /
++							 SGM_IINDPM_STEP_MA));
++}
++
++static int sgm41513_set_property(struct power_supply *psy,
++				 enum power_supply_property psp,
++				 const union power_supply_propval *val)
++{
++	struct sgm41513 *sgm = power_supply_get_drvdata(psy);
++
++	switch (psp) {
++	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
++		if (val->intval < 0)
++			return -EINVAL;
++		return sgm41513_set_iindpm(sgm, val->intval / 1000);
++	default:
++		return -EINVAL;
++	}
++}
++
++static int sgm41513_property_is_writeable(struct power_supply *psy,
++					  enum power_supply_property psp)
++{
++	return psp == POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT;
++}
++
++/* Warten, bis der Chip mit der D+/D--Erkennung fertig ist (hoechstens 2 s) */
++static void sgm41513_wait_det(struct sgm41513 *sgm)
++{
++	unsigned int val;
++	int i;
++
++	for (i = 0; i < 20; i++) {
++		if (!regmap_read(sgm->regmap, SGM_REG0E, &val) &&
++		    (val & SGM_INPUT_DET_DONE))
++			return;
++		msleep(100);
++	}
++	dev_warn(sgm->dev, "Eingangserkennung nach 2 s nicht fertig\n");
++}
++
++static unsigned int sgm41513_vbus_stat(struct sgm41513 *sgm)
++{
++	unsigned int stat;
++
++	if (regmap_read(sgm->regmap, SGM_REG08, &stat))
++		return SGM_VBUS_NONE;
++	return FIELD_GET(SGM_VBUS_STAT, stat);
++}
++
++static const char *sgm41513_vbus_name(unsigned int vbus)
++{
++	switch (vbus) {
++	case SGM_VBUS_SDP:
++		return "PC/USB-Host (SDP)";
++	case SGM_VBUS_CDP:
++		return "Lade-Host (CDP)";
++	case SGM_VBUS_DCP:
++		return "Netzteil (DCP)";
++	case SGM_VBUS_UNKNOWN:
++		return "unbekanntes Netzteil";
++	case SGM_VBUS_NONSTD:
++		return "Netzteil, nicht standardkonform";
++	default:
++		return "unbekannt";
++	}
++}
++
++static unsigned int sgm41513_iin_for(unsigned int vbus)
++{
++	switch (vbus) {
++	case SGM_VBUS_SDP:
++		return SGM_IIN_SDP_MA;
++	case SGM_VBUS_CDP:
++		return SGM_IIN_CDP_MA;
++	case SGM_VBUS_DCP:
++		return SGM_IIN_DCP_MA;
++	case SGM_VBUS_NONSTD:
++		return SGM_IIN_NONSTD_MA;
++	default:
++		return SGM_IIN_OTHER_MA;
++	}
++}
++
++/*
++ * "Netzteil" pruefen: ist gerade die USB-Datenseite aktiv (Rolle device),
++ * kann das Ergebnis falsch sein. Dann Rolle kurz weg, neu erkennen, Rolle
++ * zurueck. -EAGAIN: Rollen-Schalter (noch) nicht da, -ENODEV: keiner im DT.
++ */
++static int sgm41513_check_dcp(struct sgm41513 *sgm, unsigned int *vbus)
++{
++	enum usb_role role;
++	int ret;
++
++	if (!sgm->role_sw) {
++		struct usb_role_switch *sw = usb_role_switch_get(sgm->dev);
++
++		if (IS_ERR(sw))
++			return PTR_ERR(sw) == -EPROBE_DEFER ? -EAGAIN : PTR_ERR(sw);
++		if (!sw)
++			return -ENODEV;
++		sgm->role_sw = sw;
++	}
++
++	role = usb_role_switch_get_role(sgm->role_sw);
++	if (role != USB_ROLE_DEVICE)
++		return 0;	/* Datenseite nicht aktiv: Ergebnis gilt */
++
++	ret = usb_role_switch_set_role(sgm->role_sw, USB_ROLE_NONE);
++	if (ret)
++		return ret;
++	msleep(100);
++	regmap_update_bits(sgm->regmap, SGM_REG07, SGM_IINDET_EN, SGM_IINDET_EN);
++	msleep(200);
++	sgm41513_wait_det(sgm);
++	*vbus = sgm41513_vbus_stat(sgm);
++	/* Der Chip erkennt beim Zurueckschalten nicht von selbst neu (18.11.) */
++	ret = usb_role_switch_set_role(sgm->role_sw, role);
++	dev_info(sgm->dev, "Netzteil-Meldung bei aktiver USB-Datenseite neu geprueft: %s\n",
++		 sgm41513_vbus_name(*vbus));
++	return ret;
++}
++
++static void sgm41513_attach_work(struct work_struct *work)
++{
++	struct sgm41513 *sgm = container_of(to_delayed_work(work),
++					    struct sgm41513, attach);
++	unsigned int vbus, ma;
++	int ret;
++
++	WRITE_ONCE(sgm->detecting, true);
++	sgm41513_wait_det(sgm);
++	vbus = sgm41513_vbus_stat(sgm);
++	if (vbus == SGM_VBUS_NONE || vbus == SGM_VBUS_OTG)
++		goto out;	/* schon wieder ab oder eigene 5 V */
++
++	if (vbus == SGM_VBUS_DCP) {
++		ret = sgm41513_check_dcp(sgm, &vbus);
++		if (ret == -EAGAIN && sgm->role_tries++ < SGM_ROLE_RETRIES) {
++			/* bis zur Pruefung vorsichtig wie am PC */
++			sgm41513_set_iindpm(sgm, SGM_IIN_SDP_MA);
++			queue_delayed_work(system_long_wq, &sgm->attach,
++					   msecs_to_jiffies(SGM_POLL_MS));
++			goto out;
++		}
++		if (ret && ret != -ENODEV)
++			dev_warn(sgm->dev, "USB-Rolle nicht umschaltbar (%d), Netzteil-Meldung ungeprueft\n",
++				 ret);
++	}
++	sgm->role_tries = 0;
++
++	ma = sgm41513_iin_for(vbus);
++	ret = sgm41513_set_iindpm(sgm, ma);
++	if (ret)
++		dev_err(sgm->dev, "Eingangsstrom nicht setzbar: %d\n", ret);
++	else
++		dev_info(sgm->dev, "Eingang: %s -> Eingangsstrom %u mA\n",
++			 sgm41513_vbus_name(vbus), ma);
++	power_supply_changed(sgm->psy);
++out:
++	/* Stand nach der Erkennung als Ausgangspunkt fuer die Abfrage */
++	if (!regmap_read(sgm->regmap, SGM_REG08, &sgm->last_stat))
++		sgm->attached = (sgm->last_stat & SGM_PG_STAT) &&
++			FIELD_GET(SGM_VBUS_STAT, sgm->last_stat) != SGM_VBUS_NONE &&
++			FIELD_GET(SGM_VBUS_STAT, sgm->last_stat) != SGM_VBUS_OTG;
++	WRITE_ONCE(sgm->detecting, false);
++}
++
+ static const struct power_supply_desc sgm41513_psy_desc = {
+ 	.name = "sgm41513-charger",
+ 	.type = POWER_SUPPLY_TYPE_USB,
+@@ -226,20 +443,40 @@ static const struct power_supply_desc sgm41513_psy_desc = {
+ 	.properties = sgm41513_props,
+ 	.num_properties = ARRAY_SIZE(sgm41513_props),
+ 	.get_property = sgm41513_get_property,
++	.set_property = sgm41513_set_property,
++	.property_is_writeable = sgm41513_property_is_writeable,
+ };
+ 
+ static void sgm41513_poll(struct work_struct *work)
+ {
+ 	struct sgm41513 *sgm = container_of(to_delayed_work(work),
+ 					    struct sgm41513, poll);
+-	unsigned int stat;
++	unsigned int stat, vbus;
++	bool attached;
+ 
++	if (READ_ONCE(sgm->detecting))
++		goto again;
+ 	if (!regmap_read(sgm->regmap, SGM_REG08, &stat) &&
+ 	    stat != sgm->last_stat) {
+ 		dev_dbg(sgm->dev, "REG08 0x%02x -> 0x%02x\n", sgm->last_stat, stat);
+ 		sgm->last_stat = stat;
++		vbus = FIELD_GET(SGM_VBUS_STAT, stat);
++		/*
++		 * Neu eingesteckt: Erkennung auswerten. Achtung: HIZ (redmi-akku.sh,
++		 * "entladen") trennt den Eingang, der Chip meldet dann "kein
++		 * Eingang"; nach HIZ aus erkennt er neu wie beim Einstecken.
++		 */
++		attached = (stat & SGM_PG_STAT) && vbus != SGM_VBUS_NONE &&
++			   vbus != SGM_VBUS_OTG;
++		if (attached && !sgm->attached) {
++			sgm->role_tries = 0;
++			WRITE_ONCE(sgm->detecting, true);
++			queue_delayed_work(system_long_wq, &sgm->attach, 0);
++		}
++		sgm->attached = attached;
+ 		power_supply_changed(sgm->psy);
+ 	}
++again:
+ 	schedule_delayed_work(&sgm->poll, msecs_to_jiffies(SGM_POLL_MS));
+ }
+ 
+@@ -248,6 +485,9 @@ static void sgm41513_stop_poll(void *data)
+ 	struct sgm41513 *sgm = data;
+ 
+ 	cancel_delayed_work_sync(&sgm->poll);
++	cancel_delayed_work_sync(&sgm->attach);
++	if (sgm->role_sw)
++		usb_role_switch_put(sgm->role_sw);
+ }
+ 
+ static int sgm41513_probe(struct i2c_client *client)
+@@ -307,9 +547,18 @@ static int sgm41513_probe(struct i2c_client *client)
+ 		return dev_err_probe(dev, PTR_ERR(sgm->otg), "OTG-Regulator\n");
+ 
+ 	INIT_DELAYED_WORK(&sgm->poll, sgm41513_poll);
++	INIT_DELAYED_WORK(&sgm->attach, sgm41513_attach_work);
+ 	ret = devm_add_action_or_reset(dev, sgm41513_stop_poll, sgm);
+ 	if (ret)
+ 		return ret;
++	/* Kabel steckt schon beim Laden des Treibers: genauso auswerten */
++	sgm->attached = (r08 & SGM_PG_STAT) &&
++			FIELD_GET(SGM_VBUS_STAT, r08) != SGM_VBUS_NONE &&
++			FIELD_GET(SGM_VBUS_STAT, r08) != SGM_VBUS_OTG;
++	if (sgm->attached) {
++		sgm->detecting = true;
++		queue_delayed_work(system_long_wq, &sgm->attach, 0);
++	}
+ 	schedule_delayed_work(&sgm->poll, msecs_to_jiffies(SGM_POLL_MS));
+ 
+ 	return 0;
+@@ -337,5 +586,5 @@ static struct i2c_driver sgm41513_driver = {
+ };
+ module_i2c_driver(sgm41513_driver);
+ 
+-MODULE_DESCRIPTION("SGM41513 charger: Status + OTG-Regulator (Redmi A5)");
++MODULE_DESCRIPTION("SGM41513 charger: Status, OTG-Regulator, Eingangsstrom (Redmi A5)");
+ MODULE_LICENSE("GPL");
+-- 
+2.43.0
+
