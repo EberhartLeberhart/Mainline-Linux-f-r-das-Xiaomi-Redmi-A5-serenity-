@@ -1,0 +1,99 @@
+From 3c0112754e05aed929e623d5c676c83c7c117c08 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Wed, 18 Nov 2026 20:34:33 +0100
+Subject: [PATCH 55/55] power: supply: sgm41513: Feinschliff Eingangserkennung
+
+- Kabel steckt schon beim Laden des Treibers: nicht auf das Fertig-Bit
+  (REG0E) warten - die Erkennung lief vor Linux, das Bit steht dann nicht
+  (Beleg 18.11.: "Eingangserkennung nach 2 s nicht fertig" beim Start)
+- erkennt der Chip bei gestecktem Kabel neu und meldet einen anderen
+  Eingang (z. B. PC -> Netzteil), wird das wie ein Einstecken ausgewertet
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/power/supply/sgm41513_charger.c | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/power/supply/sgm41513_charger.c b/drivers/power/supply/sgm41513_charger.c
+index 66a1a3517..8c0e5ba8d 100644
+--- a/drivers/power/supply/sgm41513_charger.c
++++ b/drivers/power/supply/sgm41513_charger.c
+@@ -103,6 +103,7 @@ struct sgm41513 {
+ 	unsigned int role_tries;
+ 	bool attached;
+ 	bool detecting;		/* Erkennung laeuft, REG08 kann kurz wackeln */
++	bool at_probe;		/* Kabel steckte schon beim Laden des Treibers */
+ };
+ 
+ static const struct regmap_config sgm41513_regmap = {
+@@ -392,11 +393,19 @@ static void sgm41513_attach_work(struct work_struct *work)
+ {
+ 	struct sgm41513 *sgm = container_of(to_delayed_work(work),
+ 					    struct sgm41513, attach);
++	bool probe = sgm->at_probe;
+ 	unsigned int vbus, ma;
+ 	int ret;
+ 
+ 	WRITE_ONCE(sgm->detecting, true);
+-	sgm41513_wait_det(sgm);
++	/*
++	 * Beim Start ist die Erkennung laengst gelaufen (vor Linux), das
++	 * Fertig-Bit in REG0E steht dann aber nicht: Eingang gut genuegt,
++	 * wie bei Unisoc.
++	 */
++	if (!sgm->at_probe)
++		sgm41513_wait_det(sgm);
++	sgm->at_probe = false;
+ 	vbus = sgm41513_vbus_stat(sgm);
+ 	if (vbus == SGM_VBUS_NONE || vbus == SGM_VBUS_OTG)
+ 		goto out;	/* schon wieder ab oder eigene 5 V */
+@@ -406,6 +415,7 @@ static void sgm41513_attach_work(struct work_struct *work)
+ 		if (ret == -EAGAIN && sgm->role_tries++ < SGM_ROLE_RETRIES) {
+ 			/* bis zur Pruefung vorsichtig wie am PC */
+ 			sgm41513_set_iindpm(sgm, SGM_IIN_SDP_MA);
++			sgm->at_probe = probe;
+ 			queue_delayed_work(system_long_wq, &sgm->attach,
+ 					   msecs_to_jiffies(SGM_POLL_MS));
+ 			goto out;
+@@ -451,7 +461,7 @@ static void sgm41513_poll(struct work_struct *work)
+ {
+ 	struct sgm41513 *sgm = container_of(to_delayed_work(work),
+ 					    struct sgm41513, poll);
+-	unsigned int stat, vbus;
++	unsigned int stat, vbus, old_vbus;
+ 	bool attached;
+ 
+ 	if (READ_ONCE(sgm->detecting))
+@@ -459,6 +469,7 @@ static void sgm41513_poll(struct work_struct *work)
+ 	if (!regmap_read(sgm->regmap, SGM_REG08, &stat) &&
+ 	    stat != sgm->last_stat) {
+ 		dev_dbg(sgm->dev, "REG08 0x%02x -> 0x%02x\n", sgm->last_stat, stat);
++		old_vbus = FIELD_GET(SGM_VBUS_STAT, sgm->last_stat);
+ 		sgm->last_stat = stat;
+ 		vbus = FIELD_GET(SGM_VBUS_STAT, stat);
+ 		/*
+@@ -468,7 +479,11 @@ static void sgm41513_poll(struct work_struct *work)
+ 		 */
+ 		attached = (stat & SGM_PG_STAT) && vbus != SGM_VBUS_NONE &&
+ 			   vbus != SGM_VBUS_OTG;
+-		if (attached && !sgm->attached) {
++		/*
++		 * Neu eingesteckt - oder der Chip hat bei gestecktem Kabel neu
++		 * erkannt und meldet einen anderen Eingang (z. B. PC -> Netzteil)
++		 */
++		if (attached && (!sgm->attached || vbus != old_vbus)) {
+ 			sgm->role_tries = 0;
+ 			WRITE_ONCE(sgm->detecting, true);
+ 			queue_delayed_work(system_long_wq, &sgm->attach, 0);
+@@ -556,6 +571,7 @@ static int sgm41513_probe(struct i2c_client *client)
+ 			FIELD_GET(SGM_VBUS_STAT, r08) != SGM_VBUS_NONE &&
+ 			FIELD_GET(SGM_VBUS_STAT, r08) != SGM_VBUS_OTG;
+ 	if (sgm->attached) {
++		sgm->at_probe = true;
+ 		sgm->detecting = true;
+ 		queue_delayed_work(system_long_wq, &sgm->attach, 0);
+ 	}
+-- 
+2.43.0
+
