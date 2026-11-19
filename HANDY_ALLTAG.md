@@ -94,4 +94,5 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | Punkt | Stand | Notiz |
 |---|---|---|
 | Webbrowser | ✅ | 16.11.: Firefox 160 als arm64-.deb aus Mozillas Paketquelle (kein Snap), dazu `pavucontrol`; Skript `werkzeuge/handy/redmi-browser.sh` |
+| Handy und PC verbinden (wie „Smartphone-Link“) | ❌ | Idee 16.11.: KDE Connect auf Handy und PC (Paket `kdeconnect`, läuft auch unter Cinnamon): Zwischenablage, Dateien, Benachrichtigungen, Medien steuern, Handy als Touchpad, Akkustand am PC; später fest ins Abbild |
 | Desktop auf den PC spiegeln | ✅ | `x11vnc` auf dem Handy, durch SSH zum PC getunnelt, Remmina am PC; per USB-Kabel flüssiger als per WLAN |
