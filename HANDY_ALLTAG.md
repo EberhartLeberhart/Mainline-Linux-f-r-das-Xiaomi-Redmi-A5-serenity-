@@ -24,7 +24,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 |---|---|---|
 | Desktop an/aus mit Schalter | ✅ | 16.11.: `redmi-desktop.sh an|aus|status`, Schalter `/etc/redmi/desktop.conf`; aus = Server-Betrieb |
 | Automatische Anmeldung | ✅ | 16.11.: lightdm `autologin-user=tunnel-handy` (wie bei Android ohne Passwortfeld) |
-| Bildschirmtastatur am Anmeldebildschirm | ❌ | slick-greeter blendet `onboard` nach einem Neustart nicht ein (nur beim Start von Hand) ❓; im Protokoll keine Meldung dazu |
+| Bildschirmtastatur am Anmeldebildschirm | ❌ | slick-greeter blendet `onboard` nach einem Neustart nicht ein (nur beim Start von Hand) ❓; im Protokoll keine Meldung dazu. 19.11.: Absturzbericht von lightdm (16.11., `onboard --xid`, Signal 11) – Onboard stürzt dort ab |
 | Bildschirmsperre mit PIN per Touch | ❌ | braucht eine Bildschirmtastatur in der Sperre |
 | Herunterfahren ohne Hänger | 🟡 | 16.11. einmal ~90 s beim Licht-Dienst gehangen; Dienste brauchen kurze Abbruchzeiten |
 
@@ -45,7 +45,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | Punkt | Stand | Notiz |
 |---|---|---|
 | Touch als Maus | ✅ | 16.11.: trifft genau (Zuordnung Display/Touch seit 26.10.) |
-| Bildschirmtastatur im Desktop bei Textfeldern | ❌ | `onboard` ist installiert; automatisch einblenden einrichten |
+| Bildschirmtastatur im Desktop bei Textfeldern | 🟡 | 19.11.: Cinnamons eigene Tastatur (Barrierefreiheit) gewählt, Onboard nicht (2 Abstürze Signal 11 am 16.11., unhandlich). Gesetzt: `org.cinnamon.keyboard keyboard-position bottom`, `keyboard-type tablet`, `toolkit-accessibility true` (cinnamon + gnome) → unten, geht in Firefox. Offen: steht über den rechten Rand hinaus (auch mit `tablet` und Größe 1/4 – Abstände im Thema? ❓); blendet sich nicht von selbst aus/ein – Cinnamon wartet auf Show/Hide vom `caribou-gtk-module` (nicht installiert, `GTK_MODULES` leer) ❓ |
 | Größere Bedienelemente | ❌ | Skalierung, Leistenhöhe, Schriftgröße für Finger |
 | Gesten (Wischen) | ❌ | Cinnamon-Touch-Gesten prüfen ❓ |
 | Mint-Optik | 🟡 | Mint-Y-Symbole installiert; Mint-Themen nicht bei Ubuntu → von Mint (GitHub) holen |
@@ -69,7 +69,9 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | Laut-/Leise-Tasten | ✅ | 16.11.: Cinnamon nimmt sie selbst, Regler bewegt sich |
 | Medien abspielen | ✅ | 16.11.: Firefox spielt YouTube über den Lautsprecher; Medienanzeige mit Pause/Vor/Zurück im Ton-Menü |
 | Kopfhörer | 🟡 | Kernel ✅; über das Profil noch nicht getestet |
-| Mikrofon, Hörmuschel, Klinkenerkennung | ❌ | Kernel-Arbeit, siehe FEHLT.md |
+| Mikrofon | ✅ | 19.11.: erscheint im Desktop als Eingang „Mikrofon“, Pegelanzeige schlägt aus (UCM-Gerät „Mic“) |
+| Hörmuschel | ✅ | 19.11.: gibt es nicht extra – derselbe Lautsprecher oben, beim Telefonieren nur leiser |
+| Klinkenerkennung | ❌ | Kernel-Arbeit, siehe FEHLT.md |
 
 ## Akku und Laden
 
