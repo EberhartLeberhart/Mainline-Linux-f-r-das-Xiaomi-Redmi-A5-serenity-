@@ -1,0 +1,162 @@
+From c43bc0408fafb2606405aafce5fd592401e2542a Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Fri, 20 Nov 2026 18:21:43 +0100
+Subject: [PATCH] ASoC: sc2730: Klinkenerkennung (Headphone Jack, Stufe 2)
+
+- Erkennungsschaltung im Codec beim Start einschalten (wie Unisocs
+  sprd_headset_eic_init(): ANA_HDT0 VREF_EN/GDET_EN, ANA_HDT2
+  LDETL_EN/LDETH_EN/MDET_EN, ANA_PMU2 Bit 12)
+- ANA_STS0 Bit 11 (LDETL) alle 0,5 s lesen, nach zwei gleichen Lesungen
+  als "Headphone Jack" melden; Pin "Headphones" nur bei gestecktem Stecker
+- Beleg 20.11. (Testbaustein hdt_test): ausgesteckt STS0=0x2000, gesteckt
+  0xb800 (LDETL/LDETH/ALL=1), 5x ein/aus sauber, auch ohne laufenden Ton.
+  EIC 6 allein bleibt 0 (Sammel-Interrupt des Codecs, kommt spaeter statt
+  der Abfrage)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ sound/soc/codecs/sc2730.c | 108 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 108 insertions(+)
+
+diff --git a/sound/soc/codecs/sc2730.c b/sound/soc/codecs/sc2730.c
+index 5f7f0c9ed..0232a9eeb 100644
+--- a/sound/soc/codecs/sc2730.c
++++ b/sound/soc/codecs/sc2730.c
+@@ -8,6 +8,8 @@
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/regmap.h>
++#include <linux/workqueue.h>
++#include <sound/jack.h>
+ #include <sound/soc.h>
+ #include <sound/tlv.h>
+ 
+@@ -562,6 +564,104 @@ static const struct snd_soc_dapm_route sc2730_codec_dapm_routes[] = {
+ 	{"MIC_IN", NULL, "MIC_BIAS"},
+ };
+ 
++/*
++ * Headset detection (only plug-in of the jack for now).
++ *
++ * The detection comparators live in the codec's analog part. Enabling them
++ * follows Unisoc's sprd-headset-sc2730.c (sprd_headset_eic_init()); the
++ * insertion state is then readable in ANA_STS0 without any audio path
++ * being active (tested on the Redmi A5). Unisoc signals changes through
++ * the codec interrupt on PMIC EIC 6; until that is wired up, poll.
++ */
++#define ANA_STS0		0x1184
++
++#define HEDET_VREF_EN		BIT(15)	/* ANA_HDT0 */
++#define HEDET_GDET_EN		BIT(7)	/* ANA_HDT0 */
++#define HEDET_MDET_EN		BIT(15)	/* ANA_HDT2 */
++#define HEDET_LDETH_EN		BIT(9)	/* ANA_HDT2 */
++#define HEDET_LDETL_EN		BIT(4)	/* ANA_HDT2 */
++#define ANA_PMU2_BIAS_RSV1	BIT(12)
++#define HDST_STS_LDETL		BIT(11)	/* ANA_STS0: left channel detected */
++
++#define SC2730_JACK_POLL_MS	500
++
++struct sc2730_jack {
++	struct snd_soc_component *component;
++	struct snd_soc_jack jack;
++	struct snd_soc_jack_pin pin;
++	struct delayed_work work;
++	bool candidate;
++	bool reported;
++};
++
++static void sc2730_jack_work(struct work_struct *work)
++{
++	struct sc2730_jack *j = container_of(to_delayed_work(work),
++					     struct sc2730_jack, work);
++	unsigned int sts;
++	bool plugged;
++
++	if (!regmap_read(j->component->regmap, ANA_STS0, &sts)) {
++		plugged = sts & HDST_STS_LDETL;
++		/* report only after two equal readings in a row */
++		if (plugged == j->candidate && plugged != j->reported) {
++			snd_soc_jack_report(&j->jack,
++					    plugged ? SND_JACK_HEADPHONE : 0,
++					    SND_JACK_HEADPHONE);
++			j->reported = plugged;
++			dev_dbg(j->component->dev, "headphones %s\n",
++				plugged ? "plugged" : "unplugged");
++		}
++		j->candidate = plugged;
++	}
++
++	queue_delayed_work(system_power_efficient_wq, &j->work,
++			   msecs_to_jiffies(SC2730_JACK_POLL_MS));
++}
++
++static int sc2730_jack_init(struct snd_soc_component *component)
++{
++	struct regmap *regmap = component->regmap;
++	struct sc2730_jack *j;
++	unsigned int sts = 0;
++	int ret;
++
++	j = devm_kzalloc(component->dev, sizeof(*j), GFP_KERNEL);
++	if (!j)
++		return -ENOMEM;
++	j->component = component;
++
++	ret = regmap_set_bits(regmap, ANA_HDT0, HEDET_VREF_EN | HEDET_GDET_EN);
++	if (!ret)
++		ret = regmap_set_bits(regmap, ANA_HDT2, HEDET_LDETL_EN |
++				      HEDET_LDETH_EN | HEDET_MDET_EN);
++	if (!ret)
++		ret = regmap_set_bits(regmap, ANA_PMU2, ANA_PMU2_BIAS_RSV1);
++	if (ret)
++		return ret;
++
++	j->pin.pin = "Headphones";
++	j->pin.mask = SND_JACK_HEADPHONE;
++	ret = snd_soc_card_jack_new_pins(component->card, "Headphone Jack",
++					 SND_JACK_HEADPHONE, &j->jack,
++					 &j->pin, 1);
++	if (ret)
++		return ret;
++
++	/* initial state */
++	regmap_read(regmap, ANA_STS0, &sts);
++	j->candidate = j->reported = sts & HDST_STS_LDETL;
++	snd_soc_jack_report(&j->jack, j->reported ? SND_JACK_HEADPHONE : 0,
++			    SND_JACK_HEADPHONE);
++
++	INIT_DELAYED_WORK(&j->work, sc2730_jack_work);
++	snd_soc_component_set_drvdata(component, j);
++	queue_delayed_work(system_power_efficient_wq, &j->work,
++			   msecs_to_jiffies(SC2730_JACK_POLL_MS));
++
++	return 0;
++}
++
+ static int sc2730_codec_probe(struct snd_soc_component *component)
+ {
+ 	struct regmap *regmap = dev_get_regmap(component->dev->parent, NULL);
+@@ -578,11 +678,19 @@ static int sc2730_codec_probe(struct snd_soc_component *component)
+ 
+ 	snd_soc_component_init_regmap(component, regmap);
+ 
++	ret = sc2730_jack_init(component);
++	if (ret)
++		dev_warn(component->dev, "headset detection unavailable: %d\n", ret);
++
+ 	return 0;
+ }
+ 
+ static void sc2730_codec_remove(struct snd_soc_component *component)
+ {
++	struct sc2730_jack *j = snd_soc_component_get_drvdata(component);
++
++	if (j)
++		cancel_delayed_work_sync(&j->work);
+ 	regmap_clear_bits(component->regmap, SC2730_MODULE_EN, ANA_AUD_EN);
+ }
+ 
+-- 
+2.43.0
+
