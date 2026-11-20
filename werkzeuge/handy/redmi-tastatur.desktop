@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Redmi-Tastatur
+Comment=Bildschirmtastatur wie auf dem Sperrbildschirm, blendet sich bei Textfeldern selbst ein
+Exec=/usr/local/bin/redmi-tastatur
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

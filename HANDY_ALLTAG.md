@@ -24,8 +24,10 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 |---|---|---|
 | Desktop an/aus mit Schalter | ✅ | 16.11.: `redmi-desktop.sh an|aus|status`, Schalter `/etc/redmi/desktop.conf`; aus = Server-Betrieb |
 | Automatische Anmeldung | ✅ | 16.11.: lightdm `autologin-user=tunnel-handy` (wie bei Android ohne Passwortfeld) |
-| Bildschirmtastatur am Anmeldebildschirm | ❌ | slick-greeter blendet `onboard` nach einem Neustart nicht ein (nur beim Start von Hand) ❓; im Protokoll keine Meldung dazu. 19.11.: Absturzbericht von lightdm (16.11., `onboard --xid`, Signal 11) – Onboard stürzt dort ab |
-| Bildschirmsperre mit PIN per Touch | ❌ | braucht eine Bildschirmtastatur in der Sperre |
+| Bildschirmtastatur am Anmeldebildschirm | ❌ | 20.11.: Ursache gefunden – Onboard stürzt ab, sobald es eingebettet wird (`onboard --xid` in einem `Gtk.Socket` nachgestellt: Ende-Code −11), und genau so startet slick-greeter es. Plan: eigener Handy-Anmeldebildschirm (lightdm-Greeter) mit der `redmi-tastatur`; bis dahin Autologin. Notlösung „Autologin + sofort sperren“ besprochen, nicht umgesetzt |
+| Bildschirmtastatur auf dem Sperrbildschirm | ✅ | 20.11.: cinnamon-screensaver hat eine eigene Tastatur (`osk.py`) und zeigt sie von selbst, sobald `screen-keyboard-enabled true` und `activation-mode accessible` gesetzt sind |
+| Bildschirmsperre mit PIN per Touch | 🟡 | 20.11.: Passwort per Bildschirmtastatur auf dem Sperrbildschirm geht; eigene PIN statt Passwort offen |
+| Desktop stabil und flüssig | ❌ | 20.11.: einmal ganz abgestürzt beim Tastatur-Test, Desktop reagiert zeitweise zäh. Vermutungen ❓: Speicher (3,6 GB, ZRAM), Mehrlast durch die Barrierefreiheit, oder Kernel. Nach dem Fundament untersuchen (`journalctl -b -1`, OOM, pstore) |
 | Herunterfahren ohne Hänger | 🟡 | 16.11. einmal ~90 s beim Licht-Dienst gehangen; Dienste brauchen kurze Abbruchzeiten |
 
 ## Bildschirm und Einschalttaste
@@ -45,7 +47,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | Punkt | Stand | Notiz |
 |---|---|---|
 | Touch als Maus | ✅ | 16.11.: trifft genau (Zuordnung Display/Touch seit 26.10.) |
-| Bildschirmtastatur im Desktop bei Textfeldern | 🟡 | 19.11.: Cinnamons eigene Tastatur (Barrierefreiheit) gewählt, Onboard nicht (2 Abstürze Signal 11 am 16.11., unhandlich). Gesetzt: `org.cinnamon.keyboard keyboard-position bottom`, `keyboard-type tablet`, `toolkit-accessibility true` (cinnamon + gnome) → unten, geht in Firefox. Offen: steht über den rechten Rand hinaus (auch mit `tablet` und Größe 1/4 – Abstände im Thema? ❓); blendet sich nicht von selbst aus/ein – Cinnamon wartet auf Show/Hide vom `caribou-gtk-module` (nicht installiert, `GTK_MODULES` leer) ❓ |
+| Bildschirmtastatur im Desktop bei Textfeldern | ✅ | 20.11.: eigene `redmi-tastatur` (werkzeuge/handy) – Aussehen und Aufteilung wie auf dem Sperrbildschirm, passt in die Breite, blendet sich in Firefox und im Terminal selbst ein und aus („lief einwandfrei“). Grundlage: Barrierefreiheit an (`toolkit-accessibility true`, `screen-keyboard-enabled true`, `activation-mode accessible`). Cinnamons eigene Desktop-Tastatur bleibt unsichtbar (wartet auf Show vom nicht installierten `caribou-gtk-module`); Onboard nicht genutzt. **Leitlinie: diese Tastatur überall auf dem Handy** |
 | Größere Bedienelemente | ❌ | Skalierung, Leistenhöhe, Schriftgröße für Finger |
 | Gesten (Wischen) | ❌ | Cinnamon-Touch-Gesten prüfen ❓ |
 | Mint-Optik | 🟡 | Mint-Y-Symbole installiert; Mint-Themen nicht bei Ubuntu → von Mint (GitHub) holen |
@@ -56,7 +58,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 |---|---|---|
 | WLAN (unser Weg) | ✅ | `redmi-wlan.service` + wpa_supplicant + systemd-networkd; 16.11.: hält auch mit Desktop-Autologin (Patch 0053, vorher Anmelde-Timeouts) |
 | WLAN im Desktop wählen | ❌ | 16.11.: NetworkManager stritt mit unserem Weg um `wlan0` (vermutlich auch ein Absturz, Kernel-Meldung `ieee80211 phy0: mismatch`) → vorerst `wlan0`/`usb0` für NetworkManager **unmanaged**. Ziel: NetworkManager übernimmt `wlan0` ganz, unser Dienst lädt nur den Treiber |
-| Bluetooth im Desktop | ❓ | Kernel ✅; Desktop-Applet + `redmi-bt.sh` (feste Adresse) zusammen prüfen |
+| Bluetooth im Desktop | ❌ | Kernel ✅; 20.11.: Desktop meldet „Gerät antwortet nicht“ – Kette Kernel → rfkill → bluetoothd → Adapter prüfen; Absturzbericht von `blueman-applet` vom 16.11. |
 | Mobilfunk | ⏸️ | wartet auf die Antwort der Bundesnetzagentur |
 | Uhrzeit aus dem Netz | ✅ | 18.11.: Uhr ging 1 h 23 min vor, kein Zeitdienst installiert → `apt install systemd-timesyncd`, `timedatectl set-ntp true`, `hwclock --systohc`; Zeitzone Europe/Berlin stimmte. Gehört später ins Abbild ❓ RTC-Drift beobachten |
 
@@ -71,7 +73,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | Kopfhörer | 🟡 | Kernel ✅; über das Profil noch nicht getestet |
 | Mikrofon | ✅ | 19.11.: erscheint im Desktop als Eingang „Mikrofon“, Pegelanzeige schlägt aus (UCM-Gerät „Mic“) |
 | Hörmuschel | ✅ | 19.11.: gibt es nicht extra – derselbe Lautsprecher oben, beim Telefonieren nur leiser |
-| Klinkenerkennung | ❌ | Kernel-Arbeit, siehe FEHLT.md |
+| Klinkenerkennung | ✅ | 20.11.: Kopfhörer rein → Ton springt von selbst um, raus → zurück auf den Lautsprecher (Patch 0056 + UCM `JackControl`) |
 
 ## Akku und Laden
 
@@ -95,4 +97,6 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 |---|---|---|
 | Webbrowser | ✅ | 16.11.: Firefox 160 als arm64-.deb aus Mozillas Paketquelle (kein Snap), dazu `pavucontrol`; Skript `werkzeuge/handy/redmi-browser.sh` |
 | Handy und PC verbinden (wie „Smartphone-Link“) | ❌ | Idee 16.11.: KDE Connect auf Handy und PC (Paket `kdeconnect`, läuft auch unter Cinnamon): Zwischenablage, Dateien, Benachrichtigungen, Medien steuern, Handy als Touchpad, Akkustand am PC; später fest ins Abbild |
+| Am PC wie ein Android-Handy anmelden (MTP) | ❌ | Idee 20.11.: MTP-Funktion im USB-Gadget (FunctionFS) neben dem USB-Netz, z. B. mit uMTP-Responder; freigegebene Ordner von `tunnel-handy`; Mint erkennt MTP von selbst |
+| `net.sh` / `deploy.sh` verlässlicher | ❌ | 20.11.: `net.sh` wartet nur auf die Netzwerkkarte, nicht auf Ping → `deploy.sh` läuft ins Leere; `net.sh` setzt eine Standardroute über USB, die dem Handy das Internet nimmt; Gadget-MAC wechselt (Kartenname am PC wechselt mit) |
 | Desktop auf den PC spiegeln | ✅ | `x11vnc` auf dem Handy, durch SSH zum PC getunnelt, Remmina am PC; per USB-Kabel flüssiger als per WLAN |

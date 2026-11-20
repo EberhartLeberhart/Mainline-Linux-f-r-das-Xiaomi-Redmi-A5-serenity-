@@ -1,0 +1,349 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# redmi-tastatur - Bildschirmtastatur fuer den Desktop des Redmi A5
+#
+# Aussehen, Aufteilung und Groessenberechnung stammen aus der Tastatur des
+# Cinnamon-Sperrbildschirms (cinnamon-screensaver 6.0.3, src/osk.py,
+# GPL-2.0, Copyright die Autoren von cinnamon-screensaver). Uebernommen:
+# Key/ExtendedKey, Zeilenaufbau, Breite = Bildschirm - 60, Hoehe = min(H/3, 360) - 60,
+# Farben aus cinnamon-screensaver.css.
+# Neu: eigenes Fenster unten am Bildschirm (Dock, nimmt keinen Fokus),
+# automatisches Ein-/Ausblenden ueber die Barrierefreiheit (AT-SPI),
+# Umschalten von aussen:  redmi-tastatur umschalten
+#
+# Aufruf:  redmi-tastatur              Tastatur starten (normal per Autostart)
+#          redmi-tastatur umschalten   laufende Tastatur ein-/ausblenden
+
+import os
+import signal
+import sys
+
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+gi.require_version('Caribou', '1.0')
+from gi.repository import Gtk, Gdk, GLib, Gio, Caribou
+
+LARGEST_OSK_WIDTH = 1200
+LARGEST_OSK_HEIGHT = 360
+DEFAULT_PADDING = 2
+RAND = 8                # Abstand oben/unten im Fenster
+
+PIDDATEI = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "redmi-tastatur.pid")
+
+CSS = b"""
+.redmi-osk { background-color: rgba(0, 0, 0, 0.88); }
+.osk-button {
+    -gtk-icon-style: requested;
+    border-color: alpha(white, .2);
+    border-image: none;
+    box-shadow: none;
+    background-image: none;
+    background-color: transparent;
+    border-radius: 4px;
+    -gtk-outline-radius: 4px;
+    outline-color: transparent;
+    color: alpha(white, .7);
+    border-width: 1px;
+    border-style: solid;
+    padding: 4px;
+}
+.osk-button:hover { border-color: alpha(white, .2); background-color: alpha(grey, .2); }
+.osk-button:active { border-color: @theme_selected_bg_color; background-color: alpha(grey, .5); }
+.osk-popover { background-color: black; }
+"""
+
+
+# ---------- aus cinnamon-screensaver osk.py (leicht gekuerzt) ----------
+
+class ExtendedKey(Gtk.Button):
+    def __init__(self, label, xkey):
+        super().__init__(label=label)
+        self.get_style_context().add_class("osk-button")
+        self.set_can_focus(False)
+        self._key = xkey
+        self.connect("button-press-event", lambda w, e: self._key.press())
+        self.connect("button-release-event", lambda w, e: self._key.release())
+
+    def update_sizes(self, width, height):
+        self.set_size_request(width * self._key.props.width, height)
+
+
+class Key(Gtk.Button):
+    def __init__(self, key):
+        super().__init__()
+        self.get_style_context().add_class("osk-button")
+        self.set_can_focus(False)
+        self._key = key
+        self._extended_keys = key.get_extended_keys()
+        self._popup = None
+        self._popover_box = None
+
+        self.set_label(self._key.props.label)
+
+        if self._extended_keys:
+            self._key.connect("notify::show-subkeys", self._on_show_subkeys_changed)
+            self._popup = Gtk.Popover(relative_to=self)
+            self._popup.get_style_context().add_class("osk-popover")
+            self._popover_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, margin=6)
+            for xkey in self._extended_keys:
+                uni = Gdk.keyval_to_unicode(xkey.props.keyval)
+                label = chr(uni) if uni else xkey.props.name
+                self._popover_box.pack_start(ExtendedKey(label, xkey), False, False, 2)
+            self._popover_box.show_all()
+            self._popup.add(self._popover_box)
+
+        self.connect("button-press-event", self._press)
+        self.connect("button-release-event", self._release)
+
+    def update_sizes(self, width, height):
+        # Breite ist ein Vielfaches der Normaltaste (Leertaste usw.)
+        self.set_size_request(width * self._key.props.width, height)
+        if self._popover_box:
+            for child in self._popover_box.get_children():
+                child.update_sizes(width, height)
+
+    def _press(self, widget, event):
+        # schnelles Tippen nicht als Doppel-/Dreifachklick werten
+        if event.type in (Gdk.EventType._2BUTTON_PRESS, Gdk.EventType._3BUTTON_PRESS):
+            return Gdk.EVENT_PROPAGATE
+        self._key.press()
+        return Gdk.EVENT_PROPAGATE
+
+    def _release(self, widget, event):
+        self._key.release()
+        return Gdk.EVENT_PROPAGATE
+
+    def _on_show_subkeys_changed(self, key, pspec):
+        if self._key.props.show_subkeys:
+            self._popup.popup()
+        else:
+            self._popup.popdown()
+
+
+# ---------- Fenster ----------
+
+def tastatur_typ():
+    """Layout-Typ wie Cinnamon (org.cinnamon.keyboard keyboard-type), sonst 'tablet'."""
+    src = Gio.SettingsSchemaSource.get_default()
+    if src and src.lookup("org.cinnamon.keyboard", True):
+        typ = Gio.Settings.new("org.cinnamon.keyboard").get_string("keyboard-type")
+        if typ:
+            return typ
+    return "tablet"
+
+
+class Tastatur(Gtk.Window):
+    def __init__(self):
+        super().__init__()
+        self.set_title("Redmi-Tastatur")
+        self.set_type_hint(Gdk.WindowTypeHint.DOCK)
+        self.set_decorated(False)
+        self.set_accept_focus(False)
+        self.set_focus_on_map(False)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_keep_above(True)
+        self.stick()
+        self.get_style_context().add_class("redmi-osk")
+
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual()
+        if visual:
+            self.set_visual(visual)
+            self.set_app_paintable(False)
+
+        mon = Gdk.Display.get_default().get_primary_monitor() or \
+            Gdk.Display.get_default().get_monitor(0)
+        geo = mon.get_geometry()
+        wa = mon.get_workarea()
+
+        # Groessen wie auf dem Sperrbildschirm
+        self.max_width = min(geo.width, LARGEST_OSK_WIDTH) - 60
+        self.max_height = min(geo.height / 3, LARGEST_OSK_HEIGHT) - 60
+        hoehe = int(self.max_height) + 2 * RAND
+
+        self.set_size_request(geo.width, hoehe)
+        self.move(geo.x, wa.y + wa.height - hoehe)
+
+        self._keyboard = Caribou.KeyboardModel(keyboard_type=tastatur_typ())
+        self._groups = {}
+        self._group_stack = Gtk.Stack(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                                      margin_top=RAND, margin_bottom=RAND)
+        self._add_keys()
+        self.add(self._group_stack)
+        self._group_stack.show_all()
+
+    # --- aus osk.py ---
+    def _add_keys(self):
+        size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        for group_name in self._keyboard.get_groups():
+            group = self._keyboard.get_group(group_name)
+            group.connect("notify::active-level", lambda *a: self.set_active_layer())
+            layers = {}
+            for level_name in group.get_levels():
+                level = group.get_level(level_name)
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                size_group.add_widget(box)
+                rows = level.get_rows()
+                row_height = self.max_height / len(rows)
+                for row in rows:
+                    self._add_row(row.get_columns(), box, row_height)
+                layers[level_name] = box
+                box.show_all()
+                self._group_stack.add_named(box, "%s::%s" % (group_name, level_name))
+            self._groups[group_name] = layers
+        self.set_active_layer()
+
+    def _add_row(self, keys, box, row_height):
+        num_keys = 0
+        row_children = []
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        for key in keys:
+            right_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            left_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            right_members = []
+            for child in key.get_children():
+                if child.props.name == "Caribou_Prefs":
+                    continue    # Einstellungs-Taste: hier ohne Funktion
+                button = Key(child)
+                num_keys += child.props.width
+                row_children.append(button)
+                if child.props.align == "right":
+                    right_members.append(button)
+                else:
+                    left_box.pack_start(button, False, False, DEFAULT_PADDING)
+            for member in reversed(right_members):
+                right_box.pack_end(member, False, False, DEFAULT_PADDING)
+            if left_box.get_children():
+                row.pack_start(left_box, True, True, 0)
+            if right_box.get_children():
+                row.pack_end(right_box, True, True, 0)
+        if num_keys:
+            key_width = (self.max_width / num_keys) - (DEFAULT_PADDING * 2)
+            key_height = row_height - (DEFAULT_PADDING * 2)
+            for child in row_children:
+                child.update_sizes(key_width, key_height)
+        box.pack_start(row, False, False, DEFAULT_PADDING)
+
+    def set_active_layer(self):
+        name = self._keyboard.props.active_group
+        level = self._keyboard.get_group(name).props.active_level
+        self._group_stack.set_visible_child_name("%s::%s" % (name, level))
+
+    # --- ein/aus ---
+    def zeigen(self):
+        if not self.get_visible():
+            self.show()
+
+    def verbergen(self):
+        if self.get_visible():
+            self.hide()
+
+    def umschalten(self):
+        if self.get_visible():
+            self.hide()
+        else:
+            self.show()
+
+
+# ---------- automatisch einblenden (AT-SPI) ----------
+
+class Fokuswaechter:
+    """Zeigt die Tastatur, wenn ein Textfeld den Fokus bekommt, sonst nicht."""
+
+    def __init__(self, tastatur):
+        self.t = tastatur
+        self._hide_id = 0
+        try:
+            import pyatspi
+        except ImportError:
+            print("redmi-tastatur: python3-pyatspi fehlt - nur Umschalten von Hand", file=sys.stderr)
+            return
+        self.pyatspi = pyatspi
+        pyatspi.Registry.registerEventListener(self._fokus, "object:state-changed:focused")
+
+    def _ist_textfeld(self, acc):
+        p = self.pyatspi
+        try:
+            if acc.getRole() == p.ROLE_TERMINAL:
+                return True
+            st = acc.getState()
+            return st.contains(p.STATE_EDITABLE) and not st.contains(p.STATE_READ_ONLY)
+        except Exception:
+            return False
+
+    def _fokus(self, event):
+        if not event.detail1:
+            return          # nur "hat den Fokus bekommen" auswerten
+        try:
+            if event.host_application.get_process_id() == os.getpid():
+                return      # eigene Tasten nicht beachten
+        except Exception:
+            pass
+        if self._ist_textfeld(event.source):
+            if self._hide_id:
+                GLib.source_remove(self._hide_id)
+                self._hide_id = 0
+            self.t.zeigen()
+        elif not self._hide_id:
+            # kurz warten: Fokuswechsel zwischen zwei Feldern nicht flackern lassen
+            self._hide_id = GLib.timeout_add(300, self._spaeter_verbergen)
+
+    def _spaeter_verbergen(self):
+        self._hide_id = 0
+        self.t.verbergen()
+        return False
+
+
+def laufende_pid():
+    try:
+        with open(PIDDATEI) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def main():
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "umschalten":
+            pid = laufende_pid()
+            if not pid:
+                print("redmi-tastatur laeuft nicht", file=sys.stderr)
+                return 1
+            os.kill(pid, signal.SIGUSR1)
+            return 0
+        print(__doc__ if __doc__ else "redmi-tastatur [umschalten]")
+        return 2
+
+    if laufende_pid():
+        print("redmi-tastatur laeuft schon", file=sys.stderr)
+        return 0
+    with open(PIDDATEI, "w") as f:
+        f.write(str(os.getpid()))
+
+    prov = Gtk.CssProvider()
+    prov.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov,
+                                             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    t = Tastatur()
+    t.realize()
+    Fokuswaechter(t)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, lambda: (t.umschalten(), True)[1])
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: (Gtk.main_quit(), False)[1])
+    try:
+        Gtk.main()
+    finally:
+        try:
+            os.unlink(PIDDATEI)
+        except OSError:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

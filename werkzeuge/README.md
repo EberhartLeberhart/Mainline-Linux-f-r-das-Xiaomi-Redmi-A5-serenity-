@@ -35,6 +35,7 @@ unter `/usr/local/sbin/`, die Dienste unter `/etc/systemd/system/`, die Einstell
 | `redmi-akku.sh` + `.service` + `akku.conf` | Ladegrenze für den Server-Betrieb (Ladechip SGM41513) |
 | `redmi-cpufreq.sh` + `.service` | cpufreq-Modul beim Start laden |
 | `redmi-browser.sh` | Firefox als arm64-.deb aus Mozillas Paketquelle installieren (statt Ubuntus Snap-Umweg), sonst GNOME Web; dazu `pavucontrol`. Zeigt am Ende den Tondienst der Desktop-Sitzung. Als root, Handy braucht Internet |
+| `redmi-tastatur` + `redmi-tastatur.desktop` + `redmi-tastatur-umschalten.desktop` | Bildschirmtastatur für den Desktop: Aussehen, Aufteilung und Größe wie auf dem Cinnamon-Sperrbildschirm (Code aus cinnamon-screensaver `osk.py`, GPL-2), unten angedockt ohne Fokus, blendet sich über die Barrierefreiheit (AT-SPI) bei Textfeldern und Terminals selbst ein und aus; `redmi-tastatur umschalten` von Hand. Nach `/usr/local/bin/`, Autostart nach `~/.config/autostart/`, Menüeintrag nach `/usr/share/applications/`. Braucht `python3-pyatspi`, `gir1.2-caribou-1.0` und `toolkit-accessibility true` |
 | `ucm2/` + `redmi-ton.service` | Ton-Profil (UCM) für PipeWire/PulseAudio: Lautsprecher + Kopfhörer; der Dienst setzt das Routing bei jedem Start (Schutz vor dem hängenden Audio-DMA). Nach `/usr/share/alsa/ucm2/` bzw. `/etc/systemd/system/` |
 | `zram-generator.conf` | komprimierter Swap im RAM (ZRAM, Patch 0049) für `systemd-zram-generator`: nach `/etc/systemd/zram-generator.conf` |
 | `redmi-taste.sh` + `.service` | Einschalttaste: kurz = Licht, mindestens 3 s halten = Herunterfahren |
