@@ -10,6 +10,20 @@ sipc-Kanälen, `wlan0` mit Scan und Anmeldung (wpa_supplicant empfängt EAPOL 1/
 Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`), GPU Mali-G57 mit Panfrost und Mesa (OpenGL ES 3.1),
 Vibrationsmotor, microSD-Kartenleser.
 
+## Zuerst: Stabilität (20.11., vor den Sensoren)
+
+**Kernel-Oops am 20.11.** (Kernel #117, 2 h nach dem Start, beim YouTube-Schauen in Firefox): `Internal error: Oops [#1]` in `kfree+0x78` aus `___sys_sendmsg`, Prozess `RemVidChild` (Firefox' Video-Dekoder), Lesezugriff auf Adresse 0x8. Ein Absturz in `kfree` ist fast immer ein **Folgeschaden**: Vorher hat etwas Kernel-Speicher beschädigt (doppelt freigegeben oder nach dem Freigeben weiterbenutzt) ❓. Passt zu einem kompletten Absturz beim Tastatur-Test am selben Abend und zu zeitweise zähem Desktop.
+
+**Erste Spur:** Beim Start steht seit jeher `OF: reserved mem: failed to reserve memory for node 'wcn@87000000': base 0x87000000, size 8 MiB`. Der Speicher des WLAN/BT-Kerns (WCN) wird also **nicht reserviert**. Arbeitet der WCN-Kern trotzdem dort, schreiben zwei Prozessoren in denselben Speicher ❓. Am 16.11. als harmlos abgetan – das war voreilig.
+
+| Schritt | Stand | Notiz |
+|---|---|---|
+| WCN-Reservierung klären | ❌ | warum schlägt sie fehl (Überlappung?), wo arbeitet der WCN-Kern wirklich, Gerätebaum korrigieren |
+| Selbsterkennung: Wächter-Dienst | ❌ | Kernel-Protokoll mitlesen (`Oops`, `WARNING`, `BUG`, `Out of memory`, `soft lockup`, `hung task`), Desktop-Benachrichtigung, Bericht ablegen; baut auf `redmi-kmsg.sh`/`redmi-check.sh` auf |
+| Selbsterkennung: pstore/ramoops | ❌ | reservierter Speicher im Gerätebaum, damit die letzten Kernel-Meldungen einen harten Absturz überleben; Wächter meldet sie nach dem Neustart |
+| Speicherfehler jagen | ❌ | `slub_debug` als Startparameter (schwerer: KASAN), dann mit YouTube in Firefox nachstellen |
+| Speicher im Alltag | ❓ | Idee 20.11.: Desktop-Sitzung per cgroup Mindestspeicher (`MemoryLow`), Firefox begrenzen (`MemoryMax`), `systemd-oomd` greift früh ein – gegen Zähigkeit, nicht gegen Speicherbeschädigung |
+
 ## CPU, GPU und Beschleuniger
 
 | Bereich | Stand | Was fehlt |
