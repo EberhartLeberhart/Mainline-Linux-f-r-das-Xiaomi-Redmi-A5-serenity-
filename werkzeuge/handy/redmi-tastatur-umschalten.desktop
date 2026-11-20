@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Tastatur ein/aus
+Comment=Bildschirmtastatur von Hand ein- oder ausblenden
+Exec=/usr/local/bin/redmi-tastatur umschalten
+Icon=input-keyboard
+Categories=Utility;Accessibility;
