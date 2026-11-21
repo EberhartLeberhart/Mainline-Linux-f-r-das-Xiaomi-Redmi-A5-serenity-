@@ -4,6 +4,9 @@ This guide takes you from a clean Linux PC to a Redmi A5 that boots our mainline
 It describes the way the project author's own phone is built today (November 2026).
 
 > **Read this first**
+> - **Android 17 warning:** do not flash our images on a phone updated to Android 17. On a tester's phone this left a
+>   black screen (only vibration); he needed BROM and fastboot to recover. Everything here is tested on the
+>   Android 15 bootloader only, and the Android 17 update should not be installed (see README).
 > - This is an experimental hobby project. You can lose all data on the phone. **Back up every partition first.**
 > - The bootloader must already be **unlocked** (`fastboot getvar unlocked` → `yes`). How that was done is documented in
 >   [BOOTLOADER_UNLOCK.md](BOOTLOADER_UNLOCK.md); this guide does not repeat it.

@@ -24,6 +24,13 @@ Vibrationsmotor, microSD-Kartenleser.
 | Speicherfehler jagen | ❌ | `slub_debug` als Startparameter (schwerer: KASAN), dann mit YouTube in Firefox nachstellen |
 | Speicher im Alltag | ❓ | Idee 20.11.: Desktop-Sitzung per cgroup Mindestspeicher (`MemoryLow`), Firefox begrenzen (`MemoryMax`), `systemd-oomd` greift früh ein – gegen Zähigkeit, nicht gegen Speicherbeschädigung |
 
+**Android 17 (21.11.):** Ein Tester hat nach dem Android-17-Update unsere Abbilder auf Slot b geflasht: nur Vibration, schwarzer Bildschirm ohne Logo. Gerettet über BROM (Slot umschalten) und fastboot (Original-Partitionen zurück). Vermutung ❓: Der neue Bootloader nimmt unsere Abbilder nicht an (`vendor_boot`-Format, Gerätebaum, AVB/Rollback?), unser Kernel startet gar nicht erst. Warnung in README und BUILDING.
+
+| Schritt | Stand | Notiz |
+|---|---|---|
+| Android-17-Bootloader verstehen | ❌ | vom Tester: was genau geflasht, `fastboot getvar version-bootloader`/`all` (ohne Seriennummer/IMEI); Vergleich Android-15- und Android-17-Bootloader: `vendor_boot`-Kopfversion, erwarteter Gerätebaum, Prüfungen |
+| Weg für Android-17-Geräte | ❌ | je nach Ursache: Abbilder anpassen oder klar dokumentieren, dass nur der Android-15-Bootloader geht; eigene Handys bleiben auf Android 15 |
+
 ## CPU, GPU und Beschleuniger
 
 | Bereich | Stand | Was fehlt |

@@ -10,6 +10,14 @@
 ✅ USB OTG (5 V and data role switched by the kernel) · ❌ camera · ⏸️ mobile data (on hold) ·
 detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is still missing (German checklist): [FEHLT.md](FEHLT.md)
 
+> [!WARNING]
+> **Do not flash our images on a phone that has been updated to Android 17.**
+> A tester flashed them on slot b after the Android 17 update (21 Nov 2026): the phone only vibrated, the screen
+> stayed black with no logo. He recovered it via BROM (switch slot) and fastboot (reflash the stock partitions).
+> Android 17 most likely brings a new bootloader that does not accept our images; the cause is not known yet.
+> Everything here is tested on the Android 15 bootloader only. **Do not install the Android 17 update** if you want
+> to run this kernel.
+
 **Build and install it yourself:** [BUILDING.md](BUILDING.md) (English, step by step from a clean PC).
 
 <p align="center"><img src="bilder/redmi-a5-cinnamon-anmeldung.jpg" width="300" alt="Redmi A5 showing the Cinnamon login screen on the mainline kernel"><br>
