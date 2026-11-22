@@ -93,6 +93,21 @@ auch nur `FORCE_SHUTDOWN`.
 Mit 0060–0062 (Kernel #122): `ap_vsp off-0`, PMU `FORCE_SHUTDOWN=1 AUTO_SHUTDOWN_EN=0`, Zustand `0x07` –
 Kernel und Chip sind sich einig, ohne Zusatzmodul.
 
+## IOMMU im Kernel (22.11., Handy 2, Kernel #123)
+
+Patch 0063: Knoten `iommu_vsp: iommu@32000000` nach dem Muster von Ottos Display-IOMMU
+(`sprd,iommu-v1`, `reg = <0x32000000 0x80>`, IOVA `0x20000000` + 256 MiB), dazu
+`power-domains = <&pmu UMS9230_POWER_DOMAIN_AP_VSP>` und ein Takt `CLK_VSP_EB`. Ein Takt reicht: Im
+Takt-Baum hängt `vsp-eb` unter `vsp-clk`, das Takt-Framework schaltet den VSP-Takt also mit ein.
+
+Ergebnis: `32000000.iommu` erscheint unter `/sys/class/iommu/`, keine Meldung „IOMMU version … is
+invalid“ (Bauart VAU erkannt), `ap_vsp on` mit dem Gerät `32000000.iommu` (Runtime-PM „unsupported“),
+PMU-Zustand `0x00`. Display- und ISP-IOMMU unverändert.
+
+Folge: Solange der IOMMU-Treiber läuft, bleibt die VSP-Domäne an (`sprd-iommu` kennt kein Runtime-PM);
+die Takte schaltet der Treiber beim Start ein und nicht wieder aus. Der erste Map-Test braucht ein Gerät
+mit `iommus = <&iommu_vsp>` und kommt deshalb mit dem VSP-Treiber (Etappe 3).
+
 **Offen:** GPU, MM, PUBCP und WCN werden vermutlich ebenso nie wirklich abgeschaltet ❓ (gleiche Maske).
 Einzeln testen, bevor sie das Kennzeichen bekommen. `pd_ignore_unused` und `clk_ignore_unused` stehen fest
 in `CONFIG_CMDLINE` – davon unabhängig schaltet der Kernel unbenutzte Domänen über `sync_state` ab.
@@ -131,8 +146,8 @@ daraus später einen eigenen, offenen V4L2-Treiber bauen.
 |---|---|---|
 | 0. Bestandsaufnahme | ✅ | Hardware, Android-Bibliothek, Kernel-Module, GPL-Quellen (21./22.11.) |
 | 1. Den Chip fragen | ✅ | Stromdomäne, Takte, Registerzugriff (22.11., siehe oben) |
-| 2. IOMMU | 🟡 | Bauart VAU bestätigt, mainline `sprd-iommu` passt; Stromdomäne `ap_vsp` läuft (Patches 0060–0062, 22.11.); fehlt: Gerätebaum-Eintrag für die IOMMU, erster Map-Test |
-| 3. Treiber | ❌ | Stromdomäne als genpd, `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
+| 2. IOMMU | ✅ | Bauart VAU, mainline `sprd-iommu` übernimmt sie; Stromdomäne `ap_vsp` (Patches 0060–0062), IOMMU-Knoten (0063), 22.11. |
+| 3. Treiber | ❌ | erster Map-Test über die IOMMU, `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
 | 4. Bibliothek laden | ❌ | Chroot mit `system/` und `vendor/` aus der eigenen `super`-Partition, kleines Testprogramm (NDK), ein H.264-Bild dekodieren |
 | 5. Mitschreiben | ❌ | Registerstand bei jedem `VSP_COMPLETE` festhalten → Ablauf je Bild verstehen |
 | 6. Eigener Treiber | ❌ | V4L2-stateless-Treiber, erst H.264; Anbindung an GStreamer/FFmpeg ❓ |

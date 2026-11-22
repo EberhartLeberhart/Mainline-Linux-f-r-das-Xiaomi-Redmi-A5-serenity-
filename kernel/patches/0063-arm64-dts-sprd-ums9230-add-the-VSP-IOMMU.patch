@@ -1,0 +1,42 @@
+From 1acdbe1b44fd56aa13d10302b287c9977c1a3180 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 22 Nov 2026 20:08:42 +0100
+Subject: [PATCH] arm64: dts: sprd: ums9230: add the VSP IOMMU
+
+The video decoder IOMMU is of the VAU type (VERSION 0x100) and is handled by the existing sprd-iommu driver. It sits in the first 0x80 bytes of the VSP register window and needs the AP_VSP power domain and CLK_VSP_EB (a child of CLK_VSP). Verified on a Redmi A5: the IOMMU registers without errors, AP_VSP is powered while it is bound.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/boot/dts/sprd/ums9230.dtsi | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230.dtsi b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+index 7afa1ccc4..7737fd5a7 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230.dtsi
++++ b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+@@ -820,6 +820,21 @@ iommu_disp: iommu@31000800 {
+ 			#iommu-cells = <0>;
+ 		};
+ 
++		/*
++		 * IOMMU of the video decoder (VSP), type VAU (VERSION 0x100).
++		 * Shares the first 0x80 bytes of the VSP register window.
++		 * CLK_VSP_EB is a child of CLK_VSP, so enabling it also
++		 * enables the VSP core clock.
++		 */
++		iommu_vsp: iommu@32000000 {
++			compatible = "sprd,iommu-v1";
++			reg = <0x32000000 0x80>;
++			clocks = <&apahb_gate CLK_VSP_EB>;
++			power-domains = <&pmu UMS9230_POWER_DOMAIN_AP_VSP>;
++			sprd,iova-range = <0x20000000 0x10000000>;
++			#iommu-cells = <0>;
++		};
++
+ 		dsi: dsi@31100000 {
+ 			compatible = "sprd,ums9230-dsi-host", "sprd,sharkl5-dsi-host";
+ 			reg = <0x31100000 0x1000>;
+-- 
+2.43.0
+
