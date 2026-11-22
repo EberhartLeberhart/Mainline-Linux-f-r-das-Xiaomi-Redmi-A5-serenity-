@@ -24,6 +24,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 |---|---|---|
 | Desktop an/aus mit Schalter | ✅ | 16.11.: `redmi-desktop.sh an|aus|status`, Schalter `/etc/redmi/desktop.conf`; aus = Server-Betrieb |
 | Automatische Anmeldung | ✅ | 16.11.: lightdm `autologin-user=tunnel-handy` (wie bei Android ohne Passwortfeld) |
+| Bildschirmtastatur im Cinnamon-Menü | ❌ | 22.11.: Menü und Leiste zeichnet Cinnamon selbst über allen Fenstern – die Tastatur liegt darunter. Ausweichen nach oben getestet: ein Tipp außerhalb des Menüs schließt es. **Plan: Tastatur als Cinnamon-Erweiterung** (zeichnet in derselben Schicht wie das Menü) |
 | Bildschirmtastatur am Anmeldebildschirm | ❌ | 20.11.: Ursache gefunden – Onboard stürzt ab, sobald es eingebettet wird (`onboard --xid` in einem `Gtk.Socket` nachgestellt: Ende-Code −11), und genau so startet slick-greeter es. Plan: eigener Handy-Anmeldebildschirm (lightdm-Greeter) mit der `redmi-tastatur`; bis dahin Autologin. Notlösung „Autologin + sofort sperren“ besprochen, nicht umgesetzt |
 | Bildschirmtastatur auf dem Sperrbildschirm | ✅ | 20.11.: cinnamon-screensaver hat eine eigene Tastatur (`osk.py`) und zeigt sie von selbst, sobald `screen-keyboard-enabled true` und `activation-mode accessible` gesetzt sind |
 | Bildschirmsperre mit PIN per Touch | 🟡 | 20.11.: Passwort per Bildschirmtastatur auf dem Sperrbildschirm geht; eigene PIN statt Passwort offen |
@@ -47,7 +48,7 @@ beim Tester Arch Linux ARM + KDE Plasma 6.8 (Wayland).
 | Punkt | Stand | Notiz |
 |---|---|---|
 | Touch als Maus | ✅ | 16.11.: trifft genau (Zuordnung Display/Touch seit 26.10.) |
-| Bildschirmtastatur im Desktop bei Textfeldern | ✅ | 20.11.: eigene `redmi-tastatur` (werkzeuge/handy) – Aussehen und Aufteilung wie auf dem Sperrbildschirm, passt in die Breite, blendet sich in Firefox und im Terminal selbst ein und aus („lief einwandfrei“). Grundlage: Barrierefreiheit an (`toolkit-accessibility true`, `screen-keyboard-enabled true`, `activation-mode accessible`). Cinnamons eigene Desktop-Tastatur bleibt unsichtbar (wartet auf Show vom nicht installierten `caribou-gtk-module`); Onboard nicht genutzt. **Leitlinie: diese Tastatur überall auf dem Handy** |
+| Bildschirmtastatur im Desktop bei Textfeldern | ✅ | 20.11.: eigene `redmi-tastatur` (werkzeuge/handy) – Aussehen und Aufteilung wie auf dem Sperrbildschirm, passt in die Breite, blendet sich in Firefox und im Terminal selbst ein und aus („lief einwandfrei“). Grundlage: Barrierefreiheit an (`toolkit-accessibility true`, `screen-keyboard-enabled true`, `activation-mode accessible`). Cinnamons eigene Desktop-Tastatur bleibt unsichtbar (wartet auf Show vom nicht installierten `caribou-gtk-module`); Onboard nicht genutzt. **Leitlinie: diese Tastatur überall auf dem Handy**. 22.11.: lag teilweise unter der unteren Leiste (unterste Reihe halb verdeckt) – Platz wird jetzt bei jedem Einblenden mit der echten Fensterhöhe neu berechnet ✅ |
 | Größere Bedienelemente | ❌ | Skalierung, Leistenhöhe, Schriftgröße für Finger |
 | Gesten (Wischen) | ❌ | Cinnamon-Touch-Gesten prüfen ❓ |
 | Mint-Optik | 🟡 | Mint-Y-Symbole installiert; Mint-Themen nicht bei Ubuntu → von Mint (GitHub) holen |

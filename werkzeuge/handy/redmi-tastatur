@@ -11,6 +11,12 @@
 # Neu: eigenes Fenster unten am Bildschirm (Dock, nimmt keinen Fokus),
 # automatisches Ein-/Ausblenden ueber die Barrierefreiheit (AT-SPI),
 # Umschalten von aussen:  redmi-tastatur umschalten
+# 22.11.: Platz wird bei jedem Einblenden und jeder Groessenaenderung neu
+# berechnet (Arbeitsbereich ohne Leiste, echte Fensterhoehe) - vorher ragte
+# die Tastatur in die untere Leiste und die unterste Reihe war halb verdeckt.
+# Nicht moeglich: ueber Cinnamons Menue liegen. Leiste und Menue zeichnet
+# Cinnamon selbst ueber allen Fenstern, und ein Tipp ausserhalb schliesst das
+# Menue. Dafuer muesste die Tastatur eine Cinnamon-Erweiterung werden.
 #
 # Aufruf:  redmi-tastatur              Tastatur starten (normal per Autostart)
 #          redmi-tastatur umschalten   laufende Tastatur ein-/ausblenden
@@ -154,10 +160,7 @@ class Tastatur(Gtk.Window):
             self.set_visual(visual)
             self.set_app_paintable(False)
 
-        mon = Gdk.Display.get_default().get_primary_monitor() or \
-            Gdk.Display.get_default().get_monitor(0)
-        geo = mon.get_geometry()
-        wa = mon.get_workarea()
+        geo = self._monitor().get_geometry()
 
         # Groessen wie auf dem Sperrbildschirm
         self.max_width = min(geo.width, LARGEST_OSK_WIDTH) - 60
@@ -165,7 +168,9 @@ class Tastatur(Gtk.Window):
         hoehe = int(self.max_height) + 2 * RAND
 
         self.set_size_request(geo.width, hoehe)
-        self.move(geo.x, wa.y + wa.height - hoehe)
+        # Die Tasten brauchen meist etwas mehr Hoehe als berechnet: nach jeder
+        # Groessenaenderung mit der echten Hoehe neu platzieren
+        self.connect("size-allocate", lambda w, a: self.platzieren())
 
         self._keyboard = Caribou.KeyboardModel(keyboard_type=tastatur_typ())
         self._groups = {}
@@ -174,6 +179,21 @@ class Tastatur(Gtk.Window):
         self._add_keys()
         self.add(self._group_stack)
         self._group_stack.show_all()
+
+    @staticmethod
+    def _monitor():
+        d = Gdk.Display.get_default()
+        return d.get_primary_monitor() or d.get_monitor(0)
+
+    def platzieren(self):
+        """Unten in den Arbeitsbereich legen - ohne die Leiste zu ueberdecken."""
+        mon = self._monitor()
+        geo = mon.get_geometry()
+        wa = mon.get_workarea()     # jedes Mal neu: die Leiste kann nach uns gestartet sein
+        _, hoehe = self.get_size()
+        x, y = geo.x, wa.y + wa.height - hoehe
+        if self.get_position() != (x, y):
+            self.move(x, y)
 
     # --- aus osk.py ---
     def _add_keys(self):
@@ -234,6 +254,7 @@ class Tastatur(Gtk.Window):
 
     # --- ein/aus ---
     def zeigen(self):
+        self.platzieren()
         if not self.get_visible():
             self.show()
 
@@ -245,7 +266,7 @@ class Tastatur(Gtk.Window):
         if self.get_visible():
             self.hide()
         else:
-            self.show()
+            self.zeigen()
 
 
 # ---------- automatisch einblenden (AT-SPI) ----------
