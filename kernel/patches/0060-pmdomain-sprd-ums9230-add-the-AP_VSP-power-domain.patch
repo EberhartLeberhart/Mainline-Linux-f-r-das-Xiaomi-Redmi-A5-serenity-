@@ -1,0 +1,49 @@
+From 14dd1bd91c77739fac4a22d1e85f681f39584fbf Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 22 Nov 2026 19:28:49 +0100
+Subject: [PATCH 60/62] pmdomain: sprd: ums9230: add the AP_VSP power domain
+
+Add the video decoder (VSP) power domain to the domain table (PD_AP_VSP_CFG_0 at PMU + 0x314) and to the device tree. Verified on a Redmi A5: the domain registers without errors.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/boot/dts/sprd/ums9230.dtsi      | 5 +++++
+ drivers/pmdomain/sprd/ums9230-pm-domains.h | 5 +++++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230.dtsi b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+index 9bf35dc25..7afa1ccc4 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230.dtsi
++++ b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+@@ -1175,6 +1175,11 @@ power-domain@UMS9230_POWER_DOMAIN_MM {
+ 					#power-domain-cells = <0>;
+ 				};
+ 
++				power-domain@UMS9230_POWER_DOMAIN_AP_VSP {
++					reg = <UMS9230_POWER_DOMAIN_AP_VSP>;
++					#power-domain-cells = <0>;
++				};
++
+ 				power-domain@UMS9230_POWER_DOMAIN_PUBCP {
+ 					reg = <UMS9230_POWER_DOMAIN_PUBCP>;
+ 					#power-domain-cells = <0>;
+diff --git a/drivers/pmdomain/sprd/ums9230-pm-domains.h b/drivers/pmdomain/sprd/ums9230-pm-domains.h
+index d8fb568e0..d52b129b5 100644
+--- a/drivers/pmdomain/sprd/ums9230-pm-domains.h
++++ b/drivers/pmdomain/sprd/ums9230-pm-domains.h
+@@ -17,6 +17,11 @@ static const struct sprd_pmu_domain_data sprd_pmu_domain_data_ums9230[] = {
+ 		.caps = SPRD_PD_SHUTDOWN,
+ 		.pd_cfg_offs = 0x02e8,
+ 	},
++	[UMS9230_POWER_DOMAIN_AP_VSP] = {
++		.name = "ap_vsp",
++		.caps = SPRD_PD_SHUTDOWN,
++		.pd_cfg_offs = 0x0314,
++	},
+ 	[UMS9230_POWER_DOMAIN_PUBCP] = {
+ 		.name = "pubcp",
+ 		.caps = SPRD_PD_SHUTDOWN | SPRD_PD_ACTIVE_WAKEUP,
+-- 
+2.43.0
+

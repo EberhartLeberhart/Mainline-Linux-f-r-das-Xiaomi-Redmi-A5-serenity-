@@ -1,0 +1,81 @@
+From dc5a8c989cefe238b923e86b407b37dccd515bca Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sun, 22 Nov 2026 19:28:49 +0100
+Subject: [PATCH 62/62] pmdomain: sprd: power AP_VSP off with FORCE_SHUTDOWN
+ only
+
+Setting AUTO_SHUTDOWN_EN together with FORCE_SHUTDOWN keeps the AP_VSP domain powered (PMU state 0x00). Clearing only AUTO_SHUTDOWN_EN switched it off within 300 us (state 0x07). Add SPRD_PD_FORCE_OFF and use it for AP_VSP; other domains are unchanged until tested.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/pmdomain/sprd/pm-domains.c         | 11 +++++++++--
+ drivers/pmdomain/sprd/pm-domains.h         |  7 +++++++
+ drivers/pmdomain/sprd/ums9230-pm-domains.h |  2 +-
+ 3 files changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/pmdomain/sprd/pm-domains.c b/drivers/pmdomain/sprd/pm-domains.c
+index 939ddba75..0446de65a 100644
+--- a/drivers/pmdomain/sprd/pm-domains.c
++++ b/drivers/pmdomain/sprd/pm-domains.c
+@@ -62,14 +62,21 @@ static int sprd_pmu_power_off(struct generic_pm_domain *genpd)
+ {
+ 	struct sprd_pmu_domain *pd = to_sprd_pmu_domain(genpd);
+ 	struct sprd_pmu *pmu = pd->pmu;
++	u32 mask = SPRD_PMU_FORCE_SHUTDOWN_MASK;
++
++	/*
++	 * power_on clears both FORCE_SHUTDOWN and AUTO_SHUTDOWN_EN, so setting
++	 * only FORCE_SHUTDOWN leaves AUTO_SHUTDOWN_EN cleared.
++	 */
++	if (SPRD_PD_CAPS(pd, SPRD_PD_FORCE_OFF))
++		mask = SPRD_PMU_FORCE_SHUTDOWN;
+ 
+ 	if (pd->data->force_deep_sleep_offs)
+ 		regmap_write(pmu->base, pd->data->force_deep_sleep_offs + 0x1000,
+ 			     pd->data->force_deep_sleep_mask);
+ 
+ 	if (SPRD_PD_CAPS(pd, SPRD_PD_SHUTDOWN))
+-		regmap_write(pmu->base, pd->data->pd_cfg_offs + 0x1000,
+-			     SPRD_PMU_FORCE_SHUTDOWN_MASK);
++		regmap_write(pmu->base, pd->data->pd_cfg_offs + 0x1000, mask);
+ 
+ 	msleep(50);
+ 
+diff --git a/drivers/pmdomain/sprd/pm-domains.h b/drivers/pmdomain/sprd/pm-domains.h
+index 92945558d..242f52ce0 100644
+--- a/drivers/pmdomain/sprd/pm-domains.h
++++ b/drivers/pmdomain/sprd/pm-domains.h
+@@ -6,9 +6,16 @@
+ #define SPRD_PD_ALWAYS_ON		BIT(0)
+ #define SPRD_PD_SHUTDOWN		BIT(1)
+ #define SPRD_PD_ACTIVE_WAKEUP		BIT(2)
++/*
++ * Power off with FORCE_SHUTDOWN only. With AUTO_SHUTDOWN_EN also set, the
++ * hardware keeps the domain powered until the whole AP subsystem sleeps
++ * (measured on the UMS9230 AP_VSP domain).
++ */
++#define SPRD_PD_FORCE_OFF		BIT(3)
+ #define SPRD_PD_CAPS(_pd, _x)		((_pd)->data->caps & (_x))
+ 
+ #define SPRD_PMU_FORCE_SHUTDOWN_MASK	GENMASK(25, 24)
++#define SPRD_PMU_FORCE_SHUTDOWN		BIT(25)
+ 
+ struct sprd_pmu_domain_data {
+ 	const char *name;
+diff --git a/drivers/pmdomain/sprd/ums9230-pm-domains.h b/drivers/pmdomain/sprd/ums9230-pm-domains.h
+index d52b129b5..a712ff591 100644
+--- a/drivers/pmdomain/sprd/ums9230-pm-domains.h
++++ b/drivers/pmdomain/sprd/ums9230-pm-domains.h
+@@ -19,7 +19,7 @@ static const struct sprd_pmu_domain_data sprd_pmu_domain_data_ums9230[] = {
+ 	},
+ 	[UMS9230_POWER_DOMAIN_AP_VSP] = {
+ 		.name = "ap_vsp",
+-		.caps = SPRD_PD_SHUTDOWN,
++		.caps = SPRD_PD_SHUTDOWN | SPRD_PD_FORCE_OFF,
+ 		.pd_cfg_offs = 0x0314,
+ 	},
+ 	[UMS9230_POWER_DOMAIN_PUBCP] = {
+-- 
+2.43.0
+

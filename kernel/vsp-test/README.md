@@ -1,7 +1,7 @@
 # vsp-test – Testmodule für den Video-Decoder (VSP)
 
-Drei kleine Out-of-tree-Module für den Video-Decoder des UMS9230. Keins bleibt geladen
-(`redmi_vsp_an` und `redmi_vsp_iommu` melden absichtlich einen Fehler beim Laden), Ausgabe steht im Kernel-Protokoll.
+Vier kleine Out-of-tree-Module für den Video-Decoder des UMS9230. Keins bleibt geladen
+(`redmi_vsp_an`, `redmi_vsp_iommu` und `redmi_vsp_auto` melden absichtlich einen Fehler beim Laden), Ausgabe steht im Kernel-Protokoll.
 
 - **`redmi_vsp_frage.c`** liest nur: Zustand der VSP-Stromdomäne (PMU), Systemfreigabe (AON),
   Takt-Tor und Reset (AP-AHB). Der VSP selbst wird nicht angefasst.
@@ -10,6 +10,9 @@ Drei kleine Out-of-tree-Module für den Video-Decoder des UMS9230. Keins bleibt 
   drei Interrupt-Masken (nur wenn kein RAW-Bit steht) und stellt danach alles wieder her.
 - **`redmi_vsp_iommu.c`** schaltet den VSP genauso ein und liest dann nur die Register seiner IOMMU
   (+0x00 bis +0xa0) samt Bauart (`VERSION` Bits 15:8: 0 = EX, 1 = VAU).
+- **`redmi_vsp_auto.c`** löscht nur `AUTO_SHUTDOWN_EN` (Bit 24) der VSP-Domäne über die Lösch-Adresse
+  (PMU + 0x2314), wenn `FORCE_SHUTDOWN` und `AUTO_SHUTDOWN_EN` beide gesetzt sind, und liest danach den
+  Zustand. Hat gezeigt, dass Bit 24 die Domäne trotz `FORCE_SHUTDOWN` wach hält (vor Patch 0062).
 
 Hintergrund, Adressen und Ergebnisse: [DECODER.md](../../DECODER.md).
 

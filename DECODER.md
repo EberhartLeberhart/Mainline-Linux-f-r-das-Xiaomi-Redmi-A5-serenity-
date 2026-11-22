@@ -72,6 +72,31 @@ wie Unisocs `sprd_iommuvau_hal_register.h`. Kleine Unterschiede ❓: mainline sc
 muss also vorher als genpd-Treiber existieren und im Gerätebaum per `power-domains` an IOMMU und VSP
 hängen – sonst liest der Treiber einen ausgeschalteten Block.
 
+## Stromdomäne im Kernel (22.11., Handy 2, Kernel #120–#122)
+
+Ottos Kernel hat schon einen Treiber für die PMU-Stromdomänen (`drivers/pmdomain/sprd/pm-domains.c`,
+Knoten `pmu` im Gerätebaum). Die Nummer `UMS9230_POWER_DOMAIN_AP_VSP` (13) gab es, aber keinen Eintrag in
+der Tabelle und keinen Knoten. Drei kleine Patches:
+
+| Patch | Was | Beleg |
+|---|---|---|
+| 0060 | Eintrag `ap_vsp` (`pd_cfg_offs = 0x0314`) und Knoten `power-domain@UMS9230_POWER_DOMAIN_AP_VSP`, noch ohne Gerät | Domäne erscheint in `pm_genpd_summary`, keine Fehler |
+| 0061 | Domänen mit ihrem echten Zustand anmelden (`pm_genpd_init(…, false)`): Der Treiber schaltet beim Start jede Domäne **ein**, meldete sie aber als **aus** | vorher: Kernel `off`, PMU Zustand `0x00` (an) |
+| 0062 | Neues Kennzeichen `SPRD_PD_FORCE_OFF`: beim Ausschalten nur `FORCE_SHUTDOWN` (Bit 25) setzen, nicht auch `AUTO_SHUTDOWN_EN` (Bit 24); vorerst nur für `ap_vsp` | siehe unten |
+
+Messung zu 0062 (Testmodul `redmi_vsp_auto.c`): Nach Ottos Ausschalten stand `CFG 0x03010404`
+(`FORCE=1 AUTO=1`), Zustand `0x00` – **noch an**. Nur Bit 24 gelöscht → `0x02010404`, Zustand `0x07` nach
+300 µs. `AUTO_SHUTDOWN_EN` lässt die Hardware also selbst entscheiden und hebt `FORCE_SHUTDOWN` auf ❓
+(vermutlich: aus erst, wenn das ganze AP-System schläft). Unisocs eigener Treiber setzt beim Ausschalten
+auch nur `FORCE_SHUTDOWN`.
+
+Mit 0060–0062 (Kernel #122): `ap_vsp off-0`, PMU `FORCE_SHUTDOWN=1 AUTO_SHUTDOWN_EN=0`, Zustand `0x07` –
+Kernel und Chip sind sich einig, ohne Zusatzmodul.
+
+**Offen:** GPU, MM, PUBCP und WCN werden vermutlich ebenso nie wirklich abgeschaltet ❓ (gleiche Maske).
+Einzeln testen, bevor sie das Kennzeichen bekommen. `pd_ignore_unused` und `clk_ignore_unused` stehen fest
+in `CONFIG_CMDLINE` – davon unabhängig schaltet der Kernel unbenutzte Domänen über `sync_state` ab.
+
 ## Android-Seite (eigene `super`-Partition, privat)
 
 - `vendor/lib64/libomx_avcdec_hw_sprd.so` (H.264), `libomx_hevcdec_hw_sprd.so` (HEVC), dazu Codec2-Fassungen
@@ -106,7 +131,7 @@ daraus später einen eigenen, offenen V4L2-Treiber bauen.
 |---|---|---|
 | 0. Bestandsaufnahme | ✅ | Hardware, Android-Bibliothek, Kernel-Module, GPL-Quellen (21./22.11.) |
 | 1. Den Chip fragen | ✅ | Stromdomäne, Takte, Registerzugriff (22.11., siehe oben) |
-| 2. IOMMU | 🟡 | Bauart VAU bestätigt, mainline `sprd-iommu` passt (22.11.); fehlt: Stromdomäne als genpd, Gerätebaum-Eintrag, erster Map-Test |
+| 2. IOMMU | 🟡 | Bauart VAU bestätigt, mainline `sprd-iommu` passt; Stromdomäne `ap_vsp` läuft (Patches 0060–0062, 22.11.); fehlt: Gerätebaum-Eintrag für die IOMMU, erster Map-Test |
 | 3. Treiber | ❌ | Stromdomäne als genpd, `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
 | 4. Bibliothek laden | ❌ | Chroot mit `system/` und `vendor/` aus der eigenen `super`-Partition, kleines Testprogramm (NDK), ein H.264-Bild dekodieren |
 | 5. Mitschreiben | ❌ | Registerstand bei jedem `VSP_COMPLETE` festhalten → Ablauf je Bild verstehen |
