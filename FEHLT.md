@@ -1,4 +1,4 @@
-# Was im Kernel noch fehlt (Stand 18.11.2026)
+# Was im Kernel noch fehlt (Stand 22.11.2026)
 
 Zum Abhaken. Belege und Einzelheiten stehen in [STATUS.md](STATUS.md), die Arbeitsreihenfolge in
 [UEBERGABE.md](UEBERGABE.md). Zeichen: 🟡 angefangen · ❌ fehlt · ❓ noch nicht untersucht.
@@ -10,25 +10,34 @@ sipc-Kanälen, `wlan0` mit Scan und Anmeldung (wpa_supplicant empfängt EAPOL 1/
 Kerne (AES/SHA/CRC32/NEON, Kernel nutzt `aes-ce`), GPU Mali-G57 mit Panfrost und Mesa (OpenGL ES 3.1),
 Vibrationsmotor, microSD-Kartenleser.
 
-## Zuerst: Stabilität (20.11., vor den Sensoren)
+## Zuerst: Stabilität (20.–22.11., vor den Sensoren)
 
-**Kernel-Oops am 20.11.** (Kernel #117, 2 h nach dem Start, beim YouTube-Schauen in Firefox): `Internal error: Oops [#1]` in `kfree+0x78` aus `___sys_sendmsg`, Prozess `RemVidChild` (Firefox' Video-Dekoder), Lesezugriff auf Adresse 0x8. Ein Absturz in `kfree` ist fast immer ein **Folgeschaden**: Vorher hat etwas Kernel-Speicher beschädigt (doppelt freigegeben oder nach dem Freigeben weiterbenutzt) ❓. Passt zu einem kompletten Absturz beim Tastatur-Test am selben Abend und zu zeitweise zähem Desktop.
+**Abstürze:** Mit Taktsteuerung (`sprd-cpufreq-v2`) stürzte das Handy unter Last (Firefox mit Video) alle 10–40 Minuten ab, manchmal sogar im Leerlauf: Oops und Panics an immer anderen Stellen (`kfree`, Planer, Timer, `cpuidle`), einzelne gekippte Bits im Kernel-Code – nur aus Sicht **eines** Kerns –, Register als 0 gelesen. Die Berichte kamen über **pstore/ramoops** (`/var/lib/systemd/pstore`), das schon im Kernel und Gerätebaum steckte.
 
-**Erste Spur:** Beim Start steht seit jeher `OF: reserved mem: failed to reserve memory for node 'wcn@87000000': base 0x87000000, size 8 MiB`. Der Speicher des WLAN/BT-Kerns (WCN) wird also **nicht reserviert**. Arbeitet der WCN-Kern trotzdem dort, schreiben zwei Prozessoren in denselben Speicher ❓. Am 16.11. als harmlos abgetan – das war voreilig.
+**Ursache (22.11., auf zwei Handys belegt):** Beide Kern-Gruppen hängen an **einer** Leitung `DCDC_CPU` (Bootloader `power.from.extern=0`, bestätigt unter Android). Die Firmware stellt aber nur die Spannung der Gruppe ein, die gerade umschaltet, und übergeht den Bedarf der anderen. Messung Handy 2, kleine Kerne fest auf 1378 MHz (Tabelle: 846 mV), große Stufe für Stufe runter: 1820 → 928 mV, 1536 → 862, 1404 → **822**, 1228 → **762**, 768 → **750** mV. Kleine Kerne auf 1612 MHz (928 mV), große auf 768 MHz → **sofortiger Neustart**. Die Firmware programmiert den Regler außerdem nur, wenn sich die Spannung der umschaltenden Gruppe ändert.
+
+**Gegenproben:** ohne Taktsteuerung (feste 1,0 V vom Bootloader) 60 min Rechenfehler-Zähler auf allen 8 Kernen, 263.694 Prüfsummen, 0 Fehler (Handy 1) und 30 min große Kerne (Handy 2); jede feste Stufe (1820, 1228) und der Wechsel 1228 ↔ 1820 (10.735×) stabil; Tiefschlaf sperren hilft nicht; Bin-Übergabe an die Firmware ändert die Tabelle nicht (Android übergibt keinen).
+
+**Lösung: Kopplung im Treiber (Patch 0059):** Der Treiber merkt sich die gewünschte Stufe beider Gruppen, hält jede Gruppe mindestens auf der Stufe, deren Spannung den höchsten Bedarf deckt, schickt die Gruppe mit der höchsten Spannung zuletzt und frischt deren Spannung auf, wenn nötig (Schalter `couple_clusters`, Zähler `couple_raises`/`couple_refreshes`). Beleg: Handy 2, freie Taktsteuerung, Rechenfehler-Zähler 30 min auf den großen Kernen → 0 Fehler (ohne Kopplung Absturz nach ~1 min); Handy 1 im Alltag mit Firefox/Video 67 min ohne Oops (vorher spätestens nach 40 min), 2,1 Mio. Eingriffe. Fühlt sich flüssiger an, weil die kleinen Kerne nicht mehr auf 614 MHz fallen, solange die großen laufen (Leerlaufstrom noch messen).
 
 | Schritt | Stand | Notiz |
 |---|---|---|
-| WCN-Reservierung klären | ❌ | warum schlägt sie fehl (Überlappung?), wo arbeitet der WCN-Kern wirklich, Gerätebaum korrigieren |
-| Selbsterkennung: Wächter-Dienst | ❌ | Kernel-Protokoll mitlesen (`Oops`, `WARNING`, `BUG`, `Out of memory`, `soft lockup`, `hung task`), Desktop-Benachrichtigung, Bericht ablegen; baut auf `redmi-kmsg.sh`/`redmi-check.sh` auf |
-| Selbsterkennung: pstore/ramoops | ❌ | reservierter Speicher im Gerätebaum, damit die letzten Kernel-Meldungen einen harten Absturz überleben; Wächter meldet sie nach dem Neustart |
-| Speicherfehler jagen | ❌ | `slub_debug` als Startparameter (schwerer: KASAN), dann mit YouTube in Firefox nachstellen |
-| Speicher im Alltag | ❓ | Idee 20.11.: Desktop-Sitzung per cgroup Mindestspeicher (`MemoryLow`), Firefox begrenzen (`MemoryMax`), `systemd-oomd` greift früh ein – gegen Zähigkeit, nicht gegen Speicherbeschädigung |
+| WCN-Reservierung klären | ✅ | Board-DT `wcn@87000000` überlappte Ottos Aufteilung → Lücke 0x87480000–0x874FFFFF war normaler RAM; reserviert (Patch 0057). Richtig, aber nicht die Ursache |
+| Audio-DMA nach Stopp | ✅ | `sprd-pcm-dma` schickte nach `TRIGGER_STOP` einen freigegebenen Deskriptor erneut ab (Oops `vchan_tx_submit`, `dead000000000108`) → neuer Deskriptor in `prepare()` (Patch 0058). Steckt auch in mainline; Kandidat für eine Einreichung |
+| Spannung beider Kern-Gruppen | ✅ | Kopplung (Patch 0059), siehe oben. Kandidat für eine Einreichung |
+| Selbsterkennung: pstore/ramoops | ✅ | läuft (`ramoops@fff80000`, 256 KiB); systemd legt die Berichte in `/var/lib/systemd/pstore` ab |
+| Werkzeug: Rechenfehler-Zähler | ✅ | `werkzeuge/handy/redmi-cputest.sh "6 7" 30` – SHA-256 je Kern immer wieder, jeder Fehler sofort im Journal |
+| Selbsterkennung: Wächter-Dienst | ❌ | Kernel-Protokoll und pstore nach dem Start auswerten, Desktop-Benachrichtigung |
+| Leerlaufstrom mit Kopplung | ❓ | Strom mit/ohne Kopplung messen; ggf. nur koppeln, wenn die großen Kerne wirklich laufen |
+| Spannungsschwankung im Leerlauf | ❓ | `DCDC_CPU` wechselt 700/725 mV ohne Zutun des Treibers (Hardware senkt bei schlafenden Kernen?) |
+| Firmware-Wartezeit/Spannungsschritt | ❓ | `sprd,voltage-margin` ist bei Unisoc eine Wartezeit in Takten, `sprd,voltage-step` der größte Schritt; bei uns nicht gesetzt (bei Xiaomi auch nicht) |
+| Speicher im Alltag | ❓ | Idee 20.11.: Desktop-Sitzung per cgroup Mindestspeicher (`MemoryLow`), Firefox begrenzen (`MemoryMax`), `systemd-oomd` greift früh ein |
 
 **Android 17 (21.11.):** Ein Tester hat nach dem Android-17-Update unsere Abbilder auf Slot b geflasht: nur Vibration, schwarzer Bildschirm ohne Logo. Gerettet über BROM (Slot umschalten) und fastboot (Original-Partitionen zurück). Vermutung ❓: Der neue Bootloader nimmt unsere Abbilder nicht an (`vendor_boot`-Format, Gerätebaum, AVB/Rollback?), unser Kernel startet gar nicht erst. Warnung in README und BUILDING.
 
 | Schritt | Stand | Notiz |
 |---|---|---|
-| Android-17-Bootloader verstehen | ❌ | vom Tester: was genau geflasht, `fastboot getvar version-bootloader`/`all` (ohne Seriennummer/IMEI); Vergleich Android-15- und Android-17-Bootloader: `vendor_boot`-Kopfversion, erwarteter Gerätebaum, Prüfungen |
+| Android-17-Bootloader verstehen | ❌ | vom Tester: was genau geflasht, `fastboot getvar version-bootloader`/`all` (ohne Seriennummer/IMEI); Vergleich Android-15- und Android-17-Bootloader: `vendor_boot`-Kopfversion, erwarteter Gerätebaum, Prüfungen. 22.11. (lunadevph): neuer AVB-Bildschirm, längeres Vibrieren, Kernel 5.15 → 6.18; alte GSIs und fremde GKI-Kernel booten nicht mehr. Vergleich am besten mit der offiziellen Fastboot-ROM (privat, nicht ins Repo) |
 | Weg für Android-17-Geräte | ❌ | je nach Ursache: Abbilder anpassen oder klar dokumentieren, dass nur der Android-15-Bootloader geht; eigene Handys bleiben auf Android 15 |
 
 ## CPU, GPU und Beschleuniger
