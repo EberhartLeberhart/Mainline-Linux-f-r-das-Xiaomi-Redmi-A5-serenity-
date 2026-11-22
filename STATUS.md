@@ -1,6 +1,6 @@
 # Redmi A5 (serenity) – Hardware-Status
 
-Stand: 20.11.2026 · Kernel 7.1.0-rc1 (Slot b, Patches bis 0056) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig` · jede Zeile trägt ihr eigenes Prüfdatum
+Stand: 22.11.2026 · Kernel 7.1.0-rc1 (Slot b, Patches bis 0059) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig` · jede Zeile trägt ihr eigenes Prüfdatum
 
 ## Regeln
 
@@ -131,7 +131,7 @@ Weitere Unterschiede zu Xiaomi (nicht getestet, bisher nicht nötig): Xiaomi sch
 | rst_mode-Fix (keine abnormal-mode-Schleife) | ✅ | 0x40 beim ADI-Probe; nach echtem Aus ist rst_mode 0x0, Start klappt trotzdem |
 | PMIC-Wachhund gestoppt | ✅ | kein Neustart alle 5 Minuten mehr |
 | 8 CPU-Kerne | ✅ | 01.10.: online 0-7; Kerne lassen sich ab- und anschalten (02.10., PSCI CPU_OFF) |
-| CPU-Takt (cpufreq) | ✅ | 04.10.: läuft als Modul über `redmi-cpufreq.service`, 2 Gruppen: klein 614–1612 MHz (8 Stufen), groß 768–1820 MHz (7 Stufen), Spannungen von der Firmware. Tiefschlaf aller Kerne erlaubt seit `pmic-type = 0` (siehe Abschnitt oben). Kühlung: Bremse wirkt (vorgetäuschte 80 °C → 1536 MHz). Hotplug ✅ |
+| CPU-Takt (cpufreq) | ✅ | 04.10.: läuft als Modul über `redmi-cpufreq.service`, 2 Gruppen: klein 614–1612 MHz (8 Stufen), groß 768–1820 MHz (7 Stufen), Spannungen von der Firmware. Tiefschlaf aller Kerne erlaubt seit `pmic-type = 0` (siehe Abschnitt oben). Kühlung: Bremse wirkt (vorgetäuschte 80 °C → 1536 MHz). Hotplug ✅ **22.11.: Abstürze unter Last** kamen von der gemeinsamen Spannungsleitung beider Gruppen (Firmware stellt nur die umschaltende Gruppe ein) → Kopplung im Treiber (Patch 0059), Belege in FEHLT.md, Abschnitt Stabilität |
 | eMMC, Root auf userdata | ✅ | Ubuntu 24.04 läuft von `PARTLABEL=userdata` |
 | **Dateisystemprüfung beim Start** | ✅ | 07.11.: Befehlszeile hatte `rw` → Kernel hängte `/` gleich beschreibbar ein, `systemd-fsck-root` wurde übersprungen (`ConditionPathIsReadWrite=!/`), **seit September nie ein fsck**. Am Arbeitshandy „clean with errors“, 8328 Fehler, alle Inode 8101 = `/var/log/wtmp` (Inhaltsliste kaputt: `magic 81a4` statt `f30a`, vermutlich ein harter Neustart ❓; Fehlerzeit „2024“ wegen ungestellter Uhr) → `systemd-update-utmp` schlug bei jedem Start fehl. Jetzt `ro fsck.repair=yes` (Patch 0036), fstab schaltet auf `rw`. Beleg: zweites Redmi `ro` → `e2fsck … clean` → `rw`; Arbeitshandy danach `clean`, Fehlerzähler weg, `wtmp` wächst wieder, **0 ausgefallene Dienste**. Der Reparatur-Start selbst steht nicht im Journal (Root noch nur lesend, systemd startet nach einer Reparatur sofort neu) |
 | **Landlock (Sandbox für Programme)** | ✅ | 11.11.: `CONFIG_SECURITY_LANDLOCK=y` (Patch 0044). Steht in der Standardliste `CONFIG_LSM` an erster Stelle → beim Start aktiv: `/sys/kernel/security/lsm` = `capability,landlock`, dmesg `landlock: Up and running.` Nutzen: Programme können sich selbst einsperren, z. B. lädt pacman 7 (Arch) in einer Landlock-Sandbox herunter. Wunsch vom Tester |

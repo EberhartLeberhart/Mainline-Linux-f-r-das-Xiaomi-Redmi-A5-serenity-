@@ -1,0 +1,50 @@
+From 76602ac6cf841afebb6abdd9c1e6c540658f6587 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Sat, 21 Nov 2026 12:21:43 +0100
+Subject: [PATCH 57/59] arm64: dts: sprd: redmi-a5: WCN-Speicherfenster
+ vollstaendig reservieren
+
+- der eigene Block wcn@87000000 (8 MiB) ueberlappte mit Ottos feiner
+  Aufteilung in ums9230.dtsi (btwf, smem, wifi-dma, gnss, *-sync) und
+  scheiterte beim Start ("failed to reserve memory for node
+  'wcn@87000000'")
+- Folge laut /proc/iomem (21.11.): 87480000-874fffff mitten im Fenster
+  war "System RAM" und damit fuer Linux frei vergeben, obwohl der WCN-Kern
+  das ganze Fenster nutzen darf
+- jetzt nur noch diese 512-KiB-Luecke als no-map reservieren
+- Anlass: Kernel-Oops in kfree (Firefox RemVidChild, 20.11.), Verdacht auf
+  Speicherbeschaedigung von aussen; ob das die Ursache war, zeigt erst der
+  Dauertest
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+index 90e6e5cd9..294bb0053 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
++++ b/arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dts
+@@ -63,8 +63,16 @@ protected@80003000 {
+ 			reg = <0 0x80003000 0 0x2000>;
+ 			no-map;
+ 		};
+-		wcn@87000000 {
+-			reg = <0 0x87000000 0 0x800000>;
++		/*
++		 * Das 8-MiB-Fenster des WCN-Kerns (0x87000000-0x877fffff) teilt
++		 * ums9230.dtsi in btwf, smem, wifi-dma, gnss und *-sync auf. Ein
++		 * zusaetzlicher Block ueber das ganze Fenster ueberlappt damit und
++		 * scheitert ("failed to reserve memory for node 'wcn@87000000'");
++		 * dabei blieb 0x87480000-0x874fffff als System RAM frei, mitten im
++		 * Fenster. Nur diese Luecke reservieren.
++		 */
++		wcn-luecke@87480000 {
++			reg = <0 0x87480000 0 0x80000>;
+ 			no-map;
+ 		};
+ 		sp-ddr@88000000 {
+-- 
+2.43.0
+

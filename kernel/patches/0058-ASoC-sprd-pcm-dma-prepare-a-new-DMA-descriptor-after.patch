@@ -1,0 +1,315 @@
+From dce3130011493566d59dac85e1640ae5ce83d00b Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <EberhartLeberhart@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 12:57:06 +0100
+Subject: [PATCH 58/59] ASoC: sprd: pcm-dma: prepare a new DMA descriptor after
+ stop
+
+The DMA descriptor is prepared once in hw_params() and submitted on
+every TRIGGER_START. TRIGGER_STOP calls dmaengine_terminate_async(),
+and the Spreadtrum DMA driver frees all descriptors of the channel at
+that point, including the submitted one.
+
+When the stream is restarted without a new hw_params() call (prepare
+followed by start, as PipeWire does after an xrun or when a node is
+resumed), the freed descriptor is submitted again. vchan_tx_submit()
+then moves a list node that was already removed and poisoned, or
+writes into memory that has been reused by someone else:
+
+  Unable to handle kernel paging request at virtual address dead000000000108
+  pc : vchan_tx_submit+0x58/0x8c
+  Call trace:
+   vchan_tx_submit+0x58/0x8c
+   sprd_pcm_trigger+0x68/0x204 [snd_soc_sprd_platform]
+   snd_soc_pcm_component_trigger+0x168/0x224 [snd_soc_core]
+   ...
+
+Earlier crashes of the same kind showed up as slab corruption in
+kfree() from unrelated tasks.
+
+Move the descriptor preparation into a helper. Call it from hw_params()
+as before and from a new prepare() callback for every channel whose
+descriptor was consumed by TRIGGER_STOP. Clear the descriptor pointer
+on stop and when the channels are released, so a stale pointer is never
+submitted.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ sound/soc/sprd/sprd-pcm-dma.c | 165 ++++++++++++++++++++++------------
+ 1 file changed, 110 insertions(+), 55 deletions(-)
+
+diff --git a/sound/soc/sprd/sprd-pcm-dma.c b/sound/soc/sprd/sprd-pcm-dma.c
+index 963dcf64d..c320a1e9a 100644
+--- a/sound/soc/sprd/sprd-pcm-dma.c
++++ b/sound/soc/sprd/sprd-pcm-dma.c
+@@ -8,6 +8,7 @@
+ #include <linux/module.h>
+ #include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
++#include <linux/slab.h>
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
+ #include <sound/soc.h>
+@@ -24,6 +25,7 @@ struct sprd_pcm_dma_data {
+ 	dma_addr_t phys;
+ 	void *virt;
+ 	int pre_pointer;
++	enum dma_transfer_direction dir;
+ };
+ 
+ struct sprd_pcm_dma_private {
+@@ -31,6 +33,9 @@ struct sprd_pcm_dma_private {
+ 	struct sprd_pcm_dma_data data[SPRD_PCM_CHANNEL_MAX];
+ 	int hw_chan;
+ 	int dma_addr_offset;
++	int channels;
++	int sg_num;
++	size_t period;
+ };
+ 
+ static const struct snd_pcm_hardware sprd_pcm_hardware = {
+@@ -150,7 +155,10 @@ static void sprd_pcm_release_dma_channel(struct snd_pcm_substream *substream)
+ 			dma_release_channel(data->chan);
+ 			data->chan = NULL;
+ 		}
++		data->desc = NULL;
+ 	}
++
++	dma_private->channels = 0;
+ }
+ 
+ static int sprd_pcm_request_dma_channel(struct snd_soc_component *component,
+@@ -184,6 +192,82 @@ static int sprd_pcm_request_dma_channel(struct snd_soc_component *component,
+ 	return 0;
+ }
+ 
++/*
++ * Prepare a fresh DMA descriptor for every channel that does not have one.
++ *
++ * TRIGGER_STOP terminates the channel, and the DMA engine frees the
++ * submitted descriptor at that point. The descriptor must therefore be
++ * prepared again before the next TRIGGER_START; submitting the old one
++ * again is a use-after-free that corrupts the slab.
++ */
++static int sprd_pcm_prep_desc(struct snd_soc_component *component,
++			      struct snd_pcm_substream *substream)
++{
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	struct sprd_pcm_dma_private *dma_private = runtime->private_data;
++	int channels = dma_private->channels;
++	int sg_num = dma_private->sg_num;
++	size_t period = dma_private->period;
++	struct scatterlist *sg;
++	unsigned long flags;
++	int i, j;
++
++	sg = kcalloc(sg_num, sizeof(*sg), GFP_KERNEL);
++	if (!sg)
++		return -ENOMEM;
++
++	for (i = 0; i < channels; i++) {
++		struct sprd_pcm_dma_data *data = &dma_private->data[i];
++		struct dma_chan *chan = data->chan;
++		struct sprd_dma_linklist link = { };
++		struct scatterlist *sgt = sg;
++
++		if (!chan || data->desc)
++			continue;
++
++		sg_init_table(sgt, sg_num);
++		for (j = 0; j < sg_num; j++, sgt++) {
++			u32 sg_len = period / channels;
++
++			sg_dma_len(sgt) = sg_len;
++			sg_dma_address(sgt) = runtime->dma_addr +
++				i * dma_private->dma_addr_offset + sg_len * j;
++		}
++
++		/*
++		 * Configure the link-list address for the DMA engine link-list
++		 * mode.
++		 */
++		link.virt_addr = (unsigned long)data->virt;
++		link.phy_addr = data->phys;
++
++		/*
++		 * We configure the DMA request mode, interrupt mode, channel
++		 * mode and channel trigger mode by the flags.
++		 */
++		flags = SPRD_DMA_FLAGS(SPRD_DMA_CHN_MODE_NONE, SPRD_DMA_NO_TRG,
++				       SPRD_DMA_FRAG_REQ, SPRD_DMA_TRANS_INT);
++		data->desc = chan->device->device_prep_slave_sg(chan, sg,
++								sg_num,
++								data->dir,
++								flags, &link);
++		if (!data->desc) {
++			dev_err(component->dev, "failed to prepare slave sg\n");
++			kfree(sg);
++			return -ENOMEM;
++		}
++
++		if (!runtime->no_period_wakeup) {
++			data->desc->callback = sprd_pcm_dma_complete;
++			data->desc->callback_param = dma_private;
++		}
++	}
++
++	kfree(sg);
++
++	return 0;
++}
++
+ static int sprd_pcm_hw_params(struct snd_soc_component *component,
+ 			      struct snd_pcm_substream *substream,
+ 			      struct snd_pcm_hw_params *params)
+@@ -196,9 +280,7 @@ static int sprd_pcm_hw_params(struct snd_soc_component *component,
+ 	size_t period = params_period_bytes(params);
+ 	int channels = params_channels(params);
+ 	int is_playback = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
+-	struct scatterlist *sg;
+-	unsigned long flags;
+-	int ret, i, j, sg_num;
++	int ret, i;
+ 
+ 	dma_params = snd_soc_dai_get_dma_data(snd_soc_rtd_to_cpu(rtd, 0), substream);
+ 	if (!dma_params) {
+@@ -225,22 +307,15 @@ static int sprd_pcm_hw_params(struct snd_soc_component *component,
+ 	if (ret)
+ 		return ret;
+ 
+-	sg_num = totsize / period;
++	dma_private->sg_num = totsize / period;
+ 	dma_private->dma_addr_offset = totsize / channels;
+-
+-	sg = devm_kcalloc(component->dev, sg_num, sizeof(*sg), GFP_KERNEL);
+-	if (!sg) {
+-		ret = -ENOMEM;
+-		goto sg_err;
+-	}
++	dma_private->channels = channels;
++	dma_private->period = period;
+ 
+ 	for (i = 0; i < channels; i++) {
+ 		struct sprd_pcm_dma_data *data = &dma_private->data[i];
+ 		struct dma_chan *chan = data->chan;
+ 		struct dma_slave_config config = { };
+-		struct sprd_dma_linklist link = { };
+-		enum dma_transfer_direction dir;
+-		struct scatterlist *sgt = sg;
+ 
+ 		config.src_maxburst = dma_params->fragment_len[i];
+ 		config.src_addr_width = dma_params->datawidth[i];
+@@ -249,65 +324,29 @@ static int sprd_pcm_hw_params(struct snd_soc_component *component,
+ 			config.src_addr = runtime->dma_addr +
+ 				i * dma_private->dma_addr_offset;
+ 			config.dst_addr = dma_params->dev_phys[i];
+-			dir = DMA_MEM_TO_DEV;
++			data->dir = DMA_MEM_TO_DEV;
+ 		} else {
+ 			config.src_addr = dma_params->dev_phys[i];
+ 			config.dst_addr = runtime->dma_addr +
+ 				i * dma_private->dma_addr_offset;
+-			dir = DMA_DEV_TO_MEM;
++			data->dir = DMA_DEV_TO_MEM;
+ 		}
+ 
+-		sg_init_table(sgt, sg_num);
+-		for (j = 0; j < sg_num; j++, sgt++) {
+-			u32 sg_len = period / channels;
+-
+-			sg_dma_len(sgt) = sg_len;
+-			sg_dma_address(sgt) = runtime->dma_addr +
+-				i * dma_private->dma_addr_offset + sg_len * j;
+-		}
+-
+-		/*
+-		 * Configure the link-list address for the DMA engine link-list
+-		 * mode.
+-		 */
+-		link.virt_addr = (unsigned long)data->virt;
+-		link.phy_addr = data->phys;
+-
+ 		ret = dmaengine_slave_config(chan, &config);
+ 		if (ret) {
+ 			dev_err(component->dev,
+ 				"failed to set slave configuration: %d\n", ret);
+ 			goto config_err;
+ 		}
+-
+-		/*
+-		 * We configure the DMA request mode, interrupt mode, channel
+-		 * mode and channel trigger mode by the flags.
+-		 */
+-		flags = SPRD_DMA_FLAGS(SPRD_DMA_CHN_MODE_NONE, SPRD_DMA_NO_TRG,
+-				       SPRD_DMA_FRAG_REQ, SPRD_DMA_TRANS_INT);
+-		data->desc = chan->device->device_prep_slave_sg(chan, sg,
+-								sg_num, dir,
+-								flags, &link);
+-		if (!data->desc) {
+-			dev_err(component->dev, "failed to prepare slave sg\n");
+-			ret = -ENOMEM;
+-			goto config_err;
+-		}
+-
+-		if (!runtime->no_period_wakeup) {
+-			data->desc->callback = sprd_pcm_dma_complete;
+-			data->desc->callback_param = dma_private;
+-		}
+ 	}
+ 
+-	devm_kfree(component->dev, sg);
++	ret = sprd_pcm_prep_desc(component, substream);
++	if (ret)
++		goto config_err;
+ 
+ 	return 0;
+ 
+ config_err:
+-	devm_kfree(component->dev, sg);
+-sg_err:
+ 	sprd_pcm_release_dma_channel(substream);
+ 	return ret;
+ }
+@@ -320,6 +359,18 @@ static int sprd_pcm_hw_free(struct snd_soc_component *component,
+ 	return 0;
+ }
+ 
++static int sprd_pcm_prepare(struct snd_soc_component *component,
++			    struct snd_pcm_substream *substream)
++{
++	struct sprd_pcm_dma_private *dma_private =
++		substream->runtime->private_data;
++
++	if (!dma_private->channels)
++		return 0;
++
++	return sprd_pcm_prep_desc(component, substream);
++}
++
+ static int sprd_pcm_trigger(struct snd_soc_component *component,
+ 			    struct snd_pcm_substream *substream, int cmd)
+ {
+@@ -362,8 +413,11 @@ static int sprd_pcm_trigger(struct snd_soc_component *component,
+ 		for (i = 0; i < dma_private->hw_chan; i++) {
+ 			struct sprd_pcm_dma_data *data = &dma_private->data[i];
+ 
+-			if (data->chan)
++			if (data->chan) {
+ 				dmaengine_terminate_async(data->chan);
++				/* The DMA engine has freed the descriptor. */
++				data->desc = NULL;
++			}
+ 		}
+ 
+ 		break;
+@@ -461,6 +515,7 @@ static const struct snd_soc_component_driver sprd_soc_component = {
+ 	.close		= sprd_pcm_close,
+ 	.hw_params	= sprd_pcm_hw_params,
+ 	.hw_free	= sprd_pcm_hw_free,
++	.prepare	= sprd_pcm_prepare,
+ 	.trigger	= sprd_pcm_trigger,
+ 	.pointer	= sprd_pcm_pointer,
+ 	.pcm_new	= sprd_pcm_new,
+-- 
+2.43.0
+

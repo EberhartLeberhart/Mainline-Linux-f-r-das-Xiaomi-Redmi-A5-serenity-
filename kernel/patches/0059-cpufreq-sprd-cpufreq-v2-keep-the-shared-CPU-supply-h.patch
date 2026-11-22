@@ -1,0 +1,444 @@
+From 89642ca6825abb7385d9636de831ffe4764e2f51 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <EberhartLeberhart@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 15:25:27 +0100
+Subject: [PATCH 59/59] cpufreq: sprd-cpufreq-v2: keep the shared CPU supply
+ high enough for all clusters
+
+On UMS9230 both CPU clusters are supplied by the same regulator
+(DCDC_CPU). The firmware, however, programs the voltage for the cluster
+that is being switched and ignores the needs of the other cluster.
+
+Measured on two Redmi A5 (serenity) with the little cluster fixed at
+1378 MHz (846 mV according to the firmware table) while stepping the
+big cluster down:
+
+  big 1820 MHz -> DCDC_CPU 928 mV
+  big 1536 MHz -> DCDC_CPU 862 mV
+  big 1404 MHz -> DCDC_CPU 821 mV   (little needs 846)
+  big 1228 MHz -> DCDC_CPU 762 mV
+  big  768 MHz -> DCDC_CPU 750 mV
+
+With the little cluster at 1612 MHz (928 mV), switching the big cluster
+down to 768 MHz resets the device instantly. In normal use this shows up
+as random Oopses and panics on both little and big cores every few
+minutes under load (flipped bits in kernel text as seen by one core,
+registers read as zero). With DVFS disabled (fixed 1.0 V from the
+bootloader), or with each cluster held at a fixed frequency, both test
+devices ran without a single error.
+
+Couple the clusters in the driver: remember the index requested by the
+governor for every cluster, raise each cluster to the lowest index whose
+voltage covers the highest requested voltage (within the current policy
+limit), and program the cluster with the highest voltage last. This way
+the last voltage the firmware writes to the shared regulator is always
+sufficient for all CPUs.
+
+The firmware only programs the regulator when the voltage of the
+cluster being switched changes. When the highest cluster has to keep its
+voltage after a lower one was switched (for example because the lower one
+is capped by its policy limit), move it to a neighbouring index with a
+different voltage and back, so the firmware restores its voltage. If no
+such index exists within the policy limit, a short step above it is used.
+
+The behaviour can be switched off at runtime with the module parameter
+couple_clusters; couple_raises and couple_refreshes count the interventions.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ drivers/cpufreq/sprd-cpufreq-v2.c | 295 +++++++++++++++++++++++++++++-
+ 1 file changed, 285 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/cpufreq/sprd-cpufreq-v2.c b/drivers/cpufreq/sprd-cpufreq-v2.c
+index 38c6a2ef9..b0d93287a 100644
+--- a/drivers/cpufreq/sprd-cpufreq-v2.c
++++ b/drivers/cpufreq/sprd-cpufreq-v2.c
+@@ -5,9 +5,12 @@
+ 
+ #include <linux/arm-smccc.h>
+ #include <linux/cpufreq.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/nvmem-consumer.h>
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
++#include <linux/slab.h>
+ 
+ #define SPRD_CPUFREQ_MIN_TEMPERATURE	(-274)
+ 
+@@ -89,26 +92,270 @@
+ 			    ARM_SMCCC_OWNER_SIP,			\
+ 			    0x060c))
+ 
++#define SPRD_CPUFREQ_MAX_CLUSTERS	2
++
+ struct sprd_cpufreq_data {
+ 	struct device *cpu_dev;
++	struct cpufreq_policy *policy;
+ 	u32 cluster;
++	/* voltage in uV for each index of policy->freq_table */
++	unsigned long *volt;
++	unsigned int num;
++	/* index requested by the governor and index currently set */
++	unsigned int req;
++	unsigned int cur;
+ };
+ 
+-static int sprd_cpufreq_set_target(struct cpufreq_policy *policy,
+-				   unsigned int index)
++/*
++ * On UMS9230 both clusters are supplied by the same regulator (DCDC_CPU),
++ * but the firmware programs the voltage of the cluster that is being
++ * switched and ignores the needs of the other one. Lowering one cluster
++ * while the other runs at a high frequency therefore undervolts the other
++ * cluster, which shows up as random bit flips, Oopses and panics.
++ *
++ * Couple the clusters: every cluster is kept at an index whose voltage is
++ * at least the highest voltage requested by any cluster (as far as its
++ * table and its policy limit allow), and the cluster with the highest
++ * voltage is always programmed last, so the last voltage written to the
++ * shared regulator is always sufficient for all CPUs.
++ *
++ * The firmware only programs the regulator when the voltage of the cluster
++ * being switched changes. If the highest cluster has to stay where it is
++ * after a lower one was switched, it is moved to a neighbouring index with
++ * a different voltage and back to make the firmware restore its voltage.
++ */
++static bool couple_clusters = true;
++module_param(couple_clusters, bool, 0644);
++MODULE_PARM_DESC(couple_clusters,
++		 "Keep the shared CPU supply high enough for all clusters (default: on)");
++
++static unsigned int couple_raises;
++module_param(couple_raises, uint, 0444);
++MODULE_PARM_DESC(couple_raises,
++		 "Number of times a cluster was kept above its requested index");
++
++static unsigned int couple_refreshes;
++module_param(couple_refreshes, uint, 0444);
++MODULE_PARM_DESC(couple_refreshes,
++		 "Number of times the voltage of the highest cluster was restored");
++
++static DEFINE_MUTEX(sprd_cpufreq_lock);
++static struct sprd_cpufreq_data *sprd_clusters[SPRD_CPUFREQ_MAX_CLUSTERS];
++
++static int sprd_cpufreq_write(struct sprd_cpufreq_data *data,
++			      unsigned int index)
+ {
+-	struct sprd_cpufreq_data *data = policy->driver_data;
+ 	struct arm_smccc_res res;
+ 
+ 	arm_smccc_smc(SPRD_SIP_SVC_DVFS_FREQ_SET, data->cluster,
+ 		      index, 0, 0, 0, 0, 0, &res);
+-
+ 	if (res.a0)
+ 		return -EINVAL;
+ 
++	data->cur = index;
+ 	return 0;
+ }
+ 
++static int sprd_cpufreq_refresh(struct sprd_cpufreq_data *data,
++				 unsigned int index)
++{
++	struct cpufreq_frequency_table *tbl = data->policy->freq_table;
++	unsigned int max = READ_ONCE(data->policy->max);
++	unsigned long v = data->volt[index];
++	unsigned int other = index;
++	int i, ret;
++
++	/*
++	 * The firmware only programs the regulator when the voltage of the
++	 * cluster changes, so the neighbour must have a different voltage.
++	 * Prefer a step up: a step down would dip the shared voltage.
++	 */
++	for (i = index + 1; i < data->num && tbl[i].frequency <= max; i++) {
++		if (data->volt[i] != v) {
++			other = i;
++			break;
++		}
++	}
++	if (other == index) {
++		for (i = (int)index - 1; i >= 0; i--) {
++			if (data->volt[i] != v) {
++				other = i;
++				break;
++			}
++		}
++	}
++	/* last resort: a short step above the policy limit */
++	if (other == index) {
++		for (i = index + 1; i < data->num; i++) {
++			if (data->volt[i] != v) {
++				other = i;
++				break;
++			}
++		}
++	}
++	if (other == index)
++		return 0;
++
++	ret = sprd_cpufreq_write(data, other);
++	if (ret)
++		return ret;
++
++	couple_refreshes++;
++	return sprd_cpufreq_write(data, index);
++}
++
++static unsigned int sprd_cpufreq_floor(struct sprd_cpufreq_data *data,
++				       unsigned long vmin)
++{
++	struct cpufreq_frequency_table *tbl = data->policy->freq_table;
++	unsigned int max = READ_ONCE(data->policy->max);
++	unsigned int i, limit = data->num - 1;
++
++	/* never go above the current limit of this cluster (e.g. thermal) */
++	while (limit > data->req && tbl[limit].frequency > max)
++		limit--;
++
++	for (i = data->req; i < limit; i++)
++		if (data->volt[i] >= vmin)
++			return i;
++
++	return limit;
++}
++
++static int sprd_cpufreq_apply(void)
++{
++	unsigned int target[SPRD_CPUFREQ_MAX_CLUSTERS];
++	bool done[SPRD_CPUFREQ_MAX_CLUSTERS] = { };
++	struct sprd_cpufreq_data *data;
++	bool written = false, new_volt;
++	unsigned long vmax = 0;
++	int i, j, cnt = 0, ret;
++
++	for (i = 0; i < SPRD_CPUFREQ_MAX_CLUSTERS; i++) {
++		if (!sprd_clusters[i])
++			continue;
++		vmax = max(vmax, sprd_clusters[i]->volt[sprd_clusters[i]->req]);
++		cnt++;
++	}
++
++	for (i = 0; i < SPRD_CPUFREQ_MAX_CLUSTERS; i++) {
++		if (!sprd_clusters[i])
++			continue;
++		target[i] = sprd_cpufreq_floor(sprd_clusters[i], vmax);
++		if (target[i] != sprd_clusters[i]->req)
++			couple_raises++;
++	}
++
++	/* program in order of rising voltage, the highest one last */
++	for (j = 0; j < cnt; j++) {
++		int best = -1;
++
++		for (i = 0; i < SPRD_CPUFREQ_MAX_CLUSTERS; i++) {
++			if (!sprd_clusters[i] || done[i])
++				continue;
++			if (best < 0 || sprd_clusters[i]->volt[target[i]] <
++					sprd_clusters[best]->volt[target[best]])
++				best = i;
++		}
++		if (best < 0)
++			break;
++		done[best] = true;
++
++		data = sprd_clusters[best];
++		new_volt = data->cur == UINT_MAX ||
++			   data->volt[data->cur] != data->volt[target[best]];
++
++		if (target[best] != data->cur) {
++			ret = sprd_cpufreq_write(data, target[best]);
++			if (ret)
++				return ret;
++		}
++
++		if (j + 1 < cnt) {
++			/* a lower cluster changed the shared voltage */
++			written |= new_volt;
++		} else if (written && !new_volt) {
++			/*
++			 * The highest cluster kept its voltage, so the firmware
++			 * did not program it again: restore it.
++			 */
++			ret = sprd_cpufreq_refresh(data, target[best]);
++			if (ret)
++				return ret;
++		}
++	}
++
++	return 0;
++}
++
++static int sprd_cpufreq_set_target(struct cpufreq_policy *policy,
++				   unsigned int index)
++{
++	struct sprd_cpufreq_data *data = policy->driver_data;
++	int ret;
++
++	if (!data->volt)
++		return sprd_cpufreq_write(data, index);
++
++	mutex_lock(&sprd_cpufreq_lock);
++	data->req = index;
++	if (couple_clusters)
++		ret = sprd_cpufreq_apply();
++	else
++		ret = sprd_cpufreq_write(data, index);
++	mutex_unlock(&sprd_cpufreq_lock);
++
++	return ret;
++}
++
++static void sprd_cpufreq_couple_add(struct cpufreq_policy *policy,
++				    unsigned long *freqs,
++				    unsigned long *volts,
++				    unsigned int length,
++				    unsigned int init_khz)
++{
++	struct sprd_cpufreq_data *data = policy->driver_data;
++	struct cpufreq_frequency_table *pos;
++	unsigned int i, n = 0;
++
++	if (data->cluster >= SPRD_CPUFREQ_MAX_CLUSTERS)
++		return;
++
++	cpufreq_for_each_entry(pos, policy->freq_table)
++		n++;
++
++	data->volt = kcalloc(n, sizeof(*data->volt), GFP_KERNEL);
++	if (!data->volt)
++		return;
++
++	/* unknown until the first write, so that one always happens */
++	data->cur = UINT_MAX;
++	data->req = 0;
++
++	n = 0;
++	cpufreq_for_each_entry(pos, policy->freq_table) {
++		for (i = 0; i < length; i++)
++			if (freqs[i] / 1000 == pos->frequency)
++				data->volt[n] = volts[i];
++		if (!data->volt[n]) {
++			dev_warn(data->cpu_dev,
++				 "no voltage for %u kHz, not coupling clusters\n",
++				 pos->frequency);
++			kfree(data->volt);
++			data->volt = NULL;
++			return;
++		}
++		if (pos->frequency == init_khz)
++			data->req = n;
++		n++;
++	}
++	data->num = n;
++
++	mutex_lock(&sprd_cpufreq_lock);
++	sprd_clusters[data->cluster] = data;
++	mutex_unlock(&sprd_cpufreq_lock);
++}
++
+ static unsigned int sprd_cpufreq_get_freq(unsigned int cpu)
+ {
+ 	struct cpufreq_policy *policy = cpufreq_cpu_get_raw(cpu);
+@@ -134,8 +381,9 @@ static int sprd_cpufreq_table_init(struct cpufreq_policy *policy,
+ 				   int temperature)
+ {
+ 	struct sprd_cpufreq_data *data = policy->driver_data;
++	unsigned long *freqs = NULL, *volts = NULL;
+ 	struct arm_smccc_res res;
+-	unsigned int i, length;
++	unsigned int i, length, init_khz;
+ 	int ret;
+ 
+ 	arm_smccc_smc(SPRD_SIP_SVC_DVFS_TABLE_UPDATE, data->cluster,
+@@ -149,14 +397,25 @@ static int sprd_cpufreq_table_init(struct cpufreq_policy *policy,
+ 
+ 	length = res.a1;
+ 
++	freqs = kcalloc(length, sizeof(*freqs), GFP_KERNEL);
++	volts = kcalloc(length, sizeof(*volts), GFP_KERNEL);
++	if (!freqs || !volts) {
++		ret = -ENOMEM;
++		goto out;
++	}
++
+ 	for (i = 0; i < length; i++) {
+ 		arm_smccc_smc(SPRD_SIP_SVC_DVFS_PAIR_GET, data->cluster,
+ 			      i, 0, 0, 0, 0, 0, &res);
+ 		if (res.a0) {
+ 			dev_err(data->cpu_dev, "failed to get freq %d\n", i);
+-			return -EINVAL;
++			ret = -EINVAL;
++			goto out;
+ 		}
+ 
++		freqs[i] = res.a1;
++		volts[i] = res.a2;
++
+ 		dev_dbg(data->cpu_dev, "[%d] freq: %lu voltage: %lu\n",
+ 			i, res.a1, res.a2);
+ 
+@@ -171,25 +430,33 @@ static int sprd_cpufreq_table_init(struct cpufreq_policy *policy,
+ 		      0, 0, 0, 0, 0, 0, &res);
+ 	if (res.a0) {
+ 		dev_err(data->cpu_dev, "failed to get initial frequency\n");
+-		return -EINVAL;
++		ret = -EINVAL;
++		goto out;
+ 	}
+ 
+ 	dev_dbg(data->cpu_dev, "initial frequency: %lu\n", res.a1);
++	init_khz = res.a1 / 1000;
+ 
+ 	arm_smccc_smc(SPRD_SIP_SVC_DVFS_ENABLE, data->cluster,
+ 		      0, 0, 0, 0, 0, 0, &res);
+ 	if (res.a0) {
+ 		dev_err(data->cpu_dev, "failed to enable DVFS\n");
+-		return -EINVAL;
++		ret = -EINVAL;
++		goto out;
+ 	}
+ 
+ 	ret = dev_pm_opp_init_cpufreq_table(data->cpu_dev, &policy->freq_table);
+ 	if (ret) {
+ 		dev_err(data->cpu_dev, "failed to init cpufreq table\n");
+-		return ret;
++		goto out;
+ 	}
+ 
+-	return 0;
++	sprd_cpufreq_couple_add(policy, freqs, volts, length, init_khz);
++	ret = 0;
++out:
++	kfree(freqs);
++	kfree(volts);
++	return ret;
+ }
+ 
+ static int sprd_cpufreq_init(struct cpufreq_policy *policy)
+@@ -219,6 +486,7 @@ static int sprd_cpufreq_init(struct cpufreq_policy *policy)
+ 		return -ENOMEM;
+ 
+ 	data->cpu_dev = cpu_dev;
++	data->policy = policy;
+ 	data->cluster = args.args[0];
+ 
+ 	policy->driver_data = data;
+@@ -262,6 +530,13 @@ static void sprd_cpufreq_exit(struct cpufreq_policy *policy)
+ {
+ 	struct sprd_cpufreq_data *data = policy->driver_data;
+ 
++	mutex_lock(&sprd_cpufreq_lock);
++	if (data->cluster < SPRD_CPUFREQ_MAX_CLUSTERS &&
++	    sprd_clusters[data->cluster] == data)
++		sprd_clusters[data->cluster] = NULL;
++	mutex_unlock(&sprd_cpufreq_lock);
++	kfree(data->volt);
++
+ 	dev_pm_opp_free_cpufreq_table(data->cpu_dev, &policy->freq_table);
+ 	dev_pm_opp_remove_all_dynamic(data->cpu_dev);
+ 	kfree(data);
+-- 
+2.43.0
+
