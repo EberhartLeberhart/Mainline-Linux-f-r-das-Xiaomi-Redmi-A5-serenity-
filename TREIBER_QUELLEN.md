@@ -202,3 +202,12 @@ Ladereihenfolge in Android: `unisoc_wcn_bsp.ko` → `sprd_wlan_combo.ko` (direkt
 - [akku1139/ums9230-mainline-linux](https://zff.dev/akku1139/ums9230-mainline-linux)
 - [beebono/linux-mainline-sprd](https://github.com/beebono/linux-mainline-sprd) (Zweige `rg-rotate`, `emmc-cfw`): Anbernic RG Rotate, UMS512 (T618) mit demselben PMIC SC2730, auf demselben Codeberg-Stand wie wir. Vorlage für den USB-Rollen-Graph (Patch 0047); viele Korrekturen für Ton, WLAN und Energiesparen. Hat unabhängig von uns ebenfalls den Audio-DMA-Interrupt (SPI 181) und den `vconn`-Kopierfehler in `sc27xx_pd.c` gefunden.
 - [farrizdesignpro1339/android_kernel_xiaomi_serenity](https://github.com/farrizdesignpro1339/android_kernel_xiaomi_serenity) (Zweig `serenity-v-oss`): vom Tester auf das Redmi A5 portierter Hersteller-Kernel des Redmi A7 Pro (arctic, gleicher Chip) ❓ – also nicht Xiaomis offizieller A5-Code. Enthält u. a. Unisocs `sgm41513-charger.c` (Abgleich für Patch 0045), `cust-foursemi-fs1815.dtsi`, `aw87xxx.dtsi` und die Akku-Kennlinie `serenity-battery-5200mah.dtsi`.
+
+## Video-Decoder (VSP), 21./22.11.
+
+**Jolla C2 (Reeder S19 Max Pro S), Kernel 5.4, gleicher Chip:** [mer-hybris/s19mps-kernel-modules](https://github.com/mer-hybris/s19mps-kernel-modules)
+enthält Unisocs Herstellermodule im Quelltext (GPL-2.0), darunter `video/sprd-vsp/`, `video/sprd-vpu/`,
+`video/sprd-vsp-power/`, `video/sprd-jpg/`, außerdem `audio_driver`, `display`, `gpu`, `wcn`, `sar`, `ion`, `nfc`.
+Den passenden Kernel mit Gerätebaum und Register-Headern gibt es unter [mer-hybris/s19mps-kernel](https://github.com/mer-hybris/s19mps-kernel).
+Einzelheiten in [DECODER.md](DECODER.md).
+
