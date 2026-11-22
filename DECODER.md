@@ -17,8 +17,8 @@ Aus Unisocs Gerätebaum für den UMS9230 (`qogirl6.dtsi`, Jolla-C2-Kernel) und X
 |---|---|
 | VSP | `0x32000000`, Größe `0xc000`, Interrupt **SPI 34**, `sprd,video_ip_version = <20>`, kompatibel `"sprd,qogirl6-vsp", "sprd,sharkl5pro-vsp"` |
 | Globale VSP-Register | VSP + `0x1000` (`VSP_INT_STS` 0x0, `_MASK` 0x4, `_CLR` 0x8, `_RAW` 0xc, `AXI_STS` 0x1c) |
-| ARM-Interrupt | VSP + `0x10` (`STS`), `0x14` (`MASK`), `0x18` (`CLR`), `0x1c` (`RAW`) |
-| IOMMU | im selben Fenster `0x32000000`–`0x3200007f`, kompatibel `sprd,iommuvaul6-vsp`, IOVA `0x20000000` + 256 MiB; Interrupt-Register VSP + `0x60` (`STS`), `0x64` (`CLR`), `0x68` (`RAW`), `0x6c` (`MASK`) |
+| ARM-Interrupt | VSP + `0x10`–`0x1c` – nutzt Unisocs Treiber nur bei Chips **vor** SharkL3; bei uns (`video_ip_version 20` = `SHARKL6`) liegen dort IOMMU-Register |
+| IOMMU | im selben Fenster `0x32000000`–`0x3200007f` (+ `0xa0`), kompatibel `sprd,iommuvaul6-vsp`, IOVA `0x20000000` + 256 MiB; Bauart **VAU** (`VERSION` = `0x100`), Register wie in mainline `sprd-iommu.c` (siehe unten) |
 | Stromdomäne | PMU `0x64020000` + `0x314` (`PD_AP_VSP_CFG_0`): Bit 25 `FORCE_SHUTDOWN`, Bit 24 `AUTO_SHUTDOWN_EN`; Zustand in `+0x514` (`PWR_STATUS_DBG_9`) Bits 20:16, 0 = an |
 | Freigaben | AON `0x64000000` + `0x4` Bit 5 `AP_SYST_EB`; AP-AHB `0x20400000` + `0x0` Bit 2 `VSP_EB`, Reset `+0x4` Bit 13 `VSP_SOFT_RST`, Bit 11 `VSP_GLOBAL_SOFT_RST` |
 | Takte | AP-AHB-Tor `CLK_VSP_EB` (2), VSP-Takt `CLK_VSP` (28) mit Quellen 256 / 307,2 / 384 MHz – beide schon in Ottos `ums9230-clk.c` |
@@ -42,6 +42,35 @@ Testmodule unter [`kernel/vsp-test/`](kernel/vsp-test/).
    muss erst selbst eingeschaltet sein.
 
 **Strom, Takt und Registerzugriff funktionieren also unter Linux.**
+
+Nachtrag: Die Stelle `+0x14` ist bei uns nicht `ARM_INT_MASK`, sondern `DEFAULT_PPN` der IOMMU (siehe
+nächster Abschnitt) – die Schreibprobe hat also schon die IOMMU erreicht. `+0x6c` gibt es in Unisocs
+Registerliste für die VAU-Bauart nicht; die Angabe im VSP-Treiber stammt vermutlich von der älteren
+EX-Bauart ❓. Die zusätzlichen Takte `clk_vsp_ahb_mmu_eb`/`clk_vsp_mq_ahb_eb` holt Unisocs Treiber nur
+für SharkL3 und Pike2 – für uns reichen `CLK_VSP_EB` und `CLK_VSP`.
+
+## IOMMU (22.11., Handy 2, Kernel #119)
+
+Testmodul `redmi_vsp_iommu.c`: VSP einschalten wie oben, dann die IOMMU-Register **nur lesen**.
+
+| Register | Stelle | gelesen (Grundzustand) |
+|---|---|---|
+| `VERSION` | +0x00 | `0x00000100` → Bits 15:8 = **1 = VAU** |
+| `CFG` | +0x04 | `0x00000008` (aus; Bit 3 unbekannt ❓, mainline lässt es unberührt) |
+| `UPDATE`, `AUTH_CFG`, `FIRST_PPN`, `DEFAULT_PPN_RD/WR`, `FIRST_VPN` | +0x08–0x1c | 0 |
+| `VPN_RANGE` | +0x20 | `0x000fffff` |
+| `PPN1_RANGE`, `PPN2_RANGE` | +0x28, +0x30 | `0x0000ffff` |
+| Fehleradressen | +0x44–0x68 | 0 |
+| `MMU_INT_EN` | +0xa0 | 0 |
+
+Damit passt der **mainline-Treiber `drivers/iommu/sprd-iommu.c`** (`sprd,iommu-v1`, läuft bei Otto
+schon fürs Display): Er erkennt die Bauart an genau diesem Register und nutzt für VAU dieselben Stellen
+wie Unisocs `sprd_iommuvau_hal_register.h`. Kleine Unterschiede ❓: mainline schreibt zusätzlich
+`DEFAULT_PPN_WR` (+0x18), Unisoc setzt beim Einschalten noch Bit 4 (`VAOR_BYPASS`, `0x13` statt `0x3`).
+
+**Hürde:** `sprd-iommu` liest `VERSION` einmal beim Start und kennt keine Stromdomäne. Die VSP-Domäne
+muss also vorher als genpd-Treiber existieren und im Gerätebaum per `power-domains` an IOMMU und VSP
+hängen – sonst liest der Treiber einen ausgeschalteten Block.
 
 ## Android-Seite (eigene `super`-Partition, privat)
 
@@ -77,7 +106,7 @@ daraus später einen eigenen, offenen V4L2-Treiber bauen.
 |---|---|---|
 | 0. Bestandsaufnahme | ✅ | Hardware, Android-Bibliothek, Kernel-Module, GPL-Quellen (21./22.11.) |
 | 1. Den Chip fragen | ✅ | Stromdomäne, Takte, Registerzugriff (22.11., siehe oben) |
-| 2. IOMMU | ❌ | prüfen, ob Ottos `sprd,iommu-v1` (läuft fürs Display) die VSP-IOMMU kann; fehlende IOMMU-Takte |
+| 2. IOMMU | 🟡 | Bauart VAU bestätigt, mainline `sprd-iommu` passt (22.11.); fehlt: Stromdomäne als genpd, Gerätebaum-Eintrag, erster Map-Test |
 | 3. Treiber | ❌ | Stromdomäne als genpd, `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
 | 4. Bibliothek laden | ❌ | Chroot mit `system/` und `vendor/` aus der eigenen `super`-Partition, kleines Testprogramm (NDK), ein H.264-Bild dekodieren |
 | 5. Mitschreiben | ❌ | Registerstand bei jedem `VSP_COMPLETE` festhalten → Ablauf je Bild verstehen |
