@@ -147,6 +147,29 @@ wieder her (`sprd_iommu_restore`); SHARKL6 steht nicht auf der Liste – weil di
 
 Der Handler darf die Register nur mit Takt lesen: Der Treiber schaltet den Interrupt ab, bevor die Takte ausgehen.
 
+## Treiber, Etappe 3c (23.11., Handy 2, Kernel #126)
+
+Gerätedatei `/dev/sprd_vsp` mit der Schnittstelle von Unisocs GPL-Treiber `sprd_vsp` (ioctl-Magie `'m'`, Nummern
+1–18, `struct vsp_iommu_map_data`, `mmap` der Register), neu geschrieben für mainline: Strom über Runtime-PM,
+Ottos Resets, Puffer als dma-buf über die DMA-Schnittstelle mit der IOMMU. Einzelheiten:
+[kernel/vsp/README.md](kernel/vsp/README.md).
+
+Patch 0066: `CONFIG_DMABUF_HEAPS` und `CONFIG_DMABUF_HEAPS_SYSTEM` – Programme holen Puffer aus
+`/dev/dma_heap/system` (mainline-Gegenstück zu Androids ION/dmabuf-heap).
+
+Testprogramm `redmi_vsp_test` (benutzt die Datei wie eine Bibliothek, schreibt nichts in die Register):
+
+| Befehl | Ergebnis |
+|---|---|
+| `VSP_VERSION` | 20 |
+| `VSP_ACQUAIRE` / `ENABLE` / `RESET` / `DISABLE` / `RELEASE` | OK |
+| `mmap` (lesen) | `MMU VERSION 0x100`, `CFG 0x0b`, `GLB MASK 0` – dieselben Werte wie im Kernel |
+| `VSP_GET_IOVA` | 1-MiB-Puffer aus dem System-Heap → IOVA `0x2ff00000`, 1048576 Bytes |
+| `VSP_FREE_IOVA` | OK |
+| `VSP_COMPLETE` ohne Auftrag | nach 200 ms `ETIMEDOUT`, Status `0x80000000` (wie Unisoc) |
+
+Ergebnis: `bestanden (0 Fehler)`, `rmmod` sauber.
+
 **Offen:** GPU, MM, PUBCP und WCN werden vermutlich ebenso nie wirklich abgeschaltet ❓ (gleiche Maske).
 Einzeln testen, bevor sie das Kennzeichen bekommen. `pd_ignore_unused` und `clk_ignore_unused` stehen fest
 in `CONFIG_CMDLINE` – davon unabhängig schaltet der Kernel unbenutzte Domänen über `sync_state` ab.
@@ -186,7 +209,7 @@ daraus später einen eigenen, offenen V4L2-Treiber bauen.
 | 0. Bestandsaufnahme | ✅ | Hardware, Android-Bibliothek, Kernel-Module, GPL-Quellen (21./22.11.) |
 | 1. Den Chip fragen | ✅ | Stromdomäne, Takte, Registerzugriff (22.11., siehe oben) |
 | 2. IOMMU | ✅ | Bauart VAU, mainline `sprd-iommu` übernimmt sie; Stromdomäne `ap_vsp` (Patches 0060–0062), IOMMU-Knoten (0063), 22.11. |
-| 3. Treiber | 🟡 | 3a ✅ Knoten (Patch 0064), Strom über Runtime-PM, Takte, IOMMU-Abbildung; 3b ✅ Reset (Patch 0065, bewiesen), Interrupt (23.11.); offen: `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
+| 3. Treiber | ✅ | 3a Knoten (Patch 0064), Strom über Runtime-PM, Takte, IOMMU-Abbildung; 3b Reset (Patch 0065, bewiesen), Interrupt; 3c `/dev/sprd_vsp` mit Unisocs Schnittstelle, Puffer per dma-buf (Patch 0066) – alles 23.11. |
 | 4. Bibliothek laden | ❌ | Chroot mit `system/` und `vendor/` aus der eigenen `super`-Partition, kleines Testprogramm (NDK), ein H.264-Bild dekodieren |
 | 5. Mitschreiben | ❌ | Registerstand bei jedem `VSP_COMPLETE` festhalten → Ablauf je Bild verstehen |
 | 6. Eigener Treiber | ❌ | V4L2-stateless-Treiber, erst H.264; Anbindung an GStreamer/FFmpeg ❓ |

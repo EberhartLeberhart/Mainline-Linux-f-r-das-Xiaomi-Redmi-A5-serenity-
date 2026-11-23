@@ -1,0 +1,26 @@
+From 3815c63dc8c1c590ad203ad2b835058ddaa54273 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Mon, 23 Nov 2026 15:36:33 +0100
+Subject: [PATCH] arm64: configs: redmi_a5: enable DMA-BUF heaps
+
+The VSP video decoder takes its buffers as dma-bufs. Enable the DMA-BUF heap framework and the system heap, so user space can allocate buffers from /dev/dma_heap/system. Verified on a Redmi A5: a 1 MiB system-heap buffer is mapped through the VSP IOMMU at IOVA 0x2ff00000.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/configs/redmi_a5_defconfig | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm64/configs/redmi_a5_defconfig b/arch/arm64/configs/redmi_a5_defconfig
+index 120681c28..456c9c0ff 100644
+--- a/arch/arm64/configs/redmi_a5_defconfig
++++ b/arch/arm64/configs/redmi_a5_defconfig
+@@ -1057,3 +1057,5 @@ CONFIG_ZSMALLOC=y
+ CONFIG_ZRAM=y
+ CONFIG_ZRAM_BACKEND_ZSTD=y
+ CONFIG_ZRAM_DEF_COMP_ZSTD=y
++CONFIG_DMABUF_HEAPS=y
++CONFIG_DMABUF_HEAPS_SYSTEM=y
+-- 
+2.43.0
+
