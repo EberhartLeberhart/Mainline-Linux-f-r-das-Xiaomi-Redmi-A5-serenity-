@@ -1,4 +1,4 @@
-# Video-Decoder (VSP) – Stand 22.11.2026
+# Video-Decoder (VSP) – Stand 23.11.2026
 
 Der UMS9230 hat einen eigenen Video-Block („VSP“, Video Signal Processor) für H.264, HEVC und weitere
 Formate. Unter Linux gibt es dafür bisher keinen Treiber: Firefox dekodiert jedes Video mit der CPU,
@@ -174,6 +174,85 @@ Ergebnis: `bestanden (0 Fehler)`, `rmmod` sauber.
 Einzeln testen, bevor sie das Kennzeichen bekommen. `pd_ignore_unused` und `clk_ignore_unused` stehen fest
 in `CONFIG_CMDLINE` – davon unabhängig schaltet der Kernel unbenutzte Domänen über `sync_state` ab.
 
+## Etappe 4: Android-Bibliothek in der Chroot (23.11., Handy 2)
+
+**Aufbau:** Eine kleine Android-Umgebung unter `/srv/vsp-android` auf dem Handy: Bootstrap-`linker64` und
+bionic aus `system`, dazu die Grundbibliotheken und die Herstellerbibliotheken aus `vendor` (alles aus der
+eigenen `super`-Partition, privat). Ein eigenes Testprogramm (NDK r27c) lädt die Bibliothek per `dlopen`,
+zerlegt ein H.264-Video (Annex B) in NAL-Einheiten und füttert sie einzeln. Die Puffer kommen aus
+`/dev/dma_heap/system` oder `default_cma_region`. Testvideo: `testsrc`, 176×144, 10 Bilder, x264 Baseline,
+Sollwerte je Bild als md5.
+
+**Software-Zwilling (`libomx_avcdec_sw_sprd.so`): 10 von 10 Bildern bitgenau.** Damit sind die
+Schnittstelle (Strukturen, Rückrufe, Ablauf) und das Testprogramm bewiesen.
+
+**Hardware-Bibliothek (`libomx_avcdec_hw_sprd.so`):** `H264DecInit` und `GetCodecCapability` laufen,
+`/dev/sprd_vsp` bedient alle ioctls (ACQUIRE, ENABLE, RESET, GET_IOVA …). Beim ersten `Decode` (der SPS)
+meldet die Bibliothek „startcode found“-Zeitüberschreitung, danach bleibt der Bus belegt
+(`AXIM_STS 0x55`); `Decode` liefert −7.
+
+### Was die Bibliothek mit dem VSP macht (aus dem Maschinencode, Interoperabilität)
+
+Die Bibliothek rechnet mit der gedachten Basis `0x61200000` (= Anfang unseres `mmap`, also `0x32000000`):
+IOMMU ab `+0x0`, globaler Block ab `+0x1000`, Bitstrom-Einheit (BSM) ab `+0x8000`.
+
+| Schritt | Register | Bedeutung ❓ |
+|---|---|---|
+| Öffnen | ioctl `VERSION` → 20 | wählt die Lage der IOMMU-Statusregister (`0x44`–`0x60`, `0xa0`–`0xac`) und `CFG` bei `0x04` – passt zu Xiaomis `video_ip_version = 20` |
+| Reset | `GLB+0x10 = 0xd0` | Grundeinstellung |
+| BSM einrichten | `GLB+0x80` = Stromadresse >> 4 (32 Bit) | Startadresse in 16-Byte-Schritten |
+| | `BSM+0x08 = 6` | BSM leeren/vorbereiten |
+| | `BSM+0x04 = 0x80000000` bzw. `0xC0000000` + Byte-Versatz | |
+| | `BSM+0x00` = Länge \| Bit 31 | Start |
+| | warten auf `BSM+0x1c` Bit 2 | „Startcode gefunden“ – hier die Zeitüberschreitung |
+| Freigeben | `GLB+0x18 = 3`, warten auf `GLB+0x1c` (AXI) = 0 | Bus anhalten, dann `DISABLE`/`RELEASE`; bei Fehlern zusätzlich `GLB+0x18 = 4` und `RESET` |
+| Tabellen laden | `GLB+0x1a0`–`0x1ac`, `GLB+0x20 = 0x140 \| …`, fertig = Rohbit 8 | DMA in den VSP |
+
+Systemeigenschaften, die abgefragt werden: `ro.boot.ddrsize`, `ro.boot.auto.efuse`, `ro.boot.auto.lowv`,
+`ro.vendor.build.date`, `vendor.h264dec.hw.trace` (Ersatz-`property_get` im Testprogramm beweist das; der
+Mitschnitt-Schalter allein erzeugt keine Ausgabe, auch ungefiltert nicht).
+
+### Zustand im Moment des Hängers
+
+| Register | Wert | Deutung ❓ |
+|---|---|---|
+| `GLB+0x80` | `0x02fc0000` | richtige Stromadresse (`0x2fc00000`) |
+| `GLB+0x20` | `0x4` | Betriebsart H.264 |
+| `GLB+0x0c` (Roh-Interrupt) | `0x1` | Bit 0 |
+| `GLB+0x1c` (AXI) | `0x55` | Leseanfragen offen |
+| `BSM+0x18` | `0x78020080` | „Datenübertragung läuft“ (Bit 27), FIFO leer |
+| `BSM+0x1c` | `0x1` | AXI-Lesepuffer leer |
+
+Die Bitdeutung der BSM stammt aus der verwandten JPEG-Einheit des älteren SC8830 (nur gelesen) und ist
+für unseren Chip nicht gesichert. Zusammen mit `AXI 0x55` heißt das: **Die BSM schickt eine Leseanfrage
+an den Speicher und bekommt nie eine Antwort.**
+
+### Was ausgeschlossen ist (je ein Versuch, Schalter im Testtreiber)
+
+| Verdacht | Versuch | Ergebnis |
+|---|---|---|
+| Puffer über 4 GB | CMA-Heap (`0x855…`, am Stück) | gleich |
+| Seitentabelle der IOMMU | GET_IOVA liefert die physische Adresse, IOMMU-Bypass für Adressen außerhalb des Fensters (`CFG` Bit 4, wie Unisoc) | gleich |
+| IOMMU überhaupt | IOMMU ganz aus (`CFG` Bit 0 = 0) + physische Adressen | **gleich** |
+| IOMMU nach VSP-Reset | Register zurückschreiben + `UPDATE` (wie Unisocs `sprd_iommu_restore`) | gleich; der Reset löscht die Register nicht |
+| Cache | Strompuffer gecacht und ungecacht gelesen: beide `00 00 00 01 67 42 …` | Daten liegen richtig im Speicher |
+| Startcode am Ende fehlt | `00 00 00 01` hinter jede Einheit (die Bibliothek tut das ohnehin selbst) | gleich |
+| Takt/Spannung | VSP-Quelle von 384 auf 256 MHz umgeschaltet (Quellen: 256 / 307,2 / 384 MHz) | gleich |
+| Stromdomäne | `PD_AP_VSP_CFG 0x00010404`, Zustand 0 = an | in Ordnung |
+| Bus im AP-AHB | Takt-Zwang (`FRC_OFF/ON`) 0, LPC unauffällig, `SYS_RST` 0, `MTX_BUS_EN` 3, Brücken leerlaufend | in Ordnung |
+| Resets in der PMU | `SYS_SOFT_RST_0 = 0x4000` (nur Modem), `OTHER_SYS_BLK_SRST = 0x1` (Bit 1 = VSP ist 0) | in Ordnung |
+| Systemeigenschaften | Ersatz-`property_get`: Werte kommen an | ohne Wirkung auf den Hänger |
+
+Nebenbefund: IOMMU-Register `0x54` steht immer auf `0x00030000`, schon vor dem ersten Bild – kein Hinweis
+auf den Fehler.
+
+**Stand:** Bibliothek, Adressen und Speicherinhalt sind richtig; der Lesezugriff des VSP auf den Speicher
+wird nie beantwortet, mit und ohne IOMMU. Unter Android funktioniert dieselbe Bibliothek auf derselben
+Hardware – Xiaomis Kernel macht also etwas, das in den vorhandenen Unterlagen nicht steht.
+
+**Nächster Schritt:** Xiaomis eigene Kernel-Module aus `vendor_dlkm` (eigene `super`-Partition) als
+Lehrer: welche Register `sprd_vsp`/`vpu.ko`, die Stromdomäne und ggf. DVFS beim Einschalten anfassen.
+
 ## Android-Seite (eigene `super`-Partition, privat)
 
 - `vendor/lib64/libomx_avcdec_hw_sprd.so` (H.264), `libomx_hevcdec_hw_sprd.so` (HEVC), dazu Codec2-Fassungen
@@ -210,7 +289,7 @@ daraus später einen eigenen, offenen V4L2-Treiber bauen.
 | 1. Den Chip fragen | ✅ | Stromdomäne, Takte, Registerzugriff (22.11., siehe oben) |
 | 2. IOMMU | ✅ | Bauart VAU, mainline `sprd-iommu` übernimmt sie; Stromdomäne `ap_vsp` (Patches 0060–0062), IOMMU-Knoten (0063), 22.11. |
 | 3. Treiber | ✅ | 3a Knoten (Patch 0064), Strom über Runtime-PM, Takte, IOMMU-Abbildung; 3b Reset (Patch 0065, bewiesen), Interrupt; 3c `/dev/sprd_vsp` mit Unisocs Schnittstelle, Puffer per dma-buf (Patch 0066) – alles 23.11. |
-| 4. Bibliothek laden | ❌ | Chroot mit `system/` und `vendor/` aus der eigenen `super`-Partition, kleines Testprogramm (NDK), ein H.264-Bild dekodieren |
+| 4. Bibliothek laden | 🟡 | Chroot läuft, Software-Bibliothek 10/10 bitgenau; Hardware: Lesezugriff des VSP auf den Speicher bleibt unbeantwortet (siehe Etappe 4 oben), 23.11. |
 | 5. Mitschreiben | ❌ | Registerstand bei jedem `VSP_COMPLETE` festhalten → Ablauf je Bild verstehen |
 | 6. Eigener Treiber | ❌ | V4L2-stateless-Treiber, erst H.264; Anbindung an GStreamer/FFmpeg ❓ |
 
