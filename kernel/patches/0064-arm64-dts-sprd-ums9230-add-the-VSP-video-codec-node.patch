@@ -1,0 +1,42 @@
+From b066cfd1490f000bda1e8fd3f7d55c280b0bed6a Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Mon, 23 Nov 2026 15:05:17 +0100
+Subject: [PATCH] arm64: dts: sprd: ums9230: add the VSP video codec node
+
+Add the video decoder/encoder (VSP) with its interrupt, clocks, the AP_VSP power domain and the VSP IOMMU. The register window starts with the IOMMU registers, so a driver has to map it without requesting the region. Verified on a Redmi A5: the IOMMU is enabled on attach (CFG 0x0b) and a 64 KiB DMA buffer is mapped at IOVA 0x2fff0000.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/boot/dts/sprd/ums9230.dtsi | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230.dtsi b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+index 7737fd5a7..e778995b4 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230.dtsi
++++ b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+@@ -835,6 +835,21 @@ iommu_vsp: iommu@32000000 {
+ 			#iommu-cells = <0>;
+ 		};
+ 
++		/*
++		 * Video decoder/encoder (VSP). Its register window starts with
++		 * the IOMMU registers (iommu_vsp above), so a driver must map it
++		 * without requesting the region. Global registers at +0x1000.
++		 */
++		vsp: video-codec@32000000 {
++			compatible = "sprd,ums9230-vsp";
++			reg = <0x32000000 0xc000>;
++			interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&apahb_gate CLK_VSP_EB>, <&ap_clk CLK_VSP>;
++			clock-names = "enable", "core";
++			power-domains = <&pmu UMS9230_POWER_DOMAIN_AP_VSP>;
++			iommus = <&iommu_vsp>;
++		};
++
+ 		dsi: dsi@31100000 {
+ 			compatible = "sprd,ums9230-dsi-host", "sprd,sharkl5-dsi-host";
+ 			reg = <0x31100000 0x1000>;
+-- 
+2.43.0
+

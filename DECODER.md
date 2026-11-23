@@ -108,6 +108,22 @@ Folge: Solange der IOMMU-Treiber läuft, bleibt die VSP-Domäne an (`sprd-iommu`
 die Takte schaltet der Treiber beim Start ein und nicht wieder aus. Der erste Map-Test braucht ein Gerät
 mit `iommus = <&iommu_vsp>` und kommt deshalb mit dem VSP-Treiber (Etappe 3).
 
+## Treiber, Etappe 3a (23.11., Handy 2, Kernel #124)
+
+Patch 0064: Knoten `vsp: video-codec@32000000` (`sprd,ums9230-vsp`, Werte aus Unisocs `qogirl6.dtsi`: `reg`
+`0x32000000` + `0xc000`, `GIC_SPI 34`), Takte `enable` (`CLK_VSP_EB`) und `core` (`CLK_VSP`), Stromdomäne
+`ap_vsp`, `iommus = <&iommu_vsp>`. Treiber: [kernel/vsp/](kernel/vsp/) (`redmi_vsp_drv.c`).
+
+| Prüfung | Ergebnis |
+|---|---|
+| Gerät | `32000000.video-codec: Adding to iommu group 1` beim Start |
+| Strom/Takt | über Runtime-PM, `vsp-clk 384000000 Hz`; danach `video-codec suspended` in `pm_genpd_summary` |
+| IOMMU nach dem Anbinden | `CFG = 0x0b` (an), `FIRST_PPN = 0x851c0` (Seitentabelle), `FIRST_VPN = 0x20000` (IOVA ab `0x20000000`, aus `sprd,iova-range`), `VPN_RANGE = 0xffff` (256 MiB), `DEFAULT_PPN_RD/WR` gesetzt |
+| Abbildung | 64 KiB per `dma_alloc_coherent()`: IOVA `0x2fff0000` → phys `0x10520f000`, letzte Seite `0x2ffff000` → `0x105200000` |
+
+Die echten Seiten liegen über 4 GB und verstreut (sogar rückwärts) – der 32-Bit-VSP sieht trotzdem einen
+zusammenhängenden Puffer. Damit ist die IOMMU wirklich getestet.
+
 **Offen:** GPU, MM, PUBCP und WCN werden vermutlich ebenso nie wirklich abgeschaltet ❓ (gleiche Maske).
 Einzeln testen, bevor sie das Kennzeichen bekommen. `pd_ignore_unused` und `clk_ignore_unused` stehen fest
 in `CONFIG_CMDLINE` – davon unabhängig schaltet der Kernel unbenutzte Domänen über `sync_state` ab.
@@ -147,7 +163,7 @@ daraus später einen eigenen, offenen V4L2-Treiber bauen.
 | 0. Bestandsaufnahme | ✅ | Hardware, Android-Bibliothek, Kernel-Module, GPL-Quellen (21./22.11.) |
 | 1. Den Chip fragen | ✅ | Stromdomäne, Takte, Registerzugriff (22.11., siehe oben) |
 | 2. IOMMU | ✅ | Bauart VAU, mainline `sprd-iommu` übernimmt sie; Stromdomäne `ap_vsp` (Patches 0060–0062), IOMMU-Knoten (0063), 22.11. |
-| 3. Treiber | ❌ | erster Map-Test über die IOMMU, `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
+| 3. Treiber | 🟡 | 3a ✅ (23.11.): Knoten (Patch 0064), Strom über Runtime-PM, Takte, IOMMU-Abbildung getestet; offen: VSP-Register, Reset, Interrupt, `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
 | 4. Bibliothek laden | ❌ | Chroot mit `system/` und `vendor/` aus der eigenen `super`-Partition, kleines Testprogramm (NDK), ein H.264-Bild dekodieren |
 | 5. Mitschreiben | ❌ | Registerstand bei jedem `VSP_COMPLETE` festhalten → Ablauf je Bild verstehen |
 | 6. Eigener Treiber | ❌ | V4L2-stateless-Treiber, erst H.264; Anbindung an GStreamer/FFmpeg ❓ |

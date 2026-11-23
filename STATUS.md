@@ -1,6 +1,6 @@
 # Redmi A5 (serenity) – Hardware-Status
 
-Stand: 22.11.2026 · Kernel 7.1.0-rc1 (Slot b, Patches bis 0063) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig` · jede Zeile trägt ihr eigenes Prüfdatum
+Stand: 22.11.2026 · Kernel 7.1.0-rc1 (Slot b, Patches bis 0064) · Konfiguration `arch/arm64/configs/redmi_a5_defconfig` · jede Zeile trägt ihr eigenes Prüfdatum
 
 ## Regeln
 
