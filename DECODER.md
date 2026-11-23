@@ -124,6 +124,29 @@ Patch 0064: Knoten `vsp: video-codec@32000000` (`sprd,ums9230-vsp`, Werte aus Un
 Die echten Seiten liegen über 4 GB und verstreut (sogar rückwärts) – der 32-Bit-VSP sieht trotzdem einen
 zusammenhängenden Puffer. Damit ist die IOMMU wirklich getestet.
 
+## Treiber, Etappe 3b (23.11., Handy 2, Kernel #125)
+
+Ottos Reset-Steuerung (`apahb_gate`, `ums9230_ap_ahb_resets`) kennt drei VSP-Resets:
+
+| Reset | Bit (AP-AHB +0x4) | |
+|---|---|---|
+| `RESET_AP_AHB_VSP_SOFT_RST` | 13 | Rechenkern – genutzt („core“) |
+| `RESET_AP_AHB_VSP_GLOBAL_SOFT_RST` | 11 | globaler Bereich – genutzt („global“) |
+| `RESET_AP_AHB_VSP_VAU_SOFT_RST` | 10 | **die IOMMU** – bewusst nicht im VSP-Knoten |
+
+Patch 0065 gibt dem Knoten die beiden ersten. Unisocs Treiber stellt nach einem VSP-Reset bei vielen Chips die IOMMU
+wieder her (`sprd_iommu_restore`); SHARKL6 steht nicht auf der Liste – weil die IOMMU hier einen eigenen Reset hat.
+
+| Prüfung | Ergebnis |
+|---|---|
+| Reset wirkt | Muster `0x31` in `VSP_INT_MASK` (+0x1004) → nach dem Reset `0x00000000` |
+| IOMMU überlebt den Reset | `CFG 0x0b`, `FIRST_PPN 0x851c0`, `FIRST_VPN 0x20000` vorher und nachher gleich |
+| Globale Register im Ruhezustand | `INT_STS`, `MASK`, `RAW`, `AXI_STS` (+0x101c) alle 0 |
+| Interrupt | SPI 34 = Linux-IRQ 47, alle Quellen maskiert: 0 Auslösungen in 100 ms |
+| Abbildung nach dem Reset | 64 KiB, IOVA `0x2fff0000` bzw. `0x2ffe0000` → abgebildet |
+
+Der Handler darf die Register nur mit Takt lesen: Der Treiber schaltet den Interrupt ab, bevor die Takte ausgehen.
+
 **Offen:** GPU, MM, PUBCP und WCN werden vermutlich ebenso nie wirklich abgeschaltet ❓ (gleiche Maske).
 Einzeln testen, bevor sie das Kennzeichen bekommen. `pd_ignore_unused` und `clk_ignore_unused` stehen fest
 in `CONFIG_CMDLINE` – davon unabhängig schaltet der Kernel unbenutzte Domänen über `sync_state` ab.
@@ -163,7 +186,7 @@ daraus später einen eigenen, offenen V4L2-Treiber bauen.
 | 0. Bestandsaufnahme | ✅ | Hardware, Android-Bibliothek, Kernel-Module, GPL-Quellen (21./22.11.) |
 | 1. Den Chip fragen | ✅ | Stromdomäne, Takte, Registerzugriff (22.11., siehe oben) |
 | 2. IOMMU | ✅ | Bauart VAU, mainline `sprd-iommu` übernimmt sie; Stromdomäne `ap_vsp` (Patches 0060–0062), IOMMU-Knoten (0063), 22.11. |
-| 3. Treiber | 🟡 | 3a ✅ (23.11.): Knoten (Patch 0064), Strom über Runtime-PM, Takte, IOMMU-Abbildung getestet; offen: VSP-Register, Reset, Interrupt, `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
+| 3. Treiber | 🟡 | 3a ✅ Knoten (Patch 0064), Strom über Runtime-PM, Takte, IOMMU-Abbildung; 3b ✅ Reset (Patch 0065, bewiesen), Interrupt (23.11.); offen: `/dev/sprd_vsp` mit den ioctls aus dem Jolla-Code auf 7.1 portieren; Puffer per dma-buf |
 | 4. Bibliothek laden | ❌ | Chroot mit `system/` und `vendor/` aus der eigenen `super`-Partition, kleines Testprogramm (NDK), ein H.264-Bild dekodieren |
 | 5. Mitschreiben | ❌ | Registerstand bei jedem `VSP_COMPLETE` festhalten → Ablauf je Bild verstehen |
 | 6. Eigener Treiber | ❌ | V4L2-stateless-Treiber, erst H.264; Anbindung an GStreamer/FFmpeg ❓ |

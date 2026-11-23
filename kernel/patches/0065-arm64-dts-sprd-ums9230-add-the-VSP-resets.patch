@@ -1,0 +1,31 @@
+From 328f65477bdba803dbaa7d27edd7d7f2f6cb23c8 Mon Sep 17 00:00:00 2001
+From: EberhartLeberhart <eberhartleberhart585@gmail.com>
+Date: Mon, 23 Nov 2026 15:17:07 +0100
+Subject: [PATCH] arm64: dts: sprd: ums9230: add the VSP resets
+
+Give the VSP node its core and global soft resets (AP AHB bits 13 and 11), but not the VAU reset (bit 10), which resets the VSP IOMMU. Verified on a Redmi A5: a pattern written to the VSP interrupt mask is cleared by the reset, while the IOMMU configuration (CFG 0x0b, page table base) is kept.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01W8YQkFAqgbw689knydrHtG
+---
+ arch/arm64/boot/dts/sprd/ums9230.dtsi | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/sprd/ums9230.dtsi b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+index e778995b4..51bbce779 100644
+--- a/arch/arm64/boot/dts/sprd/ums9230.dtsi
++++ b/arch/arm64/boot/dts/sprd/ums9230.dtsi
+@@ -847,6 +847,10 @@ vsp: video-codec@32000000 {
+ 			clocks = <&apahb_gate CLK_VSP_EB>, <&ap_clk CLK_VSP>;
+ 			clock-names = "enable", "core";
+ 			power-domains = <&pmu UMS9230_POWER_DOMAIN_AP_VSP>;
++			/* not RESET_AP_AHB_VSP_VAU_SOFT_RST: that one resets the IOMMU */
++			resets = <&apahb_gate RESET_AP_AHB_VSP_SOFT_RST>,
++				 <&apahb_gate RESET_AP_AHB_VSP_GLOBAL_SOFT_RST>;
++			reset-names = "core", "global";
+ 			iommus = <&iommu_vsp>;
+ 		};
+ 
+-- 
+2.43.0
+
