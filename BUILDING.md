@@ -86,11 +86,12 @@ git checkout -b redmi-a5 4a5b97b821b846f9a25a99a4fdcb3040fd910965
 git am ~/redmi-a5/kernel/patches/*.patch          # all patches apply cleanly (checked 05.11.2026); they also
                                                   # bring arch/arm64/configs/redmi_a5_defconfig (= kernel/redmi_a5_defconfig)
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- redmi_a5_defconfig   # CROSS_COMPILE here too, see note below
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image dtbs modules sprd/ums9230-xiaomi-serenity.dtb
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image dtbs modules
 ```
 
-The last target builds our device tree explicitly — its line in `arch/arm64/boot/dts/sprd/Makefile` is still missing
-in the patches (found by the first outside tester, fix coming).
+`dtbs` also builds our device tree (`arch/arm64/boot/dts/sprd/ums9230-xiaomi-serenity.dtb`); patch 0043 adds it to
+`arch/arm64/boot/dts/sprd/Makefile`. Naming it as an extra target (`sprd/ums9230-xiaomi-serenity.dtb`) still works but
+is no longer needed.
 
 **Use the same `CROSS_COMPILE` for `defconfig` and for the build.** Several options depend on what the compiler
 supports; configuring with the host compiler and building with the cross compiler makes `make` restart the
