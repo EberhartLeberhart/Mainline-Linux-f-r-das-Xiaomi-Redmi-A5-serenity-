@@ -253,6 +253,20 @@ Hardware – Xiaomis Kernel macht also etwas, das in den vorhandenen Unterlagen 
 **Nächster Schritt:** Xiaomis eigene Kernel-Module aus `vendor_dlkm` (eigene `super`-Partition) als
 Lehrer: welche Register `sprd_vsp`/`vpu.ko`, die Stromdomäne und ggf. DVFS beim Einschalten anfassen.
 
+### Weitere Spuren (24.11.)
+
+- **Xiaomis `vpu.ko` ist der Treiber einer anderen Chipfamilie** (Kopf: „QOGIRN6PRO VPU driver“). Was dort
+  nach fehlender Freigabe aussah (`dec_eb` bei `0x30100000`, Matrix-QoS, zusätzliche Takte), gibt es beim
+  UMS9230 (qogirl6) so nicht. Beim Einschalten fehlt uns nichts.
+- **DMC-MPU (`0x60200000`) eher nicht die Ursache:** Im Original-Gerätebaum sind nur Regeln für die
+  Modem-Anschlüsse eingetragen (WTLCP, PUBCP/AUDCP; Bereich `0x80002000`–`0x8e900000`). Für den Anschluss
+  „AP/VSP/AON“ gibt es keine Regel. Die Einstellung macht unter Android ein Kernel-Treiber, den wir nicht
+  haben. Registerstand nicht gelesen (Aufbau unbekannt).
+- **trusty:** Beim Sensorhub gibt Android den Start über trusty frei (siehe [SENSORHUB.md](SENSORHUB.md)).
+  Ob der VSP-Speicherzugriff ebenfalls an trusty hängt, ist offen ❓.
+- **Vergleichsmessung unter Android:** Ein Tester mit gerootetem Android 17 hilft (Issue #26). Erste Runde:
+  Kernel und Module, VSP-Knoten im Gerätebaum, `dmesg`/`logcat` während ein Video läuft.
+
 ## Android-Seite (eigene `super`-Partition, privat)
 
 - `vendor/lib64/libomx_avcdec_hw_sprd.so` (H.264), `libomx_hevcdec_hw_sprd.so` (HEVC), dazu Codec2-Fassungen

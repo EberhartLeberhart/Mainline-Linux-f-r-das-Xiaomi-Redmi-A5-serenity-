@@ -8,7 +8,7 @@
 ✅ display, touch, GPU, battery, USB networking · ✅ Wi-Fi (WPA2, SSH over Wi-Fi) · ✅ Bluetooth ·
 ✅ audio playback (headphones, loudspeaker; mixer settings needed, UCM profile in progress) ·
 ✅ USB OTG (5 V and data role switched by the kernel) · ❌ camera · ⏸️ mobile data (on hold) ·
-detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is still missing (German checklist): [FEHLT.md](FEHLT.md)
+detailed, evidence-based status (German): [STATUS.md](STATUS.md) · what is still missing (German checklist): [FEHLT.md](FEHLT.md) · sensor hub (German): [SENSORHUB.md](SENSORHUB.md)
 
 > [!WARNING]
 > **Do not flash our images on a phone that has been updated to Android 17.**
