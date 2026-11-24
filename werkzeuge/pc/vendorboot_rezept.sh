@@ -286,7 +286,7 @@ if [ "$AKKU" = 1 ]; then AKKU_ARGS=(
 fi
 
 # 24.11.: trusty (Unisocs sichere Umgebung) - Knoten wie im Xiaomi-Geraetebaum, fuer unseren trusty-Treiber
-#   (Port von Unisocs GPL-Treiber, kernel/trusty-test). Nur Kern, Interrupts und Log; virtio/IPC kommen spaeter.
+#   (Port von Unisocs GPL-Treiber, kernel/trusty-test). Kern, Interrupts, Log und (seit Etappe 3) virtio.
 #   Vorlagen fuer die Interrupts 1:1 aus Xiaomis Baum (GIC mit 3 Zellen: SGI, PPI, SPI), Verweis auf unseren GIC.
 #   trusty bleibt unveraendert, wir benutzen nur seine offizielle Schnittstelle (SENSORHUB.md).
 TRUSTY=${TRUSTY:-0}
@@ -299,7 +299,9 @@ if [ "$TRUSTY" = 1 ]; then
     /trusty/irq compatible sprd,trusty-irq-v1 \
     /trusty/irq interrupt-templates "u:$GIC_PH 0 0 0 $GIC_PH 1 1 8 $GIC_PH 1 0 4" \
     /trusty/irq interrupt-ranges "u:0 15 0 16 31 1 32 223 2" \
-    /trusty/log compatible sprd,trusty-log-v1 )
+    /trusty/log compatible sprd,trusty-log-v1 \
+    `# 24.11. Etappe 3: virtio (Kanaele zu trusty-Diensten, darauf trusty-ipc)` \
+    /trusty/virtio compatible sprd,trusty-virtio-v1 )
 fi
 
 "$HIER/vendorboot_dt.sh" rezept \

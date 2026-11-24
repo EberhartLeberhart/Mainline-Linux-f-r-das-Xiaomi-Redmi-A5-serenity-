@@ -19,4 +19,3 @@ struct log_rb {
 #define TRUSTY_LOG_API_VERSION	1
 
 #endif
-

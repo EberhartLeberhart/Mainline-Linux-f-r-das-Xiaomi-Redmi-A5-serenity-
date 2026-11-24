@@ -104,7 +104,7 @@ die Kanäle (trusty-IPC). Vorbild ist Androids `drivers/trusty` (GPL) bzw. Uniso
 | 0 | Bestandsaufnahme ✅ 24.11. | Androids trusty-Module (`trusty`, `-irq`, `-log`, `-virtio`, `-ipc`, `-pm`, `-tui`, `ion_ipc_trusty`) alle **GPL v2**; Quelltext für genau unseren Chip offen bei mer-hybris/s19mps-kernel `drivers/trusty`; trusty-Speicher `0xb0000000`–`0xb60fffff` ist bei uns reserviert |
 | 1 | Grundtreiber ✅ 24.11. | „Unisoc TEE v2.1.1“, API-Version 2 (Testmodul `kernel/trusty-test`) |
 | 2 | Interrupts und Log ✅ 24.11. | Knoten `/trusty` (`TRUSTY=1` im Rezept), trusty-irq meldet SGI 13 an, trusty-log teilt 16 KB Log-Speicher; erste Standard-Calls laufen sauber |
-| 3 | IPC, `/dev/trusty-ipc-dev0` | Verbindung zu einem Dienst |
+| 3 | IPC ✅ 24.11. | Knoten `/trusty/virtio`, Kanal „is online“, `/dev/trusty-ipc-dev0` da; virtio-ID 13 auf private ID umgelegt (13 ist in Mainline der Speicher-Ballon); `trusty-ipc` muss vor `trusty-virtio` geladen werden |
 | 4 | `kernelbootcp`: Firmware prüfen lassen, Speicher freigeben (Protokoll siehe MODEM.md) | trusty gibt frei |
 | 5 | Sensorhub starten | Sensoren als IIO-Geräte |
 
