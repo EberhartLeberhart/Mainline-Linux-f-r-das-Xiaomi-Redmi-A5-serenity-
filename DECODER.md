@@ -255,9 +255,10 @@ Lehrer: welche Register `sprd_vsp`/`vpu.ko`, die Stromdomäne und ggf. DVFS beim
 
 ### Weitere Spuren (24.11.)
 
-- **Xiaomis `vpu.ko` ist der Treiber einer anderen Chipfamilie** (Kopf: „QOGIRN6PRO VPU driver“). Was dort
-  nach fehlender Freigabe aussah (`dec_eb` bei `0x30100000`, Matrix-QoS, zusätzliche Takte), gibt es beim
-  UMS9230 (qogirl6) so nicht. Beim Einschalten fehlt uns nichts.
+- ~~Xiaomis `vpu.ko` ist der Treiber einer anderen Chipfamilie~~ (Kopf: „QOGIRN6PRO VPU driver“). **Korrigiert
+  am 25.11.:** Beim Tester bindet genau dieser Treiber an unseren VSP (`sprd_vpu 32000000.video-codec`). Der
+  Kopf ist nur ein Überbleibsel, der Treiber deckt mehrere Chips ab. Ob dort Freigaben (`dec_eb`, Matrix-QoS,
+  zusätzliche Takte) stecken, die uns fehlen, ist damit wieder offen ❓.
 - **DMC-MPU (`0x60200000`) eher nicht die Ursache:** Im Original-Gerätebaum sind nur Regeln für die
   Modem-Anschlüsse eingetragen (WTLCP, PUBCP/AUDCP; Bereich `0x80002000`–`0x8e900000`). Für den Anschluss
   „AP/VSP/AON“ gibt es keine Regel. Die Einstellung macht unter Android ein Kernel-Treiber, den wir nicht
@@ -266,6 +267,19 @@ Lehrer: welche Register `sprd_vsp`/`vpu.ko`, die Stromdomäne und ggf. DVFS beim
   Ob der VSP-Speicherzugriff ebenfalls an trusty hängt, ist offen ❓.
 - **Vergleichsmessung unter Android:** Ein Tester mit gerootetem Android 17 hilft (Issue #26). Erste Runde:
   Kernel und Module, VSP-Knoten im Gerätebaum, `dmesg`/`logcat` während ein Video läuft.
+
+### Vergleichsmessung des Testers (25.11., Android 17, Kernel 6.18 GKI)
+
+- **Der Decoder arbeitet dort:** VSP-Interrupt `GICv3 66` (= SPI 34, derselbe wie bei uns) mit 106 674
+  Auslösungen während ein Video läuft, laufend `vsp_get_dmabuf` (Puffer 488 KB aus `system`, 28 KB aus
+  `system-uncached`).
+- Gerätedatei `/dev/sprd_vsp` (misc 10,281), Module `vpu` ← `vdecsys_dvfs`, `apsys_dvfs`, `unisoc_iommu`,
+  `bus_qos`, dazu `sprd_vpu_pw_domain`.
+- **Neue Spur: `vdecsys_dvfs`** – eine eigene Takt-/Spannungssteuerung für den Decoder, von der `vpu`
+  abhängt. Etwas Entsprechendes haben wir nicht. Wenn der VSP eine Einstellung braucht, die nur dieses
+  Modul macht, wäre das ein Kandidat für „startet, rechnet aber nicht“ ❓.
+- Registerwerte konnte er nicht auslesen. Nachfrage gestellt: vollständige Kernel-Warnungen aus seinem Log
+  und der Zustand der devfreq-Geräte.
 
 ## Android-Seite (eigene `super`-Partition, privat)
 

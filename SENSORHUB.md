@@ -105,7 +105,7 @@ die Kanäle (trusty-IPC). Vorbild ist Androids `drivers/trusty` (GPL) bzw. Uniso
 | 1 | Grundtreiber ✅ 24.11. | „Unisoc TEE v2.1.1“, API-Version 2 (Testmodul `kernel/trusty-test`) |
 | 2 | Interrupts und Log ✅ 24.11. | Knoten `/trusty` (`TRUSTY=1` im Rezept), trusty-irq meldet SGI 13 an, trusty-log teilt 16 KB Log-Speicher; erste Standard-Calls laufen sauber |
 | 3 | IPC ✅ 24.11. | Knoten `/trusty/virtio`, Kanal „is online“, `/dev/trusty-ipc-dev0` da; virtio-ID 13 auf private ID umgelegt (13 ist in Mainline der Speicher-Ballon); `trusty-ipc` muss vor `trusty-virtio` geladen werden |
-| 4 | `kernelbootcp`: Firmware prüfen lassen, Speicher freigeben (Protokoll siehe MODEM.md) | trusty gibt frei |
+| 4 | `kernelbootcp` 🔶 seit 25.11. | Verbindung ✅, Nachrichtenformat ✅, `UNLOCK_DDR` beantwortet ✅ (siehe unten); offen: `VERIFY_ALL` mit pm_sys, Tiefschlaf-Abfrage im Treiber |
 | 5 | Sensorhub starten | Sensoren als IIO-Geräte |
 
 Grundsätze: offizielle Schnittstelle, unveränderte Original-Firmware, trusty entscheidet selbst. Kein
@@ -113,3 +113,51 @@ Eingriff in trusty, ATF oder die Prüfungen. Das Modem wird dabei nicht gestarte
 
 **Offene Frage ❓:** Ob auch der Decoder (siehe [DECODER.md](DECODER.md)) an einer trusty-Freigabe hängt,
 ist nicht bewiesen. `modem_control` greift zusätzlich auf `/dev/dmc_mpu` zu; das ist eine Spur für später.
+
+
+## Etappe 4: `kernelbootcp` (25.11.)
+
+### Nachrichtenformat
+
+Nachvollzogen aus Androids `libkernelbootcp.trusty.so` und `modem_control` (aus der eigenen
+`vendor_a`-Partition, privat, nur gelesen). Eigene Umsetzung als Python-Testprogramm (`kbc.py`).
+
+- Verbindung: `/dev/trusty-ipc-dev0` öffnen, ioctl `TIPC_IOC_CONNECT` (`0x40087280`) mit dem Dienstnamen
+  `com.android.trusty.kernelbootcp`.
+- Nachricht: `u32` Befehl + Tabelle (464 Byte). Antwort: `u32` = Befehl | 1.
+- Befehle: `VERIFY_ALL` = 0, `UNLOCK_DDR` = 2.
+- Tabelle: 4 Einträge zu 112 Byte (Modem, ldsp, gdsp, **pmsys bei 0x150**), danach Ladeart bei `0x1c0`
+  (Bit 0 = Sensorhub, Bit 1 = Modem), `0x1c4` „is_packed“, Ladeversatz bei `0x1c8`.
+- Eintrag: `u64` Adresse, `u32` Länge, `u32` Abbildlänge, 64 Byte AVB-Fußzeile (die letzten 64 Byte der
+  Partition), 32 Byte Partitionsname ohne `_a`/`_b`.
+- Androids Ablauf für den Sensorhub: Ladeart = 1 → `UNLOCK_DDR` → pm_sys laden, pmsys-Eintrag füllen →
+  `VERIFY_ALL` → M4 loslassen.
+
+Das Testprogramm prüft vor dem Senden, dass nur das Sensorhub-Bit gesetzt ist und die Modem-/DSP-Einträge
+leer sind. **Das Modem-Bit wird nie gesetzt.**
+
+### Ergebnisse auf Handy 2
+
+| Test | Ergebnis |
+|---|---|
+| Verbinden und trennen | ✅ trusty nimmt die Verbindung an |
+| Fußzeile `pm_sys_a` (1 MB) | ✅ `AVBf` 1.0, Abbild `0xc812b` Byte, vbmeta direkt dahinter |
+| `UNLOCK_DDR`, Ladeart 1 | ✅ Antwort `0x3`. trusty liest die Tabelle genau so wie gebaut (`flag = 1`, Einträge leer), hält den M4 im Reset (`SEC_KBC_STOP_CP`, Register `0x8c` bleibt 1) und wartet 50 ms |
+
+### Gefunden: CPU-Tiefschlaf verschluckt trustys Zeitgeber
+
+Der erste `UNLOCK_DDR` blieb nach „sleep 50ms“ ewig stehen. Eingegrenzt mit einem Protokollschalter
+(`spur=1`) und einem Knopf zum Anstoßen von Hand (`anklopfen`) im Testtreiber:
+
+- Linux hatte nichts falsch gemacht: Der Aufruf kehrte normal zurück, alle CPUs gingen in den Leerlauf.
+- Anstoßen auf allen 8 CPUs ergab überall `SM_ERR_NOP_DONE` – trustys 50-ms-Zeitgeber war nie abgelaufen.
+- Ursache: Der Tiefschlaf `cpu-pd-lit` schaltet den CPU-Kern ab, und damit trustys Zeitgeber auf diesem
+  Kern. Unisocs Android-Kernel fragt trusty vor jedem Tiefschlaf (`SMC_FC_CPU_CAN_DOWN`, über einen
+  Android-eigenen Haken in `trusty-pm.c`); unser Linux fragt nicht.
+- Beweis: Tiefschlaf abgeschaltet (`cpuidle/state1/disable`) → Antwort nach dem Neustart sofort, ganz ohne
+  Anstoßen, und trustys Weckruf (SGI 13) kommt an.
+
+**Behelf beim Testen:** `for d in /sys/devices/system/cpu/cpu*/cpuidle/state1/disable; do echo 1 > $d; done`
+vor dem Laden der Module. **Richtige Lösung (offen):** im Treiber nach jedem Aufruf
+`SMC_FC_CPU_CAN_DOWN` fragen und, solange trusty auf einer CPU etwas vorhat, nur dort den Tiefschlaf
+sperren (Mainline-Mittel: PM-QoS für diese CPU).

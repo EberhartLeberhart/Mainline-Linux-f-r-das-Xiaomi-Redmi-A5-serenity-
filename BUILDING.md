@@ -40,6 +40,10 @@ the root file system on every boot before the `/etc/fstab` line (step 4) switche
 the command line said `rw`, which silently skipped that check (see STATUS.md). The vbmeta partitions are **left unchanged**: on the author's unlocked phone all
 `vbmeta*_a/_b` still have flags = 0 (checked 05.11.2026), and slot b boots anyway.
 
+**"Empty" ramdisk does not mean zero bytes:** `vendorboot_basis.sh` writes a minimal but valid gzip'ed cpio
+(only `.` and `TRAILER!!!`, 95 bytes). A tester reported that a `vendor_boot` whose ramdisk is really empty
+(0 bytes) left his phone unresponsive (issue #26, 25.11.2026), so never drop the ramdisk entirely.
+
 **Why `init_boot_b` and `dtbo_b` must be emptied** (found 07.11.2026 on a phone in factory state, which hung at the
 logo and rebooted in a loop): on a stock phone `init_boot_b` holds Android's first-stage ramdisk — the bootloader
 hands it to our kernel, which then starts Android's init instead of Ubuntu. And `dtbo_b` holds Xiaomi's overlay for the
