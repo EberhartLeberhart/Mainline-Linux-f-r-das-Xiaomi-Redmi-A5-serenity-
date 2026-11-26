@@ -158,6 +158,30 @@ Der erste `UNLOCK_DDR` blieb nach „sleep 50ms“ ewig stehen. Eingegrenzt mit 
   Anstoßen, und trustys Weckruf (SGI 13) kommt an.
 
 **Behelf beim Testen:** `for d in /sys/devices/system/cpu/cpu*/cpuidle/state1/disable; do echo 1 > $d; done`
-vor dem Laden der Module. **Richtige Lösung (offen):** im Treiber nach jedem Aufruf
-`SMC_FC_CPU_CAN_DOWN` fragen und, solange trusty auf einer CPU etwas vorhat, nur dort den Tiefschlaf
-sperren (Mainline-Mittel: PM-QoS für diese CPU).
+vor dem Laden der Module.
+
+### `trusty-pm`: Tiefschlaf-Abfrage mit Mainline-Mitteln (26.11.)
+
+Android hängt sich mit einem Android-eigenen Haken in den PSCI-Aufruf. Mainline-Entsprechung ohne
+Kernel-Patch: `cpuidle-psci` ruft vor jedem Tiefschlaf `cpu_pm_enter()` auf und bricht ab, wenn ein
+Teilnehmer der `cpu_pm`-Kette einen Fehler meldet. Testmodul `trusty-pm.ko` fragt dort
+`SMC_FC_CPU_CAN_DOWN` (Schnellaufruf, im Leerlauf-Pfad erlaubt; 0 = darf, > 0 = trusty „resident“).
+
+| Fassung | Ergebnis |
+|---|---|
+| nur eigene CPU, normale Priorität | Veto greift, aber Dauerschleife (5,7 Mio. Vetos in 20 s, kein WFI) und GIC schon halb abgeschaltet → keine Antwort |
+| + höchste Priorität, beim Veto selbst `WFI` | keine Dauerschleife mehr (344 Vetos), trotzdem keine Antwort |
+| `alle=1`: jede CPU fragt für alle CPUs | **Antwort `0x3`**, ganzer Ablauf sichtbar: `sleep end` → `SEC_KBC_STOP_CP` → `SEC_FIREWALL_UNLOCK_CP_DDR() ret = 0` → `kbc_send_response` |
+
+Aber: Für **fremde** CPUs meldet trusty immer „resident“ (CPUs 1–7 bei jeder Abfrage, CPU 0 nie), auch
+ohne Auftrag. `alle=1` heißt damit in Wahrheit „Tiefschlaf immer aus“ – wirkt wie der Handbehelf und
+kostet genauso Strom. **Offen:** stromsparende Lösung, z. B. Tiefschlaf per PM-QoS nur sperren, solange
+eine Anfrage an trusty unbeantwortet ist.
+
+### Offen: Absturz im I2C (26.11.)
+
+Zweimal mit geladenem `trusty-pm alle=1`: `synchronous external abort` in `sprd_i2c_isr` (I2C
+`200f0000`, daran nur der Ladechip `sgm41513`, Interrupt 22) – einmal ~90 s nach `UNLOCK_DDR`, einmal
+16 s nach dem Laden ohne `UNLOCK_DDR`. `UNLOCK_DDR` ist also nicht die Ursache. Zwei Läufe à 5 Minuten
+(ohne trusty / mit `trusty-pm alle=1`) ohne Absturz. Zusammenhang mit trusty noch unklar ❓ – längere
+Läufe nötig. Der CPU-Fix (Patch 0059, `couple_clusters = Y`) ist auf dem Testkernel aktiv.

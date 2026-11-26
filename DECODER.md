@@ -281,6 +281,21 @@ Lehrer: welche Register `sprd_vsp`/`vpu.ko`, die Stromdomäne und ggf. DVFS beim
 - Registerwerte konnte er nicht auslesen. Nachfrage gestellt: vollständige Kernel-Warnungen aus seinem Log
   und der Zustand der devfreq-Geräte.
 
+### Ausgeschlossen am 25.11.
+
+| Verdacht | Ergebnis |
+|---|---|
+| trusty | `vpu.ko` hängt laut `modules.dep` nur an `apsys-dvfs` und `unisoc-iommu` (Display und GSP hängen an trusty, der VSP nicht) |
+| CPU-Tiefschlaf | Lauf mit abgeschaltetem Tiefschlaf: gleicher Hänger |
+| DVFS-Grundeinstellung wie Android | `apsys-dvfs` schreibt beim Start `clk_gate_ctrl` (+0x3c) = `0x2` und `wait_window` (+0x04) = `0x10080`; bei uns `0x1` / `0x400080`. Auf frisch gestartetem Handy gesetzt: gleicher Hänger. Hardware-DVFS ist ohnehin aus (`dfs_en_ctrl` = 0), VSP-Takt 384 MHz aus dem Taktbaum |
+| VSP-QoS | Original-DT hat beim VSP kein `sprd,qos`, Android schreibt also nichts |
+| Takte in `vpu.ko` | für unseren Chip (`sharkl5pro`-Daten, „lite“-Weg) nur `clk_ahb_gate_vsp_eb` und `clk_vsp` – wie bei uns. `dpu_vsp_eb` gehört zu einem anderen Chip im selben Modul |
+| Domänen-Freigabe | `vsp-domain-eb-syscon` = AON `0x64000004` Bit 5: gesetzt (`0x001ebdf7`) |
+| Stromsparen der Busbrücken | alle `…_SLICE_LP_EB` stehen auf `0xff`; `AP2DDR`, `DPU2DDR`, `AP2MM` ausgeschaltet: gleicher Hänger |
+
+**Nächster Schritt:** Registervergleich mit dem Tester (regmap-Abzüge unter Android während ein Video
+läuft, dieselben Blöcke bei uns) – Anfrage gestellt.
+
 ## Android-Seite (eigene `super`-Partition, privat)
 
 - `vendor/lib64/libomx_avcdec_hw_sprd.so` (H.264), `libomx_hevcdec_hw_sprd.so` (HEVC), dazu Codec2-Fassungen
