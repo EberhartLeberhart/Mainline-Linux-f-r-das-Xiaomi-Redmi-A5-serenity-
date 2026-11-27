@@ -20,6 +20,17 @@ ph() { fdtget "$BASIS_DTB" "$1" phandle 2>/dev/null || echo $(( $2 + PH_OFF )); 
 echo ">>> phandles: Basis bis $PH_MAX, neue ab $((105 + PH_OFF))"
 GP=/soc/gpio@641b0000      # GPIO-Baustein des Chips (hatte im alten Basis-Baum keine phandle)
 GP_PH=$(ph $GP 105)
+# 27.11.: PMIC-EIC (Lauter-Taste) ebenfalls ueber den Basis-Baum suchen statt fester 0x38 - die zeigte mit dem
+#   neueren Basis-Baum auf einen eFuse-Eintrag ("could not get #gpio-cells ... adc-big-scale@24") und gpio-keys
+#   brach ganz ab (alle drei Tasten tot). Knoten ueber sein compatible finden, Name kann je nach Baum anders sein.
+PMIC=/soc/spi@64200000/pmic@0
+EIC=""
+for n in $(fdtget -l "$BASIS_DTB" $PMIC); do
+  case "$(fdtget "$BASIS_DTB" $PMIC/$n compatible 2>/dev/null)" in *eic*) EIC=$PMIC/$n; break;; esac
+done
+[ -n "$EIC" ] || { echo "FEHLER: PMIC-EIC (compatible *eic*) unter $PMIC nicht gefunden"; exit 1; }
+EIC_PH=$(ph $EIC 124)
+echo ">>> PMIC-EIC: $EIC (phandle $EIC_PH)"
 FG=/soc/spi@64200000/pmic@0/fuel-gauge@c00   # Akkuanzeige im PMIC
 BAT_PH=$(ph /battery 106)  # phandle fuer den neuen Akku-Knoten
 # 09.10.: Display (DRM). Phandles aus dem Basis-Geraetebaum lesen statt raten; fehlt einer, neu vergeben.
@@ -328,9 +339,10 @@ fi
   /cpus/cpu-map/cluster1/core1 cpu u:$CPU7_PH \
   `# 04.10.: Lautstaerketasten wie im Xiaomi-Overlay (Lauter: PMIC-EIC 4, Leiser: GPIO 124 invertiert)` \
   $GP phandle u:$GP_PH \
+  $EIC phandle u:$EIC_PH \
   /gpio-keys/key-volumeup label "Volume Up Key" \
   /gpio-keys/key-volumeup linux,code u:115 \
-  /gpio-keys/key-volumeup gpios "u:0x38 4 0" \
+  /gpio-keys/key-volumeup gpios "u:$EIC_PH 4 0" \
   /gpio-keys/key-volumeup debounce-interval u:2 \
   /gpio-keys/key-volumedown label "Volume Down Key" \
   /gpio-keys/key-volumedown linux,code u:114 \
